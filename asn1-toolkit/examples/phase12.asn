@@ -1,0 +1,25 @@
+Phase12 DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+
+  Color ::= ENUMERATED { red(0), green(1), blue(2) }
+
+  ExtColor ::= ENUMERATED { black(0), white(1), ..., gray(2) }
+
+  Id ::= OBJECT IDENTIFIER
+
+  Rel ::= RELATIVE-OID
+
+  Point ::= SET {
+    x INTEGER (0..255),
+    y INTEGER (0..255)
+  }
+
+  Points ::= SET OF Point
+
+  Bag ::= SEQUENCE {
+    color Color,
+    id    Id,
+    pts   Points
+  }
+
+END

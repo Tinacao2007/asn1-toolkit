@@ -1,0 +1,4 @@
+Example DEFINITIONS ::=
+BEGIN
+  Id ::= INTEGER (0..255)
+END

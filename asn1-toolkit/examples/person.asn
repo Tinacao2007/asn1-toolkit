@@ -1,0 +1,8 @@
+MyModule DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+  Person ::= SEQUENCE {
+    id      INTEGER (0..65535),
+    name    UTF8String,
+    age     INTEGER (0..150) OPTIONAL
+  }
+END

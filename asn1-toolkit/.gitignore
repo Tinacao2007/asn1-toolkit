@@ -1,0 +1,36 @@
+# Build
+/build/
+/cmake-build-*/
+/out/
+/compile_commands.json
+
+# IDE / editor
+/.vs/
+/.vscode/
+/.idea/
+/*.user
+/*.suo
+*~
+
+# Compiled artifacts
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
+Testing/
+
+# OS
+.DS_Store
+Thumbs.db
