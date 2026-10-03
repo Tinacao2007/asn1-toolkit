@@ -494,4 +494,129 @@ TEST(BerCodec, EnumeratedAndOidRoundTrip) {
     EXPECT_EQ(v.value()[0], 8571u);
     EXPECT_EQ(v.value()[1], 1u);
   }
+  {
+    // OID with first arc >= 80, e.g. {2, 40} -> first subidentifier is 2 * 40 + 40 = 120 (0x78)
+    // and e.g. {2, 100, 3} -> first subidentifier is 2 * 40 + 100 = 180 (0x81, 0x34)
+    std::vector<std::uint64_t> arcs1 = {2, 40};
+    asn1::ByteWriter w1;
+    asn1::ber::encode_object_identifier(w1, arcs1);
+    expect_bytes(w1.buffer(), hex({0x06, 0x01, 0x78}));
+    asn1::ByteReader r1(w1.buffer());
+    auto v1 = asn1::ber::decode_object_identifier(r1);
+    ASSERT_TRUE(v1.ok());
+    ASSERT_EQ(v1.value().size(), 2u);
+    EXPECT_EQ(v1.value()[0], 2u);
+    EXPECT_EQ(v1.value()[1], 40u);
+
+    std::vector<std::uint64_t> arcs2 = {2, 100, 3};
+    asn1::ByteWriter w2;
+    asn1::ber::encode_object_identifier(w2, arcs2);
+    // 180 -> 0x81, 0x34; 3 -> 0x03
+    expect_bytes(w2.buffer(), hex({0x06, 0x03, 0x81, 0x34, 0x03}));
+    asn1::ByteReader r2(w2.buffer());
+    auto v2 = asn1::ber::decode_object_identifier(r2);
+    ASSERT_TRUE(v2.ok());
+    ASSERT_EQ(v2.value().size(), 3u);
+    EXPECT_EQ(v2.value()[0], 2u);
+    EXPECT_EQ(v2.value()[1], 100u);
+    EXPECT_EQ(v2.value()[2], 3u);
+  }
 }
+
+TEST(BerCodec, DefaultFieldOmissionAndBackfill) {
+  // SEQUENCE { id [0] INTEGER, flag [1] BOOLEAN DEFAULT TRUE, priority [2] INTEGER DEFAULT 5 }
+  // When flag == true and priority == 5, they should be omitted in BER/DER.
+  const asn1::ber::Tag id_tag = asn1::ber::context(0);
+  const asn1::ber::Tag flag_tag = asn1::ber::context(1);
+  const asn1::ber::Tag priority_tag = asn1::ber::context(2);
+
+  // Case 1: Equal to default -> omit flag and priority in stream
+  {
+    asn1::ByteWriter w;
+    asn1::ber::encode_integer(w, 42, id_tag);
+    // flag omitted (equals true), priority omitted (equals 5)
+    asn1::ByteWriter seq_w;
+    asn1::ber::encode_constructed(seq_w, asn1::ber::universal(16, true), w.buffer());
+
+    // Decode: peek fields and backfill defaults when missing
+    asn1::ByteReader r(seq_w.buffer());
+    auto seq_content = asn1::ber::decode_constructed(r, asn1::ber::universal(16, true));
+    ASSERT_TRUE(seq_content.ok());
+
+    asn1::ByteReader f_reader(seq_content.value());
+    // 1. id
+    auto id_res = asn1::ber::decode_integer(f_reader, id_tag);
+    ASSERT_TRUE(id_res.ok());
+    EXPECT_EQ(id_res.value(), 42);
+
+    // 2. flag (default true)
+    bool flag_val = true;
+    if (f_reader.remaining() > 0) {
+      asn1::ByteReader peek(f_reader.remaining_span());
+      auto hdr = asn1::ber::decode_tlv_header(peek);
+      if (hdr && hdr.value().tag == flag_tag) {
+        auto dec = asn1::ber::decode_boolean(f_reader, flag_tag);
+        ASSERT_TRUE(dec.ok());
+        flag_val = dec.value();
+      }
+    }
+    EXPECT_EQ(flag_val, true);
+
+    // 3. priority (default 5)
+    std::int64_t priority_val = 5;
+    if (f_reader.remaining() > 0) {
+      asn1::ByteReader peek(f_reader.remaining_span());
+      auto hdr = asn1::ber::decode_tlv_header(peek);
+      if (hdr && hdr.value().tag == priority_tag) {
+        auto dec = asn1::ber::decode_integer(f_reader, priority_tag);
+        ASSERT_TRUE(dec.ok());
+        priority_val = dec.value();
+      }
+    }
+    EXPECT_EQ(priority_val, 5);
+  }
+
+  // Case 2: Different from default -> present and decoded
+  {
+    asn1::ByteWriter w;
+    asn1::ber::encode_integer(w, 42, id_tag);
+    asn1::ber::encode_boolean(w, false, flag_tag);
+    asn1::ber::encode_integer(w, 9, priority_tag);
+    asn1::ByteWriter seq_w;
+    asn1::ber::encode_constructed(seq_w, asn1::ber::universal(16, true), w.buffer());
+
+    asn1::ByteReader r(seq_w.buffer());
+    auto seq_content = asn1::ber::decode_constructed(r, asn1::ber::universal(16, true));
+    ASSERT_TRUE(seq_content.ok());
+
+    asn1::ByteReader f_reader(seq_content.value());
+    auto id_res = asn1::ber::decode_integer(f_reader, id_tag);
+    ASSERT_TRUE(id_res.ok());
+    EXPECT_EQ(id_res.value(), 42);
+
+    bool flag_val = true;
+    if (f_reader.remaining() > 0) {
+      asn1::ByteReader peek(f_reader.remaining_span());
+      auto hdr = asn1::ber::decode_tlv_header(peek);
+      if (hdr && hdr.value().tag == flag_tag) {
+        auto dec = asn1::ber::decode_boolean(f_reader, flag_tag);
+        ASSERT_TRUE(dec.ok());
+        flag_val = dec.value();
+      }
+    }
+    EXPECT_EQ(flag_val, false);
+
+    std::int64_t priority_val = 5;
+    if (f_reader.remaining() > 0) {
+      asn1::ByteReader peek(f_reader.remaining_span());
+      auto hdr = asn1::ber::decode_tlv_header(peek);
+      if (hdr && hdr.value().tag == priority_tag) {
+        auto dec = asn1::ber::decode_integer(f_reader, priority_tag);
+        ASSERT_TRUE(dec.ok());
+        priority_val = dec.value();
+      }
+    }
+    EXPECT_EQ(priority_val, 9);
+  }
+}
+

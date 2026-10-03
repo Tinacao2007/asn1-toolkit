@@ -242,3 +242,53 @@ TEST(DerCodec, EmbeddedPdvCharacterStringAndModernExternal) {
     EXPECT_EQ(d.error().code, asn1::Error::Code::NonCanonical);
   }
 }
+
+TEST(DerCodec, DefaultFieldOmissionAndBackfill) {
+  // In DER (X.690 §11.5), if a component value is equal to its default value,
+  // it SHALL NOT be encoded.
+  const asn1::ber::Tag id_tag = asn1::ber::context(0);
+  const asn1::ber::Tag flag_tag = asn1::ber::context(1);
+  const asn1::ber::Tag priority_tag = asn1::ber::context(2);
+
+  // Equal to default: flag=true, priority=5 -> omitted
+  asn1::ByteWriter w;
+  asn1::der::encode_integer(w, 42, id_tag);
+  // flag and priority omitted
+  asn1::ByteWriter seq_w;
+  asn1::der::encode_sequence(seq_w, w.buffer());
+
+  // Decode from DER stream
+  asn1::ByteReader r(seq_w.buffer());
+  auto seq_content = asn1::der::decode_sequence(r);
+  ASSERT_TRUE(seq_content.ok());
+
+  asn1::ByteReader f_reader(seq_content.value());
+  auto id_res = asn1::der::decode_integer(f_reader, id_tag);
+  ASSERT_TRUE(id_res.ok());
+  EXPECT_EQ(id_res.value(), 42);
+
+  bool flag_val = true;
+  if (f_reader.remaining() > 0) {
+    asn1::ByteReader peek(f_reader.remaining_span());
+    auto hdr = asn1::der::decode_tlv_header(peek);
+    if (hdr && hdr.value().tag == flag_tag) {
+      auto dec = asn1::der::decode_boolean(f_reader, flag_tag);
+      ASSERT_TRUE(dec.ok());
+      flag_val = dec.value();
+    }
+  }
+  EXPECT_EQ(flag_val, true);
+
+  std::int64_t priority_val = 5;
+  if (f_reader.remaining() > 0) {
+    asn1::ByteReader peek(f_reader.remaining_span());
+    auto hdr = asn1::der::decode_tlv_header(peek);
+    if (hdr && hdr.value().tag == priority_tag) {
+      auto dec = asn1::der::decode_integer(f_reader, priority_tag);
+      ASSERT_TRUE(dec.ok());
+      priority_val = dec.value();
+    }
+  }
+  EXPECT_EQ(priority_val, 5);
+}
+

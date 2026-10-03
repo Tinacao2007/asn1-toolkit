@@ -529,3 +529,66 @@ END
   EXPECT_NE(header.find("struct Msg_ext"), std::string::npos);
   EXPECT_NE(header.find("encode_uper"), std::string::npos);
 }
+
+TEST(Codegen, EmitsDefaultOmissionAndBackfill) {
+  asn1::Diagnostics diag;
+  asn1::SourceFile file;
+  auto model = analyze(R"(
+DefMod DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+  Config ::= SEQUENCE {
+    id INTEGER,
+    flag BOOLEAN DEFAULT TRUE,
+    priority INTEGER (0..10) DEFAULT 5
+  }
+END
+)",
+                       diag, file);
+  ASSERT_TRUE(diag.ok());
+
+  asn1::codegen::CppGenerator gen;
+
+  // 1. BER
+  {
+    asn1::codegen::EmitOptions opt;
+    opt.codec = asn1::codegen::CodecKind::Ber;
+    const std::string header = gen.emit_header_string(model, opt, diag);
+    ASSERT_TRUE(diag.ok());
+    // Should emit check `flag != true` and `priority != 5` to omit default values in BER
+    EXPECT_NE(header.find("value.flag != true"), std::string::npos);
+    EXPECT_NE(header.find("value.priority != 5"), std::string::npos);
+    // Should backfill defaults when missing
+    EXPECT_NE(header.find("value.flag = true;"), std::string::npos);
+    EXPECT_NE(header.find("value.priority = 5;"), std::string::npos);
+  }
+
+  // 2. DER
+  {
+    asn1::codegen::EmitOptions opt;
+    opt.codec = asn1::codegen::CodecKind::Der;
+    const std::string header = gen.emit_header_string(model, opt, diag);
+    ASSERT_TRUE(diag.ok());
+    EXPECT_NE(header.find("value.flag != true"), std::string::npos);
+    EXPECT_NE(header.find("value.priority != 5"), std::string::npos);
+    EXPECT_NE(header.find("value.flag = true;"), std::string::npos);
+    EXPECT_NE(header.find("value.priority = 5;"), std::string::npos);
+  }
+
+  // 3. UPER
+  {
+    asn1::codegen::EmitOptions opt;
+    opt.codec = asn1::codegen::CodecKind::Uper;
+    const std::string header = gen.emit_header_string(model, opt, diag);
+    ASSERT_TRUE(diag.ok());
+    // Preamble presence bit: 0 when value == default
+    EXPECT_NE(header.find("(value.flag != true) ? 1 : 0"), std::string::npos);
+    EXPECT_NE(header.find("(value.priority != 5) ? 1 : 0"), std::string::npos);
+    // Omit field encoding when equal to default
+    EXPECT_NE(header.find("if (value.flag != true)"), std::string::npos);
+    EXPECT_NE(header.find("if (value.priority != 5)"), std::string::npos);
+    // Backfill defaults on decode
+    EXPECT_NE(header.find("value.flag = true;"), std::string::npos);
+    EXPECT_NE(header.find("value.priority = 5;"), std::string::npos);
+  }
+}
+

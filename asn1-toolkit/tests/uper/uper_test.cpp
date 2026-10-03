@@ -516,3 +516,124 @@ TEST(Uper, SequenceOfMultiFragmentChunking) {
   EXPECT_EQ(decoded_total, 20000u);
 }
 
+TEST(Uper, LargeRangeUnsignedIntegerPacking) {
+  // INTEGER (0..100000): range = 100001 > 65536.
+  // In UPER (unaligned variant), range > 65536 is encoded with length = ceil(log2(100001)) = 17 bits directly,
+  // without any length determinant octet count or 0-padding octet.
+  // For value = 100000 (0x186A0, 17 bits):
+  // 100000 in binary: 1 1000 0110 1010 0000 (17 bits)
+  asn1::per::IntegerConstraint c{0, 100000, false};
+  asn1::BitWriter w;
+  ASSERT_TRUE(asn1::uper::encode_integer(w, 100000, c).ok());
+  EXPECT_EQ(w.bit_size(), 17u);  // Exactly 17 bits, NO zero-pad byte or length determinant header!
+
+  auto bytes = finish(w);
+  // 17 bits packed MSB-first: 17 bits fits into 3 bytes (17 bits + 7 zero pad bits = 24 bits = 3 bytes)
+  EXPECT_EQ(bytes.size(), 3u);
+
+  asn1::BitReader r(bytes);
+  auto dec = asn1::uper::decode_integer(r, c);
+  ASSERT_TRUE(dec.ok());
+  EXPECT_EQ(dec.value(), 100000);
+}
+
+TEST(Uper, DefaultFieldOmissionAndBackfill) {
+  // SEQUENCE { id INTEGER (0..65535), flag BOOLEAN DEFAULT TRUE, priority INTEGER (0..10) DEFAULT 5 }
+  // When flag == true and priority == 5, optionals presence preamble bitmask should be [0, 0]
+  // and no field content should be written for either flag or priority!
+  const std::uint16_t id = 42;
+  const bool flag_def = true;
+  const std::int64_t priority_def = 5;
+
+  asn1::per::IntegerConstraint id_c{0, 65535, false};
+  asn1::per::IntegerConstraint prio_c{0, 10, false};
+
+  // Case 1: Equal to default -> both omitted
+  {
+    asn1::BitWriter w;
+    const std::uint8_t opt[] = {
+        static_cast<std::uint8_t>(flag_def != true ? 1 : 0),
+        static_cast<std::uint8_t>(priority_def != 5 ? 1 : 0)};
+    asn1::uper::encode_sequence_preamble(w, false, false,
+                                         asn1::Span<const std::uint8_t>(opt, 2));
+    asn1::uper::encode_integer(w, id, id_c);
+    // omitted: flag & priority
+    auto bytes = finish(w);
+
+    // Decode: verify missing fields get backfilled to default values
+    asn1::BitReader r(bytes);
+    auto bm = asn1::uper::decode_sequence_preamble(r, false, 2);
+    ASSERT_TRUE(bm.ok());
+    EXPECT_EQ(bm.value().optionals[0], 0);
+    EXPECT_EQ(bm.value().optionals[1], 0);
+
+    auto dec_id = asn1::uper::decode_integer(r, id_c);
+    ASSERT_TRUE(dec_id.ok());
+    EXPECT_EQ(dec_id.value(), 42);
+
+    bool dec_flag = true;  // default
+    if (bm.value().optionals[0]) {
+      auto f = asn1::uper::decode_boolean(r);
+      ASSERT_TRUE(f.ok());
+      dec_flag = f.value();
+    }
+    EXPECT_EQ(dec_flag, true);
+
+    std::int64_t dec_prio = 5;  // default
+    if (bm.value().optionals[1]) {
+      auto p = asn1::uper::decode_integer(r, prio_c);
+      ASSERT_TRUE(p.ok());
+      dec_prio = p.value();
+    }
+    EXPECT_EQ(dec_prio, 5);
+  }
+
+  // Case 2: Not equal to default -> presence bit set to 1 and encoded
+  {
+    const bool flag_custom = false;
+    const std::int64_t priority_custom = 8;
+    asn1::BitWriter w;
+    const std::uint8_t opt[] = {
+        static_cast<std::uint8_t>(flag_custom != true ? 1 : 0),
+        static_cast<std::uint8_t>(priority_custom != 5 ? 1 : 0)};
+    asn1::uper::encode_sequence_preamble(w, false, false,
+                                         asn1::Span<const std::uint8_t>(opt, 2));
+    asn1::uper::encode_integer(w, id, id_c);
+    if (opt[0]) {
+      asn1::uper::encode_boolean(w, flag_custom);
+    }
+    if (opt[1]) {
+      asn1::uper::encode_integer(w, priority_custom, prio_c);
+    }
+    auto bytes = finish(w);
+
+    asn1::BitReader r(bytes);
+    auto bm = asn1::uper::decode_sequence_preamble(r, false, 2);
+    ASSERT_TRUE(bm.ok());
+    EXPECT_EQ(bm.value().optionals[0], 1);
+    EXPECT_EQ(bm.value().optionals[1], 1);
+
+    auto dec_id = asn1::uper::decode_integer(r, id_c);
+    ASSERT_TRUE(dec_id.ok());
+    EXPECT_EQ(dec_id.value(), 42);
+
+    bool dec_flag = true;
+    if (bm.value().optionals[0]) {
+      auto f = asn1::uper::decode_boolean(r);
+      ASSERT_TRUE(f.ok());
+      dec_flag = f.value();
+    }
+    EXPECT_EQ(dec_flag, false);
+
+    std::int64_t dec_prio = 5;
+    if (bm.value().optionals[1]) {
+      auto p = asn1::uper::decode_integer(r, prio_c);
+      ASSERT_TRUE(p.ok());
+      dec_prio = p.value();
+    }
+    EXPECT_EQ(dec_prio, 8);
+  }
+}
+
+
+

@@ -196,3 +196,21 @@ TEST(Xer, ParseRoundTripAndWhitespace) {
   ASSERT_TRUE(again.ok());
   EXPECT_EQ(asn1::xer::to_string(again.value()), "<A><true /></A>");
 }
+
+TEST(Xer, MaxNestingDepthDoSProtection) {
+  // Construct XML with > 256 nested elements to verify DoS prevention
+  std::string deep_xml;
+  for (int i = 0; i < 260; ++i) {
+    deep_xml += "<node>";
+  }
+  deep_xml += "val";
+  for (int i = 0; i < 260; ++i) {
+    deep_xml += "</node>";
+  }
+
+  auto res = asn1::xer::parse_document(deep_xml);
+  EXPECT_FALSE(res.ok());
+  EXPECT_EQ(res.error().code, asn1::Error::Code::InvalidArgument);
+  EXPECT_NE(res.error().message.find("nesting depth exceeded"), std::string::npos);
+}
+

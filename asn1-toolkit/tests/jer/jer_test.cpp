@@ -144,3 +144,21 @@ TEST(Jer, RealRoundTrip) {
   ASSERT_TRUE(r.ok());
   EXPECT_DOUBLE_EQ(r.value(), 25.0);
 }
+
+TEST(Jer, MaxNestingDepthDoSProtection) {
+  // Construct JSON with > 256 nested arrays or objects to verify DoS prevention
+  std::string deep_json;
+  for (int i = 0; i < 260; ++i) {
+    deep_json += "[";
+  }
+  deep_json += "1";
+  for (int i = 0; i < 260; ++i) {
+    deep_json += "]";
+  }
+
+  auto res = asn1::jer::parse_document(deep_json);
+  EXPECT_FALSE(res.ok());
+  EXPECT_EQ(res.error().code, asn1::Error::Code::InvalidArgument);
+  EXPECT_NE(res.error().message.find("nesting depth exceeded"), std::string::npos);
+}
+

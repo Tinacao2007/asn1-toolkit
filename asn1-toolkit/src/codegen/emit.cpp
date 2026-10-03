@@ -3880,7 +3880,7 @@ class Emitter {
       out << ind << "if (" << expr << "." << fname << ") {\n";
       emit_tlv_field_encode(out, ft, &f, expr + "." + fname + ".value()", der, ind + "  ");
       out << ind << "}\n";
-    } else if (der && f.presence == ir::Presence::Default && f.default_value) {
+    } else if (f.presence == ir::Presence::Default && f.default_value) {
       const std::string def_val = default_val_cpp(*f.default_value);
       if (!def_val.empty()) {
         out << ind << "if (" << expr << "." << fname << " != " << def_val << ") {\n";
