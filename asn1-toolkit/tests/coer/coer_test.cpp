@@ -253,7 +253,7 @@ TEST(Coer, NullAndSequenceOfLength) {
 
   asn1::ByteWriter w2;
   asn1::coer::encode_sequence_of_length(w2, 4);
-  expect_eq(w2.buffer(), bytes({0x04}));
+  expect_eq(w2.buffer(), bytes({0x01, 0x04}));
   asn1::ByteReader r(w2.buffer());
   auto n = asn1::coer::decode_sequence_of_length(r);
   ASSERT_TRUE(n.ok());

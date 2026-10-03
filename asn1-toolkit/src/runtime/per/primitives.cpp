@@ -101,6 +101,16 @@ Result<void> encode_constrained_whole_number(BitWriter& out, Variant variant,
   if (range == 1) {
     return Result<void>::success();
   }
+  if (range <= 1) {
+    return Result<void>::success();
+  }
+
+  if (variant == Variant::Unaligned) {
+    out.put_bits(offset, bits_for_range(range));
+    return Result<void>::success();
+  }
+
+  // Variant::Aligned
   if (range <= 255) {
     out.put_bits(offset, bits_for_range(range));
     return Result<void>::success();
@@ -111,12 +121,8 @@ Result<void> encode_constrained_whole_number(BitWriter& out, Variant variant,
     return Result<void>::success();
   }
   if (range <= 65536) {
-    if (variant == Variant::Aligned) {
-      maybe_align(out, variant);
-      out.put_bits(offset, 16);
-    } else {
-      out.put_bits(offset, bits_for_range(range));
-    }
+    maybe_align(out, variant);
+    out.put_bits(offset, 16);
     return Result<void>::success();
   }
 
@@ -152,7 +158,13 @@ Result<std::int64_t> decode_constrained_whole_number(BitReader& in, Variant vari
   }
 
   std::uint64_t offset = 0;
-  if (range <= 255) {
+  if (variant == Variant::Unaligned) {
+    auto v = in.get_bits(bits_for_range(range));
+    if (!v) {
+      return v.error();
+    }
+    offset = v.value();
+  } else if (range <= 255) {
     auto v = in.get_bits(bits_for_range(range));
     if (!v) {
       return v.error();
@@ -168,22 +180,14 @@ Result<std::int64_t> decode_constrained_whole_number(BitReader& in, Variant vari
     }
     offset = v.value();
   } else if (range <= 65536) {
-    if (variant == Variant::Aligned) {
-      if (auto a = maybe_align(in, variant); !a) {
-        return a.error();
-      }
-      auto v = in.get_bits(16);
-      if (!v) {
-        return v.error();
-      }
-      offset = v.value();
-    } else {
-      auto v = in.get_bits(bits_for_range(range));
-      if (!v) {
-        return v.error();
-      }
-      offset = v.value();
+    if (auto a = maybe_align(in, variant); !a) {
+      return a.error();
     }
+    auto v = in.get_bits(16);
+    if (!v) {
+      return v.error();
+    }
+    offset = v.value();
   } else {
     const std::size_t max_octets = max_octets_for_range(range);
     auto used_m1 = decode_constrained_whole_number(
@@ -211,6 +215,9 @@ Result<std::int64_t> decode_constrained_whole_number(BitReader& in, Variant vari
 
 void encode_semi_constrained_whole_number(BitWriter& out, Variant variant,
                                           std::int64_t value, std::int64_t lower) {
+  if (value < lower) {
+    value = lower;
+  }
   const std::uint64_t offset = to_u64(value) - to_u64(lower);
   const std::size_t nbytes = octet_count_for_nonneg(offset);
   maybe_align(out, variant);
@@ -306,23 +313,15 @@ Result<std::uint64_t> decode_normally_small_non_negative_whole_number(
   return decode_nonneg_octets(in, len.value());
 }
 
-void encode_normally_small_length(BitWriter& out, Variant /*variant*/,
+void encode_normally_small_length(BitWriter& out, Variant variant,
                                   std::size_t length) {
   if (length >= 1 && length <= 64) {
     out.put_bit(false);
     out.put_bits(static_cast<std::uint64_t>(length - 1), 6);
     return;
   }
-  if (length <= 127) {
-    out.put_bit(true);
-    out.put_bit(false);
-    out.put_bits(static_cast<std::uint64_t>(length), 7);
-    return;
-  }
-  // Fallback: not "normally small"; callers should use length determinant.
   out.put_bit(true);
-  out.put_bit(true);
-  encode_length_determinant(out, Variant::Unaligned, length);
+  encode_length_determinant(out, variant, length);
 }
 
 Result<std::size_t> decode_normally_small_length(BitReader& in, Variant variant) {
@@ -336,17 +335,6 @@ Result<std::size_t> decode_normally_small_length(BitReader& in, Variant variant)
       return v.error();
     }
     return static_cast<std::size_t>(v.value() + 1);
-  }
-  auto b1 = in.get_bit();
-  if (!b1) {
-    return b1.error();
-  }
-  if (!b1.value()) {
-    auto v = in.get_bits(7);
-    if (!v) {
-      return v.error();
-    }
-    return static_cast<std::size_t>(v.value());
   }
   auto len = decode_length_determinant(in, variant);
   if (!len) {

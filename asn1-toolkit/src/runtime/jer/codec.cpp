@@ -184,7 +184,11 @@ Result<BitStringValue> decode_bit_string(const Value& v, bool fixed_size) {
     return bytes.error();
   }
   out.bits = std::move(bytes.value());
-  out.bit_length = static_cast<std::size_t>(len_v->number);
+  const std::size_t req_len = static_cast<std::size_t>(len_v->number);
+  if (req_len > out.bits.size() * 8) {
+    return bad(0, "JER BIT STRING length exceeds byte buffer size");
+  }
+  out.bit_length = req_len;
   return out;
 }
 

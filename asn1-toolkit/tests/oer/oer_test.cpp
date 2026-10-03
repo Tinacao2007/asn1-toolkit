@@ -266,7 +266,7 @@ TEST(Oer, ChoiceTagAndSequenceOfLength) {
 
   asn1::ByteWriter w2;
   asn1::oer::encode_sequence_of_length(w2, 4);
-  expect_eq(w2.buffer(), bytes({0x04}));
+  expect_eq(w2.buffer(), bytes({0x01, 0x04}));
 }
 
 TEST(Oer, ObjectIdentifierRoundTrip) {

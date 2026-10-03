@@ -160,6 +160,15 @@ TEST(PerPrimitives, NormallySmallAndLength) {
   auto len = asn1::per::decode_normally_small_length(r2, asn1::per::Variant::Unaligned);
   ASSERT_TRUE(len.ok());
   EXPECT_EQ(len.value(), 4u);
+
+  // X.691 11.9.3.4: length > 64 encodes as bit 1 followed by length determinant
+  asn1::BitWriter w3;
+  asn1::per::encode_normally_small_length(w3, asn1::per::Variant::Unaligned, 70);
+  auto b3 = w3.take();
+  asn1::BitReader r3(b3);
+  auto len3 = asn1::per::decode_normally_small_length(r3, asn1::per::Variant::Unaligned);
+  ASSERT_TRUE(len3.ok());
+  EXPECT_EQ(len3.value(), 70u);
 }
 
 TEST(PerPrimitives, LengthDeterminant) {

@@ -13,11 +13,48 @@
 namespace asn1 {
 namespace oer {
 
+/// Discrete range for disjoint integer constraints.
+struct IntegerRange {
+  std::optional<std::int64_t> lower;
+  std::optional<std::int64_t> upper;
+
+  bool contains(std::int64_t v) const noexcept {
+    if (lower && v < *lower) return false;
+    if (upper && v > *upper) return false;
+    return true;
+  }
+};
+
 /// INTEGER value constraints (host int64).
 struct IntegerConstraint {
   std::optional<std::int64_t> lower;
   std::optional<std::int64_t> upper;
   bool extensible = false;
+  std::vector<IntegerRange> ranges = {};
+
+  bool contains(std::int64_t v) const noexcept {
+    if (!ranges.empty()) {
+      for (const auto& r : ranges) {
+        if (r.contains(v)) return true;
+      }
+      return false;
+    }
+    if (lower && v < *lower) return false;
+    if (upper && v > *upper) return false;
+    return true;
+  }
+};
+
+/// Discrete range for disjoint size constraints.
+struct SizeRange {
+  std::optional<std::size_t> lower;
+  std::optional<std::size_t> upper;
+
+  bool contains(std::size_t v) const noexcept {
+    if (lower && v < *lower) return false;
+    if (upper && v > *upper) return false;
+    return true;
+  }
 };
 
 /// SIZE constraint for strings / SEQUENCE OF / BIT STRING bit-count.
@@ -25,6 +62,19 @@ struct SizeConstraint {
   std::optional<std::size_t> lower;
   std::optional<std::size_t> upper;
   bool extensible = false;
+  std::vector<SizeRange> ranges = {};
+
+  bool contains(std::size_t v) const noexcept {
+    if (!ranges.empty()) {
+      for (const auto& r : ranges) {
+        if (r.contains(v)) return true;
+      }
+      return false;
+    }
+    if (lower && v < *lower) return false;
+    if (upper && v > *upper) return false;
+    return true;
+  }
 
   bool is_fixed() const noexcept {
     return lower.has_value() && upper.has_value() && *lower == *upper && !extensible;

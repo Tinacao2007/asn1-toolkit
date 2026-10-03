@@ -1,4 +1,5 @@
 #include <asn1/runtime/jer/json.hpp>
+#include <asn1/common/float_conv.hpp>
 #include <asn1/runtime/byte_io.hpp>
 
 #include <cmath>
@@ -188,16 +189,11 @@ Result<Value> parse_number(const std::string& s, std::size_t& i) {
   }
   const std::string text = s.substr(start, i - start);
   if (is_real) {
-    try {
-      std::size_t idx = 0;
-      const double v = std::stod(text, &idx);
-      if (idx != text.size()) {
-        return bad(start, "invalid JSON number");
-      }
-      return Value::real_number(v);
-    } catch (...) {
+    double v = 0.0;
+    if (!parse_double_c_locale(text, v)) {
       return bad(start, "invalid JSON number");
     }
+    return Value::real_number(v);
   }
   auto big = BigInteger::from_decimal(text);
   if (!big.ok()) {
@@ -206,7 +202,14 @@ Result<Value> parse_number(const std::string& s, std::size_t& i) {
   return Value::big_integer(std::move(big.value()));
 }
 
-Result<Value> parse_array(const std::string& s, std::size_t& i) {
+constexpr std::size_t kMaxJsonNestingDepth = 256;
+
+Result<Value> parse_value(const std::string& s, std::size_t& i, std::size_t depth);
+
+Result<Value> parse_array(const std::string& s, std::size_t& i, std::size_t depth) {
+  if (depth > kMaxJsonNestingDepth) {
+    return bad(i, "JSON maximum nesting depth exceeded");
+  }
   if (auto r = expect_char(s, i, '['); !r.ok()) {
     return r.error();
   }
@@ -217,7 +220,7 @@ Result<Value> parse_array(const std::string& s, std::size_t& i) {
     return out;
   }
   for (;;) {
-    auto item = parse_value(s, i);
+    auto item = parse_value(s, i, depth + 1);
     if (!item.ok()) {
       return item.error();
     }
@@ -236,7 +239,10 @@ Result<Value> parse_array(const std::string& s, std::size_t& i) {
   return out;
 }
 
-Result<Value> parse_object(const std::string& s, std::size_t& i) {
+Result<Value> parse_object(const std::string& s, std::size_t& i, std::size_t depth) {
+  if (depth > kMaxJsonNestingDepth) {
+    return bad(i, "JSON maximum nesting depth exceeded");
+  }
   if (auto r = expect_char(s, i, '{'); !r.ok()) {
     return r.error();
   }
@@ -256,7 +262,7 @@ Result<Value> parse_object(const std::string& s, std::size_t& i) {
       return r.error();
     }
     skip_ws(s, i);
-    auto val = parse_value(s, i);
+    auto val = parse_value(s, i, depth + 1);
     if (!val.ok()) {
       return val.error();
     }
@@ -275,7 +281,10 @@ Result<Value> parse_object(const std::string& s, std::size_t& i) {
   return out;
 }
 
-Result<Value> parse_value(const std::string& s, std::size_t& i) {
+Result<Value> parse_value(const std::string& s, std::size_t& i, std::size_t depth) {
+  if (depth > kMaxJsonNestingDepth) {
+    return bad(i, "JSON maximum nesting depth exceeded");
+  }
   skip_ws(s, i);
   if (i >= s.size()) {
     return bad(i, "unexpected end of JSON");
@@ -310,10 +319,10 @@ Result<Value> parse_value(const std::string& s, std::size_t& i) {
     return Value::string(std::move(str.value()));
   }
   if (c == '[') {
-    return parse_array(s, i);
+    return parse_array(s, i, depth);
   }
   if (c == '{') {
-    return parse_object(s, i);
+    return parse_object(s, i, depth);
   }
   if (c == '-' || std::isdigit(static_cast<unsigned char>(c))) {
     return parse_number(s, i);
@@ -385,7 +394,7 @@ std::string to_string(const Value& v) {
 
 Result<Value> parse_document(const std::string& json) {
   std::size_t i = 0;
-  auto v = parse_value(json, i);
+  auto v = parse_value(json, i, 0);
   if (!v.ok()) {
     return v.error();
   }

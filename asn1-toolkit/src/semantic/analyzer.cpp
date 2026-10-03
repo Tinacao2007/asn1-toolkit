@@ -62,6 +62,27 @@ bool extract_i64_bounds(const ast::Constraint* c, std::int64_t& lo, std::int64_t
   return false;
 }
 
+static std::uint64_t universal_tag_number_for(ir::TypeKind kind) {
+  switch (kind) {
+    case ir::TypeKind::Boolean: return 1;
+    case ir::TypeKind::Integer: return 2;
+    case ir::TypeKind::BitString: return 3;
+    case ir::TypeKind::OctetString: return 4;
+    case ir::TypeKind::Null: return 5;
+    case ir::TypeKind::ObjectIdentifier: return 6;
+    case ir::TypeKind::InstanceOf: return 8;
+    case ir::TypeKind::Real: return 9;
+    case ir::TypeKind::Enumerated: return 10;
+    case ir::TypeKind::RelativeOid: return 13;
+    case ir::TypeKind::Sequence:
+    case ir::TypeKind::SequenceOf: return 16;
+    case ir::TypeKind::Set:
+    case ir::TypeKind::SetOf: return 17;
+    case ir::TypeKind::String: return 12;
+    default: return 0;
+  }
+}
+
 ir::RealIeeeForm classify_real_with_components(const ast::WithComponentsConstraint& wc) {
   std::optional<std::int64_t> mant_lo, mant_hi, base, exp_lo, exp_hi;
   for (const auto& c : wc.components()) {
@@ -454,23 +475,35 @@ void resolve_object_class_field(ir::Type& t, const ir::Model& model) {
   if (t.kind != ir::TypeKind::ObjectClassField) {
     return;
   }
+  const ir::ObjectClassInfo* best_oc = nullptr;
   for (const auto& oc : model.object_classes) {
     if (oc.name != t.object_class_field.class_name) {
       continue;
     }
-    for (const auto& f : oc.fields) {
-      if (f.name != t.object_class_field.field_name) {
-        continue;
-      }
-      if (f.kind == ir::ClassFieldKind::TypeField) {
-        t.object_class_field.open_type = true;
-        t.object_class_field.fixed_type = ir::kInvalidType;
-      } else {
-        t.object_class_field.open_type = false;
-        t.object_class_field.fixed_type = f.fixed_type;
-      }
-      return;
+    // Prefer matching the defining module if possible
+    if (oc.module == t.module) {
+      best_oc = &oc;
+      break;
     }
+    if (!best_oc) {
+      best_oc = &oc;
+    }
+  }
+  if (!best_oc) {
+    return;
+  }
+  for (const auto& f : best_oc->fields) {
+    if (f.name != t.object_class_field.field_name) {
+      continue;
+    }
+    if (f.kind == ir::ClassFieldKind::TypeField) {
+      t.object_class_field.open_type = true;
+      t.object_class_field.fixed_type = ir::kInvalidType;
+    } else {
+      t.object_class_field.open_type = false;
+      t.object_class_field.fixed_type = f.fixed_type;
+    }
+    return;
   }
 }
 
@@ -944,12 +977,35 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
   out.name = assigned_name;
   apply_outer_tag(out, type, ctx.mod.tag_default());
 
+  auto val_resolver = [&](const std::string& name) -> std::optional<ir::BigInt> {
+    const Symbol* sym = ctx.symbols.lookup(ctx.mod.name(), name);
+    if (!sym) sym = ctx.symbols.find(ctx.mod.name(), name);
+    if (!sym) {
+      // Search all modules
+      for (const auto& pair : ctx.symbols.entries()) {
+        if (pair.second.kind == SymbolKind::Value && pair.second.name == name) {
+          sym = &pair.second;
+          break;
+        }
+      }
+    }
+    if (!sym) return std::nullopt;
+    if (sym->kind == SymbolKind::Value && sym->ast) {
+      if (const auto* va = dynamic_cast<const ast::ValueAssignment*>(sym->ast)) {
+        if (const auto* iv = dynamic_cast<const ast::IntegerValue*>(&va->value())) {
+          return ir::BigInt::from_decimal(iv->text(), iv->negative());
+        }
+      }
+    }
+    return std::nullopt;
+  };
+
   if (dynamic_cast<const ast::BooleanType*>(&type)) {
     out.kind = ir::TypeKind::Boolean;
   } else if (const auto* integer = dynamic_cast<const ast::IntegerType*>(&type)) {
     out.kind = ir::TypeKind::Integer;
     out.integer.constraint =
-        constraints::normalize(integer->constraint(), ctx.diagnostics);
+        constraints::normalize(integer->constraint(), ctx.diagnostics, val_resolver);
     for (const auto& nn : integer->named_numbers()) {
       out.integer.named_numbers.push_back(
           ir::NamedNumber{nn.name, ir::BigInt::from_decimal(nn.number_text, nn.negative)});
@@ -958,7 +1014,7 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
   } else if (const auto* bits = dynamic_cast<const ast::BitStringType*>(&type)) {
     out.kind = ir::TypeKind::BitString;
     out.bit_string.size =
-        constraints::normalize_size(bits->constraint(), ctx.diagnostics);
+        constraints::normalize_size(bits->constraint(), ctx.diagnostics, val_resolver);
     for (const auto& nn : bits->named_bits()) {
       out.bit_string.named_bits.push_back(
           ir::NamedNumber{nn.name, ir::BigInt::from_decimal(nn.number_text, false)});
@@ -969,7 +1025,7 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
   } else if (const auto* octets = dynamic_cast<const ast::OctetStringType*>(&type)) {
     out.kind = ir::TypeKind::OctetString;
     out.octet_string.size =
-        constraints::normalize_size(octets->constraint(), ctx.diagnostics);
+        constraints::normalize_size(octets->constraint(), ctx.diagnostics, val_resolver);
     if (const ast::Type* contained = find_containing_type(octets->constraint())) {
       out.octet_string.containing = lower_type(ctx, *contained, "", subst);
     }
@@ -978,7 +1034,7 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
   } else if (const auto* str = dynamic_cast<const ast::StringType*>(&type)) {
     out.kind = ir::TypeKind::String;
     out.string.kind = map_string_kind(str->kind());
-    out.string.size = constraints::normalize_size(str->constraint(), ctx.diagnostics);
+    out.string.size = constraints::normalize_size(str->constraint(), ctx.diagnostics, val_resolver);
   } else if (const auto* seq = dynamic_cast<const ast::SequenceType*>(&type)) {
     out.kind = ir::TypeKind::Sequence;
     std::uint64_t auto_index = 0;
@@ -1091,7 +1147,7 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
         ctx, of->element(),
         child_lower_name(ctx, assigned_name, "Item", of->element(), "Item"), subst);
     out.sequence_of.size =
-        constraints::normalize_size(of->constraint(), ctx.diagnostics);
+        constraints::normalize_size(of->constraint(), ctx.diagnostics, val_resolver);
   } else if (const auto* set = dynamic_cast<const ast::SetType*>(&type)) {
     out.kind = ir::TypeKind::Set;
     std::uint64_t auto_index = 0;
@@ -1161,7 +1217,7 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
         ctx, setof->element(),
         child_lower_name(ctx, assigned_name, "Item", setof->element(), "Item"), subst);
     out.set_of.size =
-        constraints::normalize_size(setof->constraint(), ctx.diagnostics);
+        constraints::normalize_size(setof->constraint(), ctx.diagnostics, val_resolver);
   } else if (const auto* en = dynamic_cast<const ast::EnumeratedType*>(&type)) {
     out.kind = ir::TypeKind::Enumerated;
     auto assign_enum = [](const std::vector<ast::NamedNumber>& in,
@@ -1194,11 +1250,11 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
   } else if (dynamic_cast<const ast::ObjectIdentifierType*>(&type)) {
     out.kind = ir::TypeKind::ObjectIdentifier;
     out.object_identifier.size =
-        constraints::normalize_size(type.constraint(), ctx.diagnostics);
+        constraints::normalize_size(type.constraint(), ctx.diagnostics, val_resolver);
   } else if (dynamic_cast<const ast::RelativeOidType*>(&type)) {
     out.kind = ir::TypeKind::RelativeOid;
     out.relative_oid.size =
-        constraints::normalize_size(type.constraint(), ctx.diagnostics);
+        constraints::normalize_size(type.constraint(), ctx.diagnostics, val_resolver);
   } else if (dynamic_cast<const ast::RealType*>(&type)) {
     out.kind = ir::TypeKind::Real;
     out.real.ieee_form = real_ieee_form_from_constraint(type.constraint());
@@ -1592,6 +1648,12 @@ void Analyzer::lower_pass() {
           if (s.type_setting) {
             fs.type_setting = lower_type(ctx, *s.type_setting, "");
           }
+          if (s.value_setting) {
+            auto vid = lower_simple_value(ctx, *s.value_setting);
+            if (vid) {
+              fs.value_setting = *vid;
+            }
+          }
           info.settings.push_back(std::move(fs));
         }
         model_.objects.push_back(std::move(info));
@@ -1794,38 +1856,53 @@ void Analyzer::tag_pass() {
     }
   };
 
+  auto rewrite_field = [&](ir::Field& f) {
+    rewrite(f.type);
+    if (f.tag.cls == ir::TagClass::Universal && f.tag.number == 0 && !f.tag.is_explicit &&
+        f.type != ir::kInvalidType) {
+      const ir::Type& ft = model_.arena.get(f.type);
+      if (ft.tag.cls != ir::TagClass::Universal || ft.tag.number != 0) {
+        f.tag = ft.tag;
+      } else if (ft.kind != ir::TypeKind::Choice) {
+        // Fall back to the natural universal tag of the resolved type
+        f.tag.cls = ir::TagClass::Universal;
+        f.tag.number = universal_tag_number_for(ft.kind);
+      }
+    }
+  };
+
   for (std::size_t i = 0; i < model_.arena.type_count(); ++i) {
     ir::Type& t = model_.arena.get(static_cast<ir::TypeId>(i));
     if (t.kind == ir::TypeKind::Sequence) {
       for (auto& f : t.sequence.root) {
-        rewrite(f.type);
+        rewrite_field(f);
       }
       for (auto& group : t.sequence.extension_groups) {
         for (auto& f : group) {
-          rewrite(f.type);
+          rewrite_field(f);
         }
       }
       for (auto& f : t.sequence.trailing_root) {
-        rewrite(f.type);
+        rewrite_field(f);
       }
     } else if (t.kind == ir::TypeKind::Set) {
       for (auto& f : t.set.root) {
-        rewrite(f.type);
+        rewrite_field(f);
       }
       for (auto& group : t.set.extension_groups) {
         for (auto& f : group) {
-          rewrite(f.type);
+          rewrite_field(f);
         }
       }
       for (auto& f : t.set.trailing_root) {
-        rewrite(f.type);
+        rewrite_field(f);
       }
     } else if (t.kind == ir::TypeKind::Choice) {
       for (auto& f : t.choice.alternatives) {
-        rewrite(f.type);
+        rewrite_field(f);
       }
       for (auto& f : t.choice.extensions) {
-        rewrite(f.type);
+        rewrite_field(f);
       }
     } else if (t.kind == ir::TypeKind::SequenceOf) {
       rewrite(t.sequence_of.element);

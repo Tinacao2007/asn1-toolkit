@@ -1,4 +1,5 @@
 #include <asn1/runtime/ber/codec.hpp>
+#include <asn1/common/float_conv.hpp>
 
 #include <cmath>
 #include <cstring>
@@ -398,8 +399,13 @@ Result<std::vector<std::uint64_t>> decode_object_identifier_content(ByteReader& 
     return first.error();
   }
   std::vector<std::uint64_t> arcs;
-  arcs.push_back(first.value() / 40);
-  arcs.push_back(first.value() % 40);
+  if (first.value() < 80) {
+    arcs.push_back(first.value() / 40);
+    arcs.push_back(first.value() % 40);
+  } else {
+    arcs.push_back(2);
+    arcs.push_back(first.value() - 80);
+  }
   while (remaining > 0) {
     auto arc = decode_oid_subidentifier(in, remaining);
     if (!arc) {
@@ -566,16 +572,11 @@ Result<double> decode_real_decimal(Span<const std::uint8_t> data, std::size_t of
     }
     text.push_back(c);
   }
-  try {
-    std::size_t idx = 0;
-    const double v = std::stod(text, &idx);
-    if (idx == 0) {
-      return make_error(Error::Code::InvalidArgument, offset, "invalid decimal REAL");
-    }
-    return v;
-  } catch (...) {
+  double v = 0.0;
+  if (!parse_double_c_locale(text, v)) {
     return make_error(Error::Code::InvalidArgument, offset, "invalid decimal REAL");
   }
+  return v;
 }
 
 }  // namespace

@@ -237,6 +237,7 @@ void encode_integer(ByteWriter& out, const BigInteger& value,
 }
 
 Result<std::int64_t> decode_integer(ByteReader& in, const IntegerConstraint& constraint) {
+  std::int64_t val = 0;
   bool is_signed = true;
   const std::size_t width = fixed_integer_width(constraint, is_signed);
   if (width != 0) {
@@ -245,26 +246,36 @@ Result<std::int64_t> decode_integer(ByteReader& in, const IntegerConstraint& con
       return raw.error();
     }
     if (!is_signed) {
-      return static_cast<std::int64_t>(raw.value());
-    }
-    std::int64_t value = static_cast<std::int64_t>(raw.value());
-    if (width < 8) {
-      const std::uint64_t sign_bit = 1ull << (8 * width - 1);
-      if (raw.value() & sign_bit) {
-        const std::uint64_t mask = ~((1ull << (8 * width)) - 1ull);
-        value = static_cast<std::int64_t>(raw.value() | mask);
+      val = static_cast<std::int64_t>(raw.value());
+    } else {
+      std::int64_t value = static_cast<std::int64_t>(raw.value());
+      if (width < 8) {
+        const std::uint64_t sign_bit = 1ull << (8 * width - 1);
+        if (raw.value() & sign_bit) {
+          const std::uint64_t mask = ~((1ull << (8 * width)) - 1ull);
+          value = static_cast<std::int64_t>(raw.value() | mask);
+        }
       }
+      val = value;
     }
-    return value;
-  }
-  if (use_unsigned_variable(constraint)) {
+  } else if (use_unsigned_variable(constraint)) {
     auto u = decode_variable_unsigned_integer(in);
     if (!u.ok()) {
       return u.error();
     }
-    return static_cast<std::int64_t>(u.value());
+    val = static_cast<std::int64_t>(u.value());
+  } else {
+    auto s = decode_variable_signed_integer(in);
+    if (!s.ok()) {
+      return s.error();
+    }
+    val = s.value();
   }
-  return decode_variable_signed_integer(in);
+  if (!constraint.contains(val)) {
+    return make_error(Error::Code::ConstraintViolation, in.offset(),
+                      "decoded integer violates constraint");
+  }
+  return val;
 }
 
 Result<BigInteger> decode_big_integer(ByteReader& in, const IntegerConstraint& constraint) {
@@ -304,6 +315,10 @@ Result<std::vector<std::uint8_t>> decode_octet_string(ByteReader& in,
       return len.error();
     }
     n = len.value();
+  }
+  if (!size.contains(n)) {
+    return make_error(Error::Code::ConstraintViolation, in.offset(),
+                      "decoded octet string length violates constraint");
   }
   auto bytes = in.read(n);
   if (!bytes.ok()) {
@@ -361,7 +376,13 @@ Result<BitStringValue> decode_bit_string(ByteReader& in, const SizeConstraint& s
   if (!unused.ok()) {
     return unused.error();
   }
+  if (unused.value() > 7) {
+    return bad(in.offset(), "OER BIT STRING unused bits must be 0..7");
+  }
   const std::size_t n = len.value() - 1;
+  if (n == 0 && unused.value() != 0) {
+    return bad(in.offset(), "empty OER BIT STRING must have 0 unused bits");
+  }
   auto bytes = in.read(n);
   if (!bytes.ok()) {
     return bytes.error();
@@ -763,11 +784,13 @@ Result<std::uint64_t> decode_choice_tag(ByteReader& in) {
 }
 
 void encode_sequence_of_length(ByteWriter& out, std::size_t count) {
-  encode_length(out, count);
+  // ITU-T X.696 clause 17.2: quantity field is encoded as a variable-length unsigned integer
+  // (a length determinant indicating the number of quantity octets, followed by the quantity).
+  encode_variable_unsigned_integer(out, count);
 }
 
 Result<std::size_t> decode_sequence_of_length(ByteReader& in) {
-  return decode_length(in);
+  return decode_variable_unsigned_integer(in);
 }
 
 }  // namespace oer

@@ -13,9 +13,14 @@ using ir::BigInt;
 using ir::ConstraintDesc;
 using ir::IntegerInterval;
 
-std::optional<BigInt> from_ast_value(const ast::Value* v) {
+std::optional<BigInt> from_ast_value(const ast::Value* v, const ValueResolver& resolver) {
   if (const auto* iv = dynamic_cast<const ast::IntegerValue*>(v)) {
     return BigInt::from_decimal(iv->text(), iv->negative());
+  }
+  if (const auto* vr = dynamic_cast<const ast::ValueReference*>(v)) {
+    if (resolver) {
+      return resolver(vr->name());
+    }
   }
   return std::nullopt;
 }
@@ -161,9 +166,9 @@ ConstraintDesc normalize_intersection(std::vector<ConstraintDesc> parts,
   return acc;
 }
 
-ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag);
+ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag, const ValueResolver& resolver);
 
-ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag) {
+ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag, const ValueResolver& resolver) {
   ConstraintDesc out;
   if (!c) {
     return out;
@@ -171,14 +176,14 @@ ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag) {
 
   if (const auto* ext = dynamic_cast<const ast::ExtensibleConstraint*>(c)) {
     if (ext->root()) {
-      out = normalize_ast(ext->root(), diag);
+      out = normalize_ast(ext->root(), diag, resolver);
     }
     out.extensible = true;
     return out;
   }
 
   if (const auto* size = dynamic_cast<const ast::SizeConstraint*>(c)) {
-    out = normalize_ast(&size->inner(), diag);
+    out = normalize_ast(&size->inner(), diag, resolver);
     out.is_size = true;
     return out;
   }
@@ -187,7 +192,7 @@ ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag) {
     std::vector<ConstraintDesc> parts;
     parts.reserve(uni->alternatives().size());
     for (const auto& alt : uni->alternatives()) {
-      parts.push_back(normalize_ast(alt.get(), diag));
+      parts.push_back(normalize_ast(alt.get(), diag, resolver));
     }
     return normalize_union(std::move(parts));
   }
@@ -196,7 +201,7 @@ ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag) {
     std::vector<ConstraintDesc> parts;
     parts.reserve(inter->parts().size());
     for (const auto& p : inter->parts()) {
-      parts.push_back(normalize_ast(p.get(), diag));
+      parts.push_back(normalize_ast(p.get(), diag, resolver));
     }
     return normalize_intersection(std::move(parts), diag, c->range());
   }
@@ -204,7 +209,7 @@ ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag) {
   if (const auto* range = dynamic_cast<const ast::ValueRangeConstraint*>(c)) {
     IntegerInterval iv;
     if (range->lower()) {
-      iv.lower = from_ast_value(range->lower());
+      iv.lower = from_ast_value(range->lower(), resolver);
       if (!iv.lower) {
         out.statically_foldable = false;
         diag.warning(c->range(), "lower bound is not a static integer");
@@ -212,7 +217,7 @@ ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag) {
       }
     }
     if (range->upper()) {
-      iv.upper = from_ast_value(range->upper());
+      iv.upper = from_ast_value(range->upper(), resolver);
       if (!iv.upper) {
         out.statically_foldable = false;
         diag.warning(c->range(), "upper bound is not a static integer");
@@ -231,7 +236,7 @@ ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag) {
   }
 
   if (const auto* single = dynamic_cast<const ast::SingleValueConstraint*>(c)) {
-    auto v = from_ast_value(&single->value());
+    auto v = from_ast_value(&single->value(), resolver);
     if (!v) {
       out.statically_foldable = false;
       diag.warning(c->range(), "single-value constraint is not a static integer");
@@ -259,18 +264,27 @@ ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag) {
 
 }  // namespace
 
-ir::ConstraintDesc normalize(const ast::Constraint* constraint, Diagnostics& diagnostics) {
-  return normalize_ast(constraint, diagnostics);
+ir::ConstraintDesc normalize(const ast::Constraint* constraint, Diagnostics& diagnostics,
+                             ValueResolver resolver) {
+  return normalize_ast(constraint, diagnostics, resolver);
 }
 
-ir::ConstraintDesc normalize_size(const ast::Constraint* constraint, Diagnostics& diagnostics) {
-  auto c = normalize_ast(constraint, diagnostics);
+ir::ConstraintDesc normalize_size(const ast::Constraint* constraint, Diagnostics& diagnostics,
+                                  ValueResolver resolver) {
+  auto c = normalize_ast(constraint, diagnostics, resolver);
   c.is_size = true;
   return c;
 }
 
 void suggest_host_integer(ir::IntegerDesc& desc) {
   desc.host_bits.reset();
+  if (desc.constraint.extensible) {
+    // Extensible integers can hold arbitrary extension additions beyond root bounds;
+    // promote to int64 or BigInteger so decoded values aren't truncated by narrow casts.
+    desc.host_bits = 64;
+    desc.is_signed = true;
+    return;
+  }
   if (!desc.constraint.lower || !desc.constraint.upper || !desc.constraint.lower->as_i64 ||
       !desc.constraint.upper->as_i64) {
     return;

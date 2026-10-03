@@ -256,7 +256,7 @@ std::optional<std::uint64_t> ConstraintDesc::constrained_span() const {
   if (lo > hi) {
     return std::nullopt;
   }
-  return static_cast<std::uint64_t>(hi - lo);
+  return static_cast<std::uint64_t>(hi) - static_cast<std::uint64_t>(lo);
 }
 
 TypeId TypeArena::add(Type type) {

@@ -7,23 +7,11 @@ namespace per {
 namespace {
 
 bool in_root_integer(std::int64_t value, const IntegerConstraint& c) {
-  if (c.lower && value < *c.lower) {
-    return false;
-  }
-  if (c.upper && value > *c.upper) {
-    return false;
-  }
-  return true;
+  return c.contains(value);
 }
 
 bool in_root_size(std::size_t n, const SizeConstraint& size) {
-  if (size.lower && n < *size.lower) {
-    return false;
-  }
-  if (size.upper && n > *size.upper) {
-    return false;
-  }
-  return true;
+  return size.contains(n);
 }
 
 void encode_length_chunks(BitWriter& out, Variant variant, std::size_t length,
@@ -62,6 +50,9 @@ Result<std::vector<std::uint8_t>> decode_length_chunks(BitReader& in, Variant va
 
 void encode_bit_length_chunks(BitWriter& out, Variant variant, std::size_t bit_length,
                               Span<const std::uint8_t> bits) {
+  if (bit_length > bits.size() * 8) {
+    bit_length = bits.size() * 8;
+  }
   std::size_t remaining = bit_length;
   std::size_t bit_offset = 0;
   for (;;) {
@@ -132,13 +123,7 @@ void encode_size(BitWriter& out, Variant variant, std::size_t n,
                                           static_cast<std::int64_t>(*size.upper));
     return;
   }
-  // Unbound / semi: length determinant of n (semi with lower uses n as absolute length
-  // in the common encoding; X.691 semi-constrained length is n - lb as non-neg).
-  if (size.lower && !size.upper) {
-    encode_semi_constrained_whole_number(out, variant, static_cast<std::int64_t>(n),
-                                         static_cast<std::int64_t>(*size.lower));
-    return;
-  }
+  // Unbound or upper >= 64K: X.691 11.9.3.5--11.9.3.8 uses general length determinant of n.
   maybe_align(out, variant);
   encode_length_determinant(out, variant, n);
 }
@@ -167,20 +152,25 @@ Result<std::size_t> decode_size(BitReader& in, Variant variant,
     if (!v) {
       return v.error();
     }
-    return static_cast<std::size_t>(v.value());
-  }
-  if (size.lower && !size.upper) {
-    auto v = decode_semi_constrained_whole_number(in, variant,
-                                                  static_cast<std::int64_t>(*size.lower));
-    if (!v) {
-      return v.error();
+    const std::size_t sz = static_cast<std::size_t>(v.value());
+    if (!size.contains(sz)) {
+      return make_error(Error::Code::ConstraintViolation, in.bit_offset(),
+                        "decoded size violates constraint");
     }
-    return static_cast<std::size_t>(v.value());
+    return sz;
   }
   if (auto a = maybe_align(in, variant); !a) {
     return a.error();
   }
-  return decode_length_determinant(in, variant);
+  auto res = decode_length_determinant(in, variant);
+  if (!res) {
+    return res.error();
+  }
+  if (!size.contains(res.value())) {
+    return make_error(Error::Code::ConstraintViolation, in.bit_offset(),
+                      "decoded size violates constraint");
+  }
+  return res;
 }
 
 }  // namespace
@@ -208,6 +198,9 @@ Result<void> encode_integer(BitWriter& out, Variant variant, std::int64_t value,
       encode_unconstrained_whole_number(out, variant, value);
       return Result<void>::success();
     }
+  } else if (!constraint.contains(value)) {
+    return make_error(Error::Code::ConstraintViolation, out.bit_size(),
+                      "integer value violates constraint");
   }
 
   if (constraint.lower && constraint.upper) {
@@ -215,6 +208,10 @@ Result<void> encode_integer(BitWriter& out, Variant variant, std::int64_t value,
                                            *constraint.upper);
   }
   if (constraint.lower) {
+    if (value < *constraint.lower) {
+      return make_error(Error::Code::ConstraintViolation, out.bit_size(),
+                        "value violates semi-constrained lower bound");
+    }
     encode_semi_constrained_whole_number(out, variant, value, *constraint.lower);
     return Result<void>::success();
   }
@@ -244,6 +241,7 @@ Result<void> encode_integer(BitWriter& out, Variant variant, const BigInteger& v
 
 Result<std::int64_t> decode_integer(BitReader& in, Variant variant,
                                     const IntegerConstraint& constraint) {
+  std::int64_t res_val = 0;
   if (constraint.extensible) {
     auto ext = in.get_bit();
     if (!ext) {
@@ -255,13 +253,31 @@ Result<std::int64_t> decode_integer(BitReader& in, Variant variant,
   }
 
   if (constraint.lower && constraint.upper) {
-    return decode_constrained_whole_number(in, variant, *constraint.lower,
-                                           *constraint.upper);
+    auto v = decode_constrained_whole_number(in, variant, *constraint.lower,
+                                             *constraint.upper);
+    if (!v) return v.error();
+    res_val = v.value();
+  } else if (constraint.lower) {
+    auto res = decode_semi_constrained_whole_number(in, variant, *constraint.lower);
+    if (!res) {
+      return res.error();
+    }
+    if (res.value() < *constraint.lower) {
+      return make_error(Error::Code::ConstraintViolation, in.bit_offset(),
+                        "decoded integer below semi-constrained lower bound");
+    }
+    res_val = res.value();
+  } else {
+    auto res = decode_unconstrained_whole_number(in, variant);
+    if (!res) return res.error();
+    res_val = res.value();
   }
-  if (constraint.lower) {
-    return decode_semi_constrained_whole_number(in, variant, *constraint.lower);
+
+  if (!constraint.contains(res_val)) {
+    return make_error(Error::Code::ConstraintViolation, in.bit_offset(),
+                      "decoded integer violates constraint");
   }
-  return decode_unconstrained_whole_number(in, variant);
+  return res_val;
 }
 
 Result<BigInteger> decode_big_integer(BitReader& in, Variant variant,
@@ -596,6 +612,78 @@ void encode_sequence_of_length(BitWriter& out, Variant variant, std::size_t coun
 Result<std::size_t> decode_sequence_of_length(BitReader& in, Variant variant,
                                               const SizeConstraint& size) {
   return decode_size(in, variant, size);
+}
+
+std::size_t encode_sequence_of_chunk(BitWriter& out, Variant variant,
+                                     std::size_t remaining, bool is_first,
+                                     const SizeConstraint& size) {
+  if (is_first) {
+    if (size.extensible) {
+      const bool in_root = in_root_size(remaining, size);
+      out.put_bit(!in_root);
+      if (in_root) {
+        if (size.is_fixed()) {
+          return remaining;
+        }
+        (void)encode_constrained_whole_number(out, variant, static_cast<std::int64_t>(remaining),
+                                              static_cast<std::int64_t>(*size.lower),
+                                              static_cast<std::int64_t>(*size.upper));
+        return remaining;
+      }
+    } else if (size.is_fully_constrained()) {
+      if (size.is_fixed()) {
+        return remaining;
+      }
+      (void)encode_constrained_whole_number(out, variant, static_cast<std::int64_t>(remaining),
+                                            static_cast<std::int64_t>(*size.lower),
+                                            static_cast<std::int64_t>(*size.upper));
+      return remaining;
+    }
+  }
+
+  maybe_align(out, variant);
+  return encode_length_determinant(out, variant, remaining);
+}
+
+Result<std::size_t> decode_sequence_of_chunk(BitReader& in, Variant variant,
+                                             bool is_first,
+                                             const SizeConstraint& size) {
+  if (is_first) {
+    if (size.extensible) {
+      auto ext = in.get_bit();
+      if (!ext) {
+        return ext.error();
+      }
+      if (!ext.value()) {
+        if (size.is_fixed()) {
+          return *size.lower;
+        }
+        auto v = decode_constrained_whole_number(in, variant,
+                                                 static_cast<std::int64_t>(*size.lower),
+                                                 static_cast<std::int64_t>(*size.upper));
+        if (!v) {
+          return v.error();
+        }
+        return static_cast<std::size_t>(v.value());
+      }
+    } else if (size.is_fully_constrained()) {
+      if (size.is_fixed()) {
+        return *size.lower;
+      }
+      auto v = decode_constrained_whole_number(in, variant,
+                                               static_cast<std::int64_t>(*size.lower),
+                                               static_cast<std::int64_t>(*size.upper));
+      if (!v) {
+        return v.error();
+      }
+      return static_cast<std::size_t>(v.value());
+    }
+  }
+
+  if (auto a = maybe_align(in, variant); !a) {
+    return a.error();
+  }
+  return decode_length_determinant(in, variant);
 }
 
 void encode_enumerated(BitWriter& out, Variant variant, std::size_t root_index,

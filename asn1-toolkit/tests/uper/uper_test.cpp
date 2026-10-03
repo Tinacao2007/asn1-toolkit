@@ -447,3 +447,72 @@ TEST(Uper, EnumeratedExtensionIndex) {
   EXPECT_TRUE(v.value().extension);
   EXPECT_EQ(v.value().index, 0u);
 }
+
+TEST(Uper, DisjointIntegerConstraint) {
+  // INTEGER (0..10 | 20..30)
+  asn1::per::IntegerConstraint c;
+  c.lower = 0;
+  c.upper = 30;
+  c.ranges = {{0, 10}, {20, 30}};
+
+  asn1::BitWriter w_valid;
+  EXPECT_TRUE(asn1::uper::encode_integer(w_valid, 5, c).ok());
+  EXPECT_TRUE(asn1::uper::encode_integer(w_valid, 25, c).ok());
+
+  asn1::BitWriter w_invalid;
+  auto err = asn1::uper::encode_integer(w_invalid, 15, c);
+  EXPECT_FALSE(err.ok());
+  EXPECT_EQ(err.error().code, asn1::Error::Code::ConstraintViolation);
+
+  auto valid_bytes = finish(w_valid);
+  asn1::BitReader r_valid(valid_bytes);
+  auto d1 = asn1::uper::decode_integer(r_valid, c);
+  ASSERT_TRUE(d1.ok());
+  EXPECT_EQ(d1.value(), 5);
+  auto d2 = asn1::uper::decode_integer(r_valid, c);
+  ASSERT_TRUE(d2.ok());
+  EXPECT_EQ(d2.value(), 25);
+
+  // If we decode an integer that falls in 15 using envelope (0..30), verify decode rejects it
+  asn1::per::IntegerConstraint envelope{0, 30, false};
+  asn1::BitWriter w_bad;
+  EXPECT_TRUE(asn1::uper::encode_integer(w_bad, 15, envelope).ok());
+  auto bad_bytes = finish(w_bad);
+  asn1::BitReader r_bad(bad_bytes);
+  auto d_bad = asn1::uper::decode_integer(r_bad, c);
+  EXPECT_FALSE(d_bad.ok());
+  EXPECT_EQ(d_bad.error().code, asn1::Error::Code::ConstraintViolation);
+}
+
+TEST(Uper, SequenceOfMultiFragmentChunking) {
+  // Simulate 20,000 items
+  std::size_t total = 20000;
+  std::size_t remaining = total;
+  asn1::per::SizeConstraint unconstrained_sz; // unconstrained, triggers chunking
+
+  asn1::BitWriter w;
+  bool is_first = true;
+  while (remaining > 0) {
+    auto chunk = asn1::uper::encode_sequence_of_chunk(w, remaining, is_first, unconstrained_sz);
+    remaining -= chunk;
+    is_first = false;
+  }
+  // Terminal 0 length chunk is needed if the last chunk was a fragment, but here the last chunk was 3616 (< 16k) which encodes length determinant directly and ends the sequence.
+  EXPECT_EQ(remaining, 0u);
+
+  auto bytes = finish(w);
+  asn1::BitReader r(bytes);
+  std::size_t decoded_total = 0;
+  is_first = true;
+  for (;;) {
+    auto n = asn1::uper::decode_sequence_of_chunk(r, is_first, unconstrained_sz);
+    ASSERT_TRUE(n.ok());
+    decoded_total += n.value();
+    is_first = false;
+    if (n.value() < 16384) {
+      break;
+    }
+  }
+  EXPECT_EQ(decoded_total, 20000u);
+}
+

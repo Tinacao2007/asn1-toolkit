@@ -66,6 +66,12 @@ TEST(Xer, RealRoundTrip) {
   auto dn = asn1::xer::decode_real(nan);
   ASSERT_TRUE(dn.ok());
   EXPECT_TRUE(std::isnan(dn.value()));
+
+  // Test trailing garbage rejection in REAL
+  auto bad_doc = asn1::xer::parse_document("<A>1.23abc</A>");
+  ASSERT_TRUE(bad_doc.ok());
+  auto bad_real = asn1::xer::decode_real(bad_doc.value());
+  EXPECT_FALSE(bad_real.ok());
 }
 
 TEST(Xer, OctetStringVectors) {

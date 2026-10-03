@@ -100,9 +100,11 @@ void append_utf8(std::string& out, std::uint32_t cp) {
   }
 }
 
-Result<Element> parse_element(const std::string& xml, std::size_t& i);
+constexpr std::size_t kMaxXmlNestingDepth = 256;
 
-Result<void> parse_content(const std::string& xml, std::size_t& i, Element& el) {
+Result<Element> parse_element(const std::string& xml, std::size_t& i, std::size_t depth);
+
+Result<void> parse_content(const std::string& xml, std::size_t& i, Element& el, std::size_t depth) {
   std::string text_acc;
   while (i < xml.size()) {
     if (xml[i] == '<') {
@@ -127,7 +129,7 @@ Result<void> parse_content(const std::string& xml, std::size_t& i, Element& el) 
           el.text += un.value();
         }
       }
-      auto child = parse_element(xml, i);
+      auto child = parse_element(xml, i, depth + 1);
       if (!child.ok()) {
         return child.error();
       }
@@ -160,7 +162,10 @@ Result<void> parse_content(const std::string& xml, std::size_t& i, Element& el) 
   return Result<void>::success();
 }
 
-Result<Element> parse_element(const std::string& xml, std::size_t& i) {
+Result<Element> parse_element(const std::string& xml, std::size_t& i, std::size_t depth) {
+  if (depth > kMaxXmlNestingDepth) {
+    return bad(i, "XML maximum nesting depth exceeded");
+  }
   if (auto r = expect_char(xml, i, '<'); !r.ok()) {
     return r.error();
   }
@@ -210,7 +215,7 @@ Result<Element> parse_element(const std::string& xml, std::size_t& i) {
   if (auto r = expect_char(xml, i, '>'); !r.ok()) {
     return r.error();
   }
-  if (auto r = parse_content(xml, i, el); !r.ok()) {
+  if (auto r = parse_content(xml, i, el, depth); !r.ok()) {
     return r.error();
   }
   if (auto r = expect_char(xml, i, '<'); !r.ok()) {
@@ -409,7 +414,7 @@ Result<Element> parse_document(const std::string& xml) {
     i += 2;
     skip_ws(xml, i);
   }
-  auto el = parse_element(xml, i);
+  auto el = parse_element(xml, i, 0);
   if (!el.ok()) {
     return el.error();
   }

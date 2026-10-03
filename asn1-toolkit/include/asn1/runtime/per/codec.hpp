@@ -12,11 +12,48 @@
 namespace asn1 {
 namespace per {
 
+/// Discrete range for disjoint integer constraints.
+struct IntegerRange {
+  std::optional<std::int64_t> lower;
+  std::optional<std::int64_t> upper;
+
+  bool contains(std::int64_t v) const noexcept {
+    if (lower && v < *lower) return false;
+    if (upper && v > *upper) return false;
+    return true;
+  }
+};
+
 /// INTEGER value constraints used by the runtime codecs (host int64).
 struct IntegerConstraint {
   std::optional<std::int64_t> lower;
   std::optional<std::int64_t> upper;
   bool extensible = false;
+  std::vector<IntegerRange> ranges = {};
+
+  bool contains(std::int64_t v) const noexcept {
+    if (!ranges.empty()) {
+      for (const auto& r : ranges) {
+        if (r.contains(v)) return true;
+      }
+      return false;
+    }
+    if (lower && v < *lower) return false;
+    if (upper && v > *upper) return false;
+    return true;
+  }
+};
+
+/// Discrete range for disjoint size constraints.
+struct SizeRange {
+  std::optional<std::size_t> lower;
+  std::optional<std::size_t> upper;
+
+  bool contains(std::size_t v) const noexcept {
+    if (lower && v < *lower) return false;
+    if (upper && v > *upper) return false;
+    return true;
+  }
 };
 
 /// SIZE constraint for strings / SEQUENCE OF / BIT STRING bit-count.
@@ -24,6 +61,19 @@ struct SizeConstraint {
   std::optional<std::size_t> lower;
   std::optional<std::size_t> upper;
   bool extensible = false;
+  std::vector<SizeRange> ranges = {};
+
+  bool contains(std::size_t v) const noexcept {
+    if (!ranges.empty()) {
+      for (const auto& r : ranges) {
+        if (r.contains(v)) return true;
+      }
+      return false;
+    }
+    if (lower && v < *lower) return false;
+    if (upper && v > *upper) return false;
+    return true;
+  }
 
   /// Fixed SIZE(n).
   bool is_fixed() const noexcept {
@@ -127,6 +177,18 @@ void encode_sequence_of_length(BitWriter& out, Variant variant, std::size_t coun
 Result<std::size_t> decode_sequence_of_length(BitReader& in, Variant variant,
                                               const SizeConstraint& size = {});
 
+/// SEQUENCE OF / SET OF chunk length determinant for multi-fragment encoding (X.691 11.9.3.8).
+/// Returns the number of items to encode in this chunk.
+std::size_t encode_sequence_of_chunk(BitWriter& out, Variant variant,
+                                     std::size_t remaining, bool is_first,
+                                     const SizeConstraint& size = {});
+
+/// Decodes the length determinant for one chunk of a SEQUENCE OF / SET OF.
+/// Returns the number of items in this chunk. When < 16384, this is the final chunk.
+Result<std::size_t> decode_sequence_of_chunk(BitReader& in, Variant variant,
+                                             bool is_first,
+                                             const SizeConstraint& size = {});
+
 /// ENUMERATED: root index as constrained whole number; extensible adds extension bit.
 void encode_enumerated(BitWriter& out, Variant variant, std::size_t root_index,
                        std::size_t root_count, bool extensible = false);
@@ -151,6 +213,11 @@ Result<double> decode_real(BitReader& in, Variant variant);
 namespace uper {
 
 inline constexpr per::Variant kVariant = per::Variant::Unaligned;
+
+using per::IntegerRange;
+using per::SizeRange;
+using per::IntegerConstraint;
+using per::SizeConstraint;
 
 inline void encode_boolean(BitWriter& out, bool value) {
   per::encode_boolean(out, kVariant, value);
@@ -253,6 +320,15 @@ inline void encode_sequence_of_length(BitWriter& out, std::size_t count,
 inline Result<std::size_t> decode_sequence_of_length(BitReader& in,
                                                      const per::SizeConstraint& size = {}) {
   return per::decode_sequence_of_length(in, kVariant, size);
+}
+inline std::size_t encode_sequence_of_chunk(BitWriter& out, std::size_t remaining,
+                                            bool is_first,
+                                            const per::SizeConstraint& size = {}) {
+  return per::encode_sequence_of_chunk(out, kVariant, remaining, is_first, size);
+}
+inline Result<std::size_t> decode_sequence_of_chunk(BitReader& in, bool is_first,
+                                                    const per::SizeConstraint& size = {}) {
+  return per::decode_sequence_of_chunk(in, kVariant, is_first, size);
 }
 
 inline void encode_enumerated(BitWriter& out, std::size_t root_index, std::size_t root_count,
@@ -296,6 +372,11 @@ namespace aper {
 
 inline constexpr per::Variant kVariant = per::Variant::Aligned;
 
+using per::IntegerRange;
+using per::SizeRange;
+using per::IntegerConstraint;
+using per::SizeConstraint;
+
 inline void encode_boolean(BitWriter& out, bool value) {
   per::encode_boolean(out, kVariant, value);
 }
@@ -397,6 +478,15 @@ inline void encode_sequence_of_length(BitWriter& out, std::size_t count,
 inline Result<std::size_t> decode_sequence_of_length(BitReader& in,
                                                      const per::SizeConstraint& size = {}) {
   return per::decode_sequence_of_length(in, kVariant, size);
+}
+inline std::size_t encode_sequence_of_chunk(BitWriter& out, std::size_t remaining,
+                                            bool is_first,
+                                            const per::SizeConstraint& size = {}) {
+  return per::encode_sequence_of_chunk(out, kVariant, remaining, is_first, size);
+}
+inline Result<std::size_t> decode_sequence_of_chunk(BitReader& in, bool is_first,
+                                                    const per::SizeConstraint& size = {}) {
+  return per::decode_sequence_of_chunk(in, kVariant, is_first, size);
 }
 
 inline void encode_enumerated(BitWriter& out, std::size_t root_index, std::size_t root_count,

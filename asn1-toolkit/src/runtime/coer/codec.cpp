@@ -581,11 +581,11 @@ Result<std::uint64_t> decode_choice_tag(ByteReader& in) {
 }
 
 void encode_sequence_of_length(ByteWriter& out, std::size_t count) {
-  encode_length(out, count);
+  oer::encode_sequence_of_length(out, count);
 }
 
 Result<std::size_t> decode_sequence_of_length(ByteReader& in) {
-  return decode_length(in);
+  return oer::decode_sequence_of_length(in);
 }
 
 void encode_set_of(ByteWriter& out, std::vector<std::vector<std::uint8_t>> components) {

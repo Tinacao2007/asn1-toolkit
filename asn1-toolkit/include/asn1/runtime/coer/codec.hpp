@@ -11,6 +11,8 @@ namespace asn1 {
 namespace coer {
 
 /// COER reuses OER constraint descriptors (X.696 CANONICAL-OER).
+using oer::IntegerRange;
+using oer::SizeRange;
 using oer::IntegerConstraint;
 using oer::SizeConstraint;
 using oer::BitStringValue;

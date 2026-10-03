@@ -1,4 +1,5 @@
 #include <asn1/runtime/xer/codec.hpp>
+#include <asn1/common/float_conv.hpp>
 #include <asn1/runtime/byte_io.hpp>
 
 #include <cmath>
@@ -286,16 +287,11 @@ Result<double> decode_real(const Element& el) {
   if (t.empty()) {
     return bad(0, "XER REAL expects numeric text or a special child");
   }
-  try {
-    std::size_t idx = 0;
-    const double v = std::stod(t, &idx);
-    if (idx == 0) {
-      return bad(0, "invalid XER REAL");
-    }
-    return v;
-  } catch (...) {
+  double v = 0.0;
+  if (!parse_double_c_locale(t, v)) {
     return bad(0, "invalid XER REAL");
   }
+  return v;
 }
 
 Element make_sequence(const std::string& name, std::vector<Element> members) {

@@ -1051,17 +1051,32 @@ std::unique_ptr<ast::Type> Parser::parse_untagged_type(std::optional<ast::Tag> t
                            : std::string(current_.text);
     Token name_tok = advance();
     if (match(TokenKind::Dot)) {
-      if (!expect(TokenKind::Ampersand, "'&' after '.' in object class field type")) {
+      if (match(TokenKind::Ampersand)) {
+        if (!check(TokenKind::TypeReference) && !check(TokenKind::Identifier)) {
+          error_at(current_, "expected field name after '.&'");
+          return nullptr;
+        }
+        Token field = advance();
+        SourceRange range = merge_range(name_tok.range, field.range);
+        type = std::make_unique<ast::ObjectClassFieldType>(
+            std::move(range), std::move(tag), nullptr, std::move(name), std::string(field.text));
+      } else if (check(TokenKind::TypeReference)) {
+        // Module.Type external reference
+        Token type_tok = advance();
+        module = std::move(name);
+        name = std::string(type_tok.text);
+        SourceRange range = merge_range(name_tok.range, type_tok.range);
+        std::vector<ast::ActualParameter> actuals;
+        if (check(TokenKind::LBrace)) {
+          actuals = parse_actual_parameter_list();
+        }
+        type = std::make_unique<ast::ReferencedType>(range, std::move(tag), nullptr,
+                                                     std::move(module), std::move(name),
+                                                     std::move(actuals));
+      } else {
+        error_at(current_, "expected '&' for object class field or TypeReference after '.'");
         return nullptr;
       }
-      if (!check(TokenKind::TypeReference) && !check(TokenKind::Identifier)) {
-        error_at(current_, "expected field name after '.&'");
-        return nullptr;
-      }
-      Token field = advance();
-      SourceRange range = merge_range(name_tok.range, field.range);
-      type = std::make_unique<ast::ObjectClassFieldType>(
-          std::move(range), std::move(tag), nullptr, std::move(name), std::string(field.text));
     } else {
       std::vector<ast::ActualParameter> actuals;
       if (check(TokenKind::LBrace)) {
@@ -1608,8 +1623,17 @@ std::unique_ptr<ast::Value> Parser::parse_value() {
     return std::make_unique<ast::BitOrOctetValue>(tok.range, ast::BitOrOctetKind::Hex,
                                                   std::string(tok.text));
   }
-  if (check(TokenKind::Identifier)) {
+  if (check(TokenKind::TypeReference) || check(TokenKind::Identifier)) {
     Token tok = advance();
+    if (match(TokenKind::Dot)) {
+      if (!check(TokenKind::Identifier) && !check(TokenKind::TypeReference)) {
+        error_at(current_, "expected identifier after '.' in value reference");
+        return nullptr;
+      }
+      Token member = advance();
+      return std::make_unique<ast::ValueReference>(merge_range(tok.range, member.range),
+                                                   std::string(member.text));
+    }
     return std::make_unique<ast::ValueReference>(tok.range, std::string(tok.text));
   }
   if (check(TokenKind::LBrace)) {
