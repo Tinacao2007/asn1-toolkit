@@ -1,0 +1,5 @@
+# Repository contains only asn1-toolkit (code + design docs).
+# Ignore everything else at the ACT workspace root.
+/*
+!/.gitignore
+!/asn1-toolkit/

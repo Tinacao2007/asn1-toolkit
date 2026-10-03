@@ -1,8 +1,14 @@
 # Build
 /build/
+/build-vs/
 /cmake-build-*/
 /out/
 /compile_commands.json
+
+# Local / intermediate notes (not product design docs)
+/Adversarial*.md
+/Cursor3*.md
+/_p13_codegen.py
 
 # IDE / editor
 /.vs/
