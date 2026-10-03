@@ -4,13 +4,11 @@ C++17 ASN.1 compiler and codec runtime.
 
 ## Status
 
-**Phase 12** -- Advanced ASN.1 constructs.
+**Phase 39** -- Validation.
 
-- Phases 1--11: frontend through C++ codegen
-- `ENUMERATED`, `OBJECT IDENTIFIER`, `RELATIVE-OID`, `SET`, `SET OF`
-- BER/DER/PER (UPER/APER) codecs + codegen for the above
-- `REAL` parsed into AST/IR; encode/decode not generated yet
-- IOC / `CLASS` remain Phase 13
+- Person multi-codec round-trips: UPER, APER, OER, COER, BER, DER, JER
+- Telecom: full modules parse+analyze+emit-gap checks; `rrc_slice` UPER/OER emit + UPER round-trips
+- CLI: `--namespace` for multi-codec generated headers
 
 ## Requirements
 
@@ -32,6 +30,13 @@ ctest --test-dir build --output-on-failure
 ./build/asn1cxx --dump-ast examples/person.asn
 ./build/asn1cxx --dump-ir examples/person.asn
 ./build/asn1cxx --emit-dir build/gen --codec uper examples/person.asn
+./build/asn1cxx --emit-dir build/gen --codec jer examples/person.asn
+./build/asn1cxx --emit-dir build/gen --codec exer examples/person.asn
+./build/asn1cxx --emit-dir build/gen --codec ber examples/person.asn
+./build/asn1cxx --emit-dir build/gen --codec oer examples/person.asn
+./build/asn1cxx --emit-dir build/gen --codec coer examples/person.asn
+./build/asn1cxx --emit-dir build/gen --codec cxer examples/person.asn
+./build/asn1cxx --dump-ir tests/fixtures/telecom/s1ap_14_4_0/s1ap_14_4_0.asn
 ```
 
 ## Layout
@@ -45,7 +50,7 @@ include/asn1/ir/        Type IR
 include/asn1/semantic/  SymbolTable, Analyzer
 src/                    implementations
 tools/asn1cxx/          compiler driver
-tests/                  unit tests
+tests/                  unit + telecom fixture tests
 examples/               sample .asn files
 docs/ARCHITECTURE.md    design
 ```

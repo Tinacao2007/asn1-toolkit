@@ -37,7 +37,7 @@ void encode_nonneg_octets(BitWriter& out, std::uint64_t value, std::size_t nbyte
 Result<std::uint64_t> decode_nonneg_octets(BitReader& in, std::size_t nbytes) {
   if (nbytes > 8) {
     return make_error(Error::Code::Unsupported, in.bit_offset(),
-                      "integer wider than 64 bits not supported in Phase 8");
+                      "constrained INTEGER offset wider than 64 bits unsupported");
   }
   std::uint64_t value = 0;
   for (std::size_t i = 0; i < nbytes; ++i) {
@@ -46,42 +46,6 @@ Result<std::uint64_t> decode_nonneg_octets(BitReader& in, std::size_t nbytes) {
       return b.error();
     }
     value = (value << 8) | b.value();
-  }
-  return value;
-}
-
-/// Two's-complement minimal octet encoding of signed value (like BER INTEGER content).
-std::vector<std::uint8_t> encode_twos_complement(std::int64_t value) {
-  std::uint8_t bytes[8];
-  std::uint64_t u = static_cast<std::uint64_t>(value);
-  for (int i = 0; i < 8; ++i) {
-    bytes[7 - i] = static_cast<std::uint8_t>(u & 0xFFu);
-    u >>= 8;
-  }
-  int start = 0;
-  if (value >= 0) {
-    while (start < 7 && bytes[start] == 0x00 && (bytes[start + 1] & 0x80u) == 0) {
-      ++start;
-    }
-  } else {
-    while (start < 7 && bytes[start] == 0xFFu && (bytes[start + 1] & 0x80u) != 0) {
-      ++start;
-    }
-  }
-  return std::vector<std::uint8_t>(bytes + start, bytes + 8);
-}
-
-Result<std::int64_t> decode_twos_complement(Span<const std::uint8_t> bytes) {
-  if (bytes.empty() || bytes.size() > 8) {
-    return make_error(Error::Code::InvalidArgument, 0,
-                      "invalid unconstrained INTEGER octet length");
-  }
-  std::int64_t value = 0;
-  if ((bytes[0] & 0x80u) != 0) {
-    value = -1;
-  }
-  for (std::size_t i = 0; i < bytes.size(); ++i) {
-    value = (value << 8) | bytes[i];
   }
   return value;
 }
@@ -254,14 +218,18 @@ Result<std::int64_t> decode_semi_constrained_whole_number(BitReader& in,
 
 void encode_unconstrained_whole_number(BitWriter& out, Variant variant,
                                        std::int64_t value) {
-  auto bytes = encode_twos_complement(value);
+  encode_unconstrained_whole_number(out, variant, BigInteger::from_i64(value));
+}
+
+void encode_unconstrained_whole_number(BitWriter& out, Variant variant,
+                                       const BigInteger& value) {
+  const auto bytes = value.to_twos_complement();
   maybe_align(out, variant);
   encode_length_determinant(out, variant, bytes.size());
   out.put_octets(bytes);
 }
 
-Result<std::int64_t> decode_unconstrained_whole_number(BitReader& in,
-                                                       Variant variant) {
+Result<BigInteger> decode_unconstrained_big_integer(BitReader& in, Variant variant) {
   if (auto a = maybe_align(in, variant); !a) {
     return a.error();
   }
@@ -273,7 +241,21 @@ Result<std::int64_t> decode_unconstrained_whole_number(BitReader& in,
   if (!bytes) {
     return bytes.error();
   }
-  return decode_twos_complement(bytes.value());
+  return BigInteger::from_twos_complement(bytes.value());
+}
+
+Result<std::int64_t> decode_unconstrained_whole_number(BitReader& in,
+                                                       Variant variant) {
+  auto big = decode_unconstrained_big_integer(in, variant);
+  if (!big) {
+    return big.error();
+  }
+  auto v = big.value().as_i64();
+  if (!v) {
+    return make_error(Error::Code::Unsupported, in.bit_offset(),
+                      "INTEGER wider than 64 bits; use BigInteger API");
+  }
+  return *v;
 }
 
 void encode_normally_small_non_negative_whole_number(BitWriter& out, Variant variant,

@@ -6,16 +6,11 @@ New code lives only in `asn1-toolkit/`. Sibling trees such as `pasn1/`, asn1c,
 and BER/UPER generators sit in one compiler (`parser.h` next to
 `ber-gen-enc.h` and `uper-gen-enc.h`).
 
-# ASN.1 Toolchain Architecture
-
-New code lives only in `asn1-toolkit/`. Sibling trees such as `pasn1/`, asn1c,
-`Python_asn1tools/`, and `FFASN1dump/` stay untouched reference material.
-`pasn1/tools/act` already shows the failure mode to avoid: parser, tag logic,
-and BER/UPER generators sit in one compiler (`parser.h` next to
-`ber-gen-enc.h` and `uper-gen-enc.h`).
-
-This document is the design. **Phase 12 (advanced ASN.1 constructs) is implemented.**
-Information Object Classes remain Phase 13.
+This document is the design. **Phase 39** closes the validation gap: Person
+round-trips across UPER/APER/OER/COER/BER/DER/JER, and telecom gates that
+analyze full 3GPP modules plus emit/round-trip a named RRC slice. Full RRC/LPP/S1AP
+codegen still blocked on anonymous nested CHOICE/SEQUENCE (emit reports the
+gap). Phase 38 added `rrc_slice` UPER round-trips. Phase 37 added `--codec coer`.
 
 ## Pipeline
 
@@ -26,7 +21,7 @@ ASN.1 source
   → Type IR
   → C++ code generator
   → Generated value types + thin encode/decode
-  → Runtime primitives (BER / DER / PER)
+  → Runtime primitives (BER / DER / PER / OER / COER / XER / CXER / E-XER / JER / JERI)
 ```
 
 Compiler libraries never include codec algorithms. The runtime never includes
@@ -53,11 +48,24 @@ calls runtime primitives.
   final pad.
 - **DER is BER with a canonical policy** (shortest definite length, no
   constructed strings when DER forbids them, SET component order).
-- **Unsupported syntax is recognized and rejected.** `CLASS`, `OBJECT SET`,
-  parameterized types, and table constraints get a diagnostic at the keyword
-  with file, line, and column. They are not parsed as if they were `INTEGER`.
+- **Unsupported syntax is recognized and rejected.** Phase 23 adds `INSTANCE OF`
+  and XER/EXTENDED-XER encoding instructions. Phase 13–14 parse `CLASS`, objects/object sets,
+  `Class.&field`, table / component-relation constraints, parameterized types,
+  `IMPORTS Name{}`, defined-syntax objects (WITH SYNTAX + heuristic fallback when
+  the class appears later in a multi-module file), and version brackets `[[…]]`.
   Phase 12 adds `ENUMERATED`, `OBJECT IDENTIFIER`, `RELATIVE-OID`, `SET`,
-  `SET OF`, and a typed `REAL` AST/IR stub (REAL codecs deferred).
+  `SET OF`, and typed `REAL`. Phase 25 implements REAL codecs (IEEE-754
+  `double` ↔ ASN.1 binary base-2; unconstrained OER/PER wrap BER content).
+  Phase 26 parses `WITH COMPONENTS` and classifies OER IEEE binary32/64 when
+  mantissa/base/exponent ranges match X.696.   Phase 27 expands `EXTERNAL`,
+  `EMBEDDED PDV`, and `CHARACTER STRING` to associated SEQUENCE IR. Phase 28 implements
+  unconstrained INTEGER wider than 64 bits via `asn1::BigInteger`. Phase 29–30 deepen
+  BER/DER for associated types and add `encode_external_modern`. Phase 31 wires PER
+  extension addition series. Phase 32 injects builtin `ABSTRACT-SYNTAX` (WITH SYNTAX
+  `{ &Type IDENTIFIED BY &id [HAS PROPERTY &property] }`) and lowers `EXTERNAL` to the
+  modern identification form in IR/codegen.
+  `OCTET STRING` / `BIT STRING (CONTAINING Type)` [ENCODED BY …] lower to IR
+  with a `containing` type id; outer codecs still treat the value as octets/bits.
 - **C++17 only.** `std::optional`, `std::variant`, `std::string_view`,
   `std::filesystem`. No `std::expected` and no `std::span`. A small `Result<T>`
   and `Span<T>` live in `asn1_common`. Decode and constraint failures return
@@ -110,6 +118,13 @@ C++17, `CMAKE_CXX_STANDARD_REQUIRED ON`, extensions off. CMake 3.16+.
 | `asn1_ber` | static | BER TLV + primitive/constructed codecs |
 | `asn1_der` | static | DER canonical encode/decode on top of BER |
 | `asn1_per` | static | PER primitives + type codecs (`Variant::{Unaligned,Aligned}`) |
+| `asn1_oer` | static | OER (BASIC) primitives + type codecs |
+| `asn1_coer` | static | COER canonical encode/decode on top of OER |
+| `asn1_xer` | static | BASIC-XER XML tree + type codecs |
+| `asn1_cxer` | static | CXER canonical encode/decode on top of XER |
+| `asn1_exer` | static | EXTENDED-XER encoding-instruction effects |
+| `asn1_jer` | static | BASIC-JER JSON tree + type codecs |
+| `asn1_jeri` | static | JER encoding-instruction effects |
 | `asn1cxx` | executable | compiler driver |
 
 `asn1_uper` and `asn1_aper` are **not** separate libraries. They are entry
@@ -226,6 +241,52 @@ unconstrained whole number, normally small non-negative whole number, length
 determinant, choice index, optional and extension bitmaps, open type.
 `align_to_octet()` is called only from APER branches where X.691 requires it.
 
+OER (X.696 BASIC-OER): length determinant, fixed-width integers when the range
+fits 1/2/4/8 octets, otherwise length + two's-complement (or unsigned) content;
+BOOLEAN as `0x00`/`0xFF` on encode (any non-zero TRUE accepted on decode);
+SEQUENCE presence bitmap padded to an octet; extension addition series
+(length + unused-bits + presence bitmap + open types); CHOICE context tags
+with extension alternatives as tag + open type; OCTET/BIT STRING with
+fixed-size eliding the length.
+
+COER (X.696 CANONICAL-OER): same writers with shortest length determinant,
+minimal INTEGER/ENUMERATED content, TRUE must be `0xFF`, unused BIT STRING and
+preamble/extension-bitmap padding bits must be zero, SET OF components in
+ascending octet-string order; reject non-canonical input on decode.
+
+XER (X.693 BASIC-XER): UTF-8 XML element tree (`asn1::xer::Element`); BOOLEAN as
+`<true/>`/`<false/>` children; NULL as empty element; INTEGER as decimal text;
+OCTET STRING as hex; BIT STRING as binary digits; UTF8String with decimal NCRs
+for non-ASCII; ENUMERATED as named empty child; OID as dotted arcs; SEQUENCE /
+CHOICE / SEQUENCE OF via nested elements.
+
+CXER (X.693 CANONICAL-XER): empty prolog; no inter-tag whitespace; empty-element
+tags as `<name/>`; text escapes only `&`/`<` (raw UTF-8 otherwise); INTEGER as
+canonical SignedNumber; OCTET STRING uppercase even-length hex; SET OF sorted by
+CXER character-string order; `parse_document` rejects non-canonical XML.
+
+EXTENDED-XER (X.693 E-XER) runtime (`asn1::exer`): encoding-instruction effects
+on the Element tree — ATTRIBUTE (XML attributes), BASE64, TEXT, USE-NUMBER,
+LIST (space-separated character-encodable items: strings, INTEGER, BOOLEAN,
+ENUMERATED identifiers, OID, REAL, OCTET/BIT STRING), UNTAGGED (merge into
+parent), NAME, USE-NIL (`xsi:nil`).
+
+JER (X.697 BASIC-JER): JSON value tree (`asn1::jer::Value`); BOOLEAN as
+`true`/`false`; NULL as `null`; INTEGER as JSON number; OCTET STRING as hex
+string; unconstrained BIT STRING as `{"value","length"}`; ENUMERATED / OID /
+UTF8String as JSON strings; SEQUENCE as object; SEQUENCE OF as array; CHOICE as
+single-property object.
+
+JER encoding instructions (X.697) runtime (`asn1::jeri`): BASE64 (OCTET STRING as
+Base64), ARRAY (SEQUENCE as JSON array; absent optionals as null), NAME
+(component/alternative key transform), OBJECT (SET OF key/value as JSON object),
+TEXT (ENUMERATED identifier transform), UNWRAPPED (CHOICE without wrapper object).
+Frontend parses `JER INSTRUCTIONS`, type-prefix instructions, and
+`ENCODING-CONTROL JER`; semantic IR records `JerEncoding` / field NAME;
+`--codec` selects emitted codecs: `uper` / `aper` / `both` / `jer` / `xer` /
+`exer` / `ber` / `der` / `oer` / `coer` / `cxer`. JER includes SequenceOf/SetOf
+decode (array or OBJECT form).
+
 Generated types prefer `std::optional` for `OPTIONAL`, plain values for
 `DEFAULT` (decoder fills default when the bit is clear), `std::vector` for
 `SEQUENCE OF`, `std::string` for character strings, and `asn1::ObjectIdentifier`
@@ -243,10 +304,11 @@ reports only `"parse failed"` when a token or type name is known.
 GoogleTest, one binary per area, registered with CTest.
 
 - Unit tests for lexer, parser, AST, semantic analyzer, constraints,
-  BitReader/BitWriter, BER, DER, UPER, APER.
+  BitReader/BitWriter, BER, DER, UPER, APER, OER, COER, XER, CXER, E-XER, JER, JERI.
 - Round-trip: `decode(encode(v)) == v` without needing the compiler.
 - Checked-in hex vectors from X.691 examples.
-- Integration (Phase 11): `.asn` → `asn1cxx` → compile → encode → decode.
+- Integration (Phase 11/39): `.asn` → `asn1cxx` → compile → encode → decode for
+  Person across PER/OER/COER/BER/DER/JER and for the RRC telecom slice (UPER).
 - Optional cross-check against pycrate/asn1c when present on `PATH`.
 
 ## Development phases
@@ -262,9 +324,47 @@ GoogleTest, one binary per area, registered with CTest.
 9. UPER (done)
 10. APER (done)
 11. Code generator (done)
-12. Advanced ASN.1 constructs
-13. Information Object Classes and table constraints
-14. Real-world telecom ASN.1 validation
+12. Advanced ASN.1 constructs (done)
+13. Information Object Classes and table constraints (done)
+14. Real-world telecom ASN.1 validation (done)
+15. OER (done)
+16. COER (done)
+17. XER (done)
+18. CXER (done)
+19. EXTENDED-XER (done)
+20. JER (done)
+21. JER encoding instructions runtime (done)
+22. JER encoding-instruction frontend + codegen (done)
+23. INSTANCE OF + XER encoding-instruction frontend/codegen (done)
+24. Full EXTENDED-XER codegen instruction matrix (done)
+25. REAL encode/decode (done)
+26. OER REAL WITH COMPONENTS IEEE binary32/64 (done)
+27. EXTERNAL / EMBEDDED PDV / CHARACTER STRING (done)
+28. Codecs INTEGER >64-bit (done)
+29. Deeper BER for EMBEDDED PDV / CHARACTER STRING (done)
+30. BER constructed/indefinite + DER + modern EXTERNAL (done)
+31. PER extension additions (done)
+32. ABSTRACT-SYNTAX + modern EXTERNAL identification IR (done)
+33. JER SequenceOf/SetOf decode codegen (done)
+34. Codegen BER / DER / OER / CXER (done)
+35. EXER LIST character-encodable element types (done)
+36. OER/COER extension additions (done)
+37. COER `--codec coer` codegen (done)
+38. Telecom UPER codec round-trips (done)
+39. Validation — multi-codec Person + telecom emit gates (done)
+
+## Telecom validation (Phase 14 / 38 / 39)
+
+| Gate | Fixture | Checks |
+|------|---------|--------|
+| RRC Rel-8 | `tests/fixtures/telecom/rrc_8_6_0/` | parse + analyze + emit reports anonymous nesting |
+| LPP Rel-14 | `tests/fixtures/telecom/lpp_14_3_0/` | parse + analyze + emit reports anonymous nesting |
+| S1AP Rel-14 | `tests/fixtures/telecom/s1ap_14_4_0/` | parse + analyze + emit reports unresolved ProtocolIE fields |
+| RRC slice | `tests/fixtures/telecom/rrc_slice/` | UPER/OER emit + UPER round-trip vs known hex |
+| Person | `examples/person.asn` | UPER/APER/OER/COER/BER/DER/JER compile round-trips |
+
+CTest: `asn1_telecom_tests`, `asn1_telecom_roundtrip_tests`, `asn1_codegen_roundtrip_tests`.
+See `tests/fixtures/telecom/README.md`. Not full 3GPP codec parity.
 
 ## Tradeoffs
 

@@ -39,6 +39,8 @@ enum class TokenKind {
   VerticalBar,     // |
   Caret,           // ^
   Colon,           // :
+  Dot,             // .
+  Ampersand,       // &
   At,              // @
   Exclamation,     // !
   Less,            // <
@@ -50,7 +52,11 @@ enum class TokenKind {
   KwABSTRACT_SYNTAX,
   KwALL,
   KwAPPLICATION,
+  KwARRAY,
+  KwAS,
+  KwATTRIBUTE,
   KwAUTOMATIC,
+  KwBASE64,
   KwBEGIN,
   KwBIT,
   KwBMPString,
@@ -66,11 +72,14 @@ enum class TokenKind {
   KwDEFAULT,
   KwDEFINITIONS,
   KwEMBEDDED,
+  KwENCODED,
+  KwENCODING_CONTROL,
   KwEND,
   KwENUMERATED,
   KwEXCEPT,
   KwEXPLICIT,
   KwEXPORTS,
+  KwEXTENDED_XER,
   KwEXTENSIBILITY,
   KwEXTERNAL,
   KwFALSE,
@@ -85,12 +94,16 @@ enum class TokenKind {
   KwIMPORTS,
   KwINCLUDES,
   KwINSTANCE,
+  KwINSTRUCTIONS,
   KwINTEGER,
   KwINTERSECTION,
   KwISO646String,
+  KwJER,
+  KwLIST,
   KwMAX,
   KwMIN,
   KwMINUS_INFINITY,
+  KwNAME,
   KwNULL,
   KwNumericString,
   KwOBJECT,
@@ -120,11 +133,20 @@ enum class TokenKind {
   KwUNIQUE,
   KwUNIVERSAL,
   KwUniversalString,
+  KwUNTAGGED,
+  KwUNWRAPPED,
+  KwUPPERCASED,
+  KwUSE_NIL,
+  KwUSE_NUMBER,
   KwUTCTime,
   KwUTF8String,
   KwVideotexString,
   KwVisibleString,
   KwWITH,
+  KwXER,
+  KwCAPITALIZED,
+  KwLOWERCASED,
+  KwTEXT,
 
   // Emitted when a character cannot form a valid token (lexer continues).
   Invalid,

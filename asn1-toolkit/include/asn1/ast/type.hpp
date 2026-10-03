@@ -1,8 +1,10 @@
 #pragma once
 
+#include <asn1/ast/encoding.hpp>
 #include <asn1/ast/node.hpp>
 #include <asn1/ast/visitor.hpp>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -227,13 +229,23 @@ class Type : public Node {
 
   const std::optional<Tag>& tag() const noexcept { return tag_; }
   const Constraint* constraint() const noexcept { return constraint_.get(); }
+  const std::vector<EncodingInstruction>& encoding_instructions() const noexcept {
+    return encoding_instructions_;
+  }
 
   void set_tag(std::optional<Tag> tag) { tag_ = std::move(tag); }
   void set_constraint(NodePtr<Constraint> c) { constraint_ = std::move(c); }
+  void set_encoding_instructions(std::vector<EncodingInstruction> eis) {
+    encoding_instructions_ = std::move(eis);
+  }
+  void add_encoding_instruction(EncodingInstruction ei) {
+    encoding_instructions_.push_back(std::move(ei));
+  }
 
  private:
   std::optional<Tag> tag_;
   NodePtr<Constraint> constraint_;
+  std::vector<EncodingInstruction> encoding_instructions_;
 };
 
 struct NamedNumber {
@@ -301,6 +313,8 @@ enum class StringKind {
   GeneralString,
   BMPString,
   UniversalString,
+  UTCTime,
+  GeneralizedTime,
 };
 
 class StringType final : public Type {
@@ -350,6 +364,19 @@ class ExtensionMarker final : public ComponentItem {
  public:
   using ComponentItem::ComponentItem;
   void accept(Visitor& v) const override { v.visit(*this); }
+};
+
+/// Version brackets [[ ... ]] — nested component list (X.680 extension addition group).
+class VersionAdditionGroup final : public ComponentItem {
+ public:
+  VersionAdditionGroup(SourceRange range, std::vector<NodePtr<ComponentItem>> items)
+      : ComponentItem(std::move(range)), items_(std::move(items)) {}
+
+  const std::vector<NodePtr<ComponentItem>>& items() const noexcept { return items_; }
+  void accept(Visitor& v) const override { v.visit(*this); }
+
+ private:
+  std::vector<NodePtr<ComponentItem>> items_;
 };
 
 class SequenceType final : public Type {
@@ -463,6 +490,42 @@ class RealType final : public Type {
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
+/// X.680 EXTERNAL (associated SEQUENCE, UNIVERSAL 8).
+class ExternalType final : public Type {
+ public:
+  using Type::Type;
+  void accept(Visitor& v) const override { v.visit(*this); }
+};
+
+/// X.680 EMBEDDED PDV (associated SEQUENCE, UNIVERSAL 11).
+class EmbeddedPdvType final : public Type {
+ public:
+  using Type::Type;
+  void accept(Visitor& v) const override { v.visit(*this); }
+};
+
+/// X.680 unrestricted CHARACTER STRING (associated SEQUENCE, UNIVERSAL 29).
+class CharacterStringType final : public Type {
+ public:
+  using Type::Type;
+  void accept(Visitor& v) const override { v.visit(*this); }
+};
+
+/// X.681 InstanceOfType: INSTANCE OF DefinedObjectClass
+class InstanceOfType final : public Type {
+ public:
+  InstanceOfType(SourceRange range, std::optional<Tag> tag, NodePtr<Constraint> constraint,
+                 std::string class_name)
+      : Type(std::move(range), std::move(tag), std::move(constraint)),
+        class_name_(std::move(class_name)) {}
+
+  const std::string& class_name() const noexcept { return class_name_; }
+  void accept(Visitor& v) const override { v.visit(*this); }
+
+ private:
+  std::string class_name_;
+};
+
 class ObjectIdentifierValue final : public Value {
  public:
   struct Arc {
@@ -480,21 +543,79 @@ class ObjectIdentifierValue final : public Value {
   std::vector<Arc> arcs_;
 };
 
+/// Actual parameter in a parameterized type reference: Type / Value / ObjectSet.
+struct ActualParameter {
+  NodePtr<Type> type;
+  NodePtr<Value> value;
+  std::optional<std::string> object_set_name;
+  /// True when the actual was an inline object-set form `{...}` (name may still be set).
+  bool inline_object_set = false;
+};
+
 class ReferencedType final : public Type {
  public:
   ReferencedType(SourceRange range, std::optional<Tag> tag, NodePtr<Constraint> constraint,
-                 std::optional<std::string> module, std::string name)
+                 std::optional<std::string> module, std::string name,
+                 std::vector<ActualParameter> actuals = {})
       : Type(std::move(range), std::move(tag), std::move(constraint)),
         module_(std::move(module)),
-        name_(std::move(name)) {}
+        name_(std::move(name)),
+        actuals_(std::move(actuals)) {}
 
   const std::optional<std::string>& module() const noexcept { return module_; }
   const std::string& name() const noexcept { return name_; }
+  const std::vector<ActualParameter>& actuals() const noexcept { return actuals_; }
+  void set_actuals(std::vector<ActualParameter> actuals) { actuals_ = std::move(actuals); }
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
   std::optional<std::string> module_;
   std::string name_;
+  std::vector<ActualParameter> actuals_;
+};
+
+/// X.680 ContentsConstraint: CONTAINING Type [ENCODED BY Value] | ENCODED BY Value.
+/// Placed after Type so NodePtr<Type> is a complete type in this header.
+class ContentsConstraint final : public Constraint {
+ public:
+  ContentsConstraint(SourceRange range, NodePtr<Type> contained, NodePtr<Value> encoded_by)
+      : Constraint(std::move(range)),
+        contained_(std::move(contained)),
+        encoded_by_(std::move(encoded_by)) {}
+
+  const Type* contained() const noexcept { return contained_.get(); }
+  const Value* encoded_by() const noexcept { return encoded_by_.get(); }
+  void accept(Visitor& v) const override { v.visit(*this); }
+
+ private:
+  NodePtr<Type> contained_;
+  NodePtr<Value> encoded_by_;
+};
+
+/// Presence constraint on a WITH COMPONENTS named component (X.680).
+enum class ComponentPresence { Unspecified, Present, Absent, Optional };
+
+/// One named component inside WITH COMPONENTS { ... }.
+struct NamedComponentConstraint {
+  std::string name;
+  NodePtr<Constraint> value_constraint;  // may be null
+  ComponentPresence presence = ComponentPresence::Unspecified;
+  SourceRange range;
+};
+
+/// X.680 InnerTypeConstraints: WITH COMPONENTS { NamedConstraint, ... }
+class WithComponentsConstraint final : public Constraint {
+ public:
+  WithComponentsConstraint(SourceRange range, std::vector<NamedComponentConstraint> components)
+      : Constraint(std::move(range)), components_(std::move(components)) {}
+
+  const std::vector<NamedComponentConstraint>& components() const noexcept {
+    return components_;
+  }
+  void accept(Visitor& v) const override { v.visit(*this); }
+
+ private:
+  std::vector<NamedComponentConstraint> components_;
 };
 
 }  // namespace ast

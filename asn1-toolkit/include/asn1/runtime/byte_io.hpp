@@ -37,6 +37,9 @@ class ByteReader {
   std::size_t remaining() const noexcept;
   bool eof() const noexcept { return remaining() == 0; }
 
+  /// View of unread bytes (does not consume).
+  Span<const std::uint8_t> remaining_span() const noexcept;
+
   /// Peek without consuming. Fails if not enough bytes.
   Result<std::uint8_t> peek(std::size_t ahead = 0) const;
 

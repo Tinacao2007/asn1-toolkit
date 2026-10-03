@@ -19,8 +19,12 @@ Result<bool> decode_boolean(ByteReader& in,
 
 void encode_integer(ByteWriter& out, std::int64_t value,
                     ber::Tag tag = ber::universal(ber::kTagInteger));
+void encode_integer(ByteWriter& out, const BigInteger& value,
+                    ber::Tag tag = ber::universal(ber::kTagInteger));
 Result<std::int64_t> decode_integer(ByteReader& in,
                                     ber::Tag expected = ber::universal(ber::kTagInteger));
+Result<BigInteger> decode_big_integer(
+    ByteReader& in, ber::Tag expected = ber::universal(ber::kTagInteger));
 
 void encode_null(ByteWriter& out, ber::Tag tag = ber::universal(ber::kTagNull));
 Result<void> decode_null(ByteReader& in,
@@ -57,6 +61,11 @@ void encode_relative_oid(ByteWriter& out, Span<const std::uint64_t> arcs,
 Result<std::vector<std::uint64_t>> decode_relative_oid(
     ByteReader& in, ber::Tag expected = ber::universal(ber::kTagRelativeOid));
 
+void encode_real(ByteWriter& out, double value,
+                 ber::Tag tag = ber::universal(ber::kTagReal));
+Result<double> decode_real(ByteReader& in,
+                           ber::Tag expected = ber::universal(ber::kTagReal));
+
 /// SEQUENCE: definite constructed; component order preserved.
 void encode_sequence(ByteWriter& out, Span<const std::uint8_t> components,
                      ber::Tag tag = ber::universal(ber::kTagSequence, true));
@@ -71,6 +80,28 @@ void encode_set(ByteWriter& out, std::vector<std::vector<std::uint8_t>> componen
 /// Decode SET content; requires ascending tag-encoding order (DER).
 Result<std::vector<std::uint8_t>> decode_set(
     ByteReader& in, ber::Tag expected = ber::universal(ber::kTagSet, true));
+
+/// Associated SEQUENCE types: encode reuses BER (already definite/minimal);
+/// decode rejects indefinite length and constructed string components.
+void encode_embedded_pdv(ByteWriter& out, const ber::EmbeddedPdvValue& value,
+                         ber::Tag tag = ber::universal(ber::kTagEmbeddedPdv, true));
+Result<ber::EmbeddedPdvValue> decode_embedded_pdv(
+    ByteReader& in, ber::Tag expected = ber::universal(ber::kTagEmbeddedPdv, true));
+
+void encode_character_string(ByteWriter& out, const ber::CharacterStringValue& value,
+                             ber::Tag tag = ber::universal(ber::kTagCharacterString, true));
+Result<ber::CharacterStringValue> decode_character_string(
+    ByteReader& in, ber::Tag expected = ber::universal(ber::kTagCharacterString, true));
+
+void encode_external_modern(ByteWriter& out, const ber::ModernExternalValue& value,
+                            ber::Tag tag = ber::universal(ber::kTagExternal, true));
+Result<ber::ModernExternalValue> decode_external_modern(
+    ByteReader& in, ber::Tag expected = ber::universal(ber::kTagExternal, true));
+
+void encode_external(ByteWriter& out, const ber::ExternalValue& value,
+                     ber::Tag tag = ber::universal(ber::kTagExternal, true));
+Result<ber::ExternalValue> decode_external(
+    ByteReader& in, ber::Tag expected = ber::universal(ber::kTagExternal, true));
 
 }  // namespace der
 }  // namespace asn1

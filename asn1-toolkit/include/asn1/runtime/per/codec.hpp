@@ -44,8 +44,12 @@ Result<void> decode_null(BitReader& in, Variant variant);
 
 void encode_integer(BitWriter& out, Variant variant, std::int64_t value,
                     const IntegerConstraint& constraint = {});
+void encode_integer(BitWriter& out, Variant variant, const BigInteger& value,
+                    const IntegerConstraint& constraint = {});
 Result<std::int64_t> decode_integer(BitReader& in, Variant variant,
                                     const IntegerConstraint& constraint = {});
+Result<BigInteger> decode_big_integer(BitReader& in, Variant variant,
+                                      const IntegerConstraint& constraint = {});
 
 void encode_octet_string(BitWriter& out, Variant variant,
                          Span<const std::uint8_t> value,
@@ -72,18 +76,49 @@ Result<std::string> decode_utf8_string(BitReader& in, Variant variant,
 
 // ---- Constructed scaffolding ----
 
-/// SEQUENCE preamble: optional extension bit (0 = no additions) + OPTIONAL bitmap.
-void encode_sequence_preamble(BitWriter& out, Variant variant, bool extensible,
-                              Span<const std::uint8_t> optionals_present);
-/// On success, extension additions are absent (Phase 9 rejects extension bit = 1).
-Result<std::vector<std::uint8_t>> decode_sequence_preamble(BitReader& in,
-                                                           Variant variant,
-                                                           bool extensible,
-                                                           std::size_t n_optionals);
+/// Index into root or extension series (CHOICE / ENUMERATED).
+struct ExtensionIndex {
+  bool extension = false;
+  std::size_t index = 0;
+};
 
-/// CHOICE root alternative index (writes extension bit 0 when extensible).
+/// SEQUENCE preamble decode result.
+struct SequencePreamble {
+  bool extensions_present = false;
+  std::vector<std::uint8_t> optionals;
+};
+
+/// SEQUENCE/SET extension addition series (X.691 18.8): normally-small length of
+/// the presence bitmap, the bitmap itself, then one open type per set bit.
+struct ExtensionAdditions {
+  std::vector<std::uint8_t> presence;
+  std::vector<std::vector<std::uint8_t>> open_types;
+};
+
+/// SEQUENCE preamble: optional extension bit + OPTIONAL/DEFAULT presence bitmap.
+void encode_sequence_preamble(BitWriter& out, Variant variant, bool extensible,
+                              bool extensions_present,
+                              Span<const std::uint8_t> optionals_present);
+Result<SequencePreamble> decode_sequence_preamble(BitReader& in, Variant variant,
+                                                  bool extensible,
+                                                  std::size_t n_optionals);
+
+/// After root components, when extensions_present: NSL(n) + n-bit presence + open types.
+/// `open_types` has one entry per set bit in `presence`, in bitmap order.
+void encode_extension_additions(BitWriter& out, Variant variant,
+                                Span<const std::uint8_t> presence,
+                                const std::vector<std::vector<std::uint8_t>>& open_types);
+Result<ExtensionAdditions> decode_extension_additions(BitReader& in, Variant variant);
+
+/// CHOICE root alternative (writes extension bit 0 when extensible).
 void encode_choice_root(BitWriter& out, Variant variant, std::size_t index,
                         std::size_t root_count, bool extensible = false);
+/// CHOICE extension alternative: extension bit 1 + normally-small index + open type.
+void encode_choice_extension(BitWriter& out, Variant variant, std::size_t ext_index,
+                             Span<const std::uint8_t> open_type_content);
+Result<ExtensionIndex> decode_choice(BitReader& in, Variant variant,
+                                     std::size_t root_count, bool extensible = false);
+/// Root-only decode (fails if the extension bit is set).
 Result<std::size_t> decode_choice_root(BitReader& in, Variant variant,
                                        std::size_t root_count,
                                        bool extensible = false);
@@ -94,18 +129,24 @@ void encode_sequence_of_length(BitWriter& out, Variant variant, std::size_t coun
 Result<std::size_t> decode_sequence_of_length(BitReader& in, Variant variant,
                                               const SizeConstraint& size = {});
 
-/// ENUMERATED: root index encoded as constrained whole number; extensible adds
-/// extension bit + normally-small index for additions (Phase 12: encode root only).
+/// ENUMERATED: root index as constrained whole number; extensible adds extension bit.
 void encode_enumerated(BitWriter& out, Variant variant, std::size_t root_index,
                        std::size_t root_count, bool extensible = false);
-Result<std::size_t> decode_enumerated(BitReader& in, Variant variant,
-                                      std::size_t root_count, bool extensible = false);
+/// ENUMERATED extension addition: extension bit 1 + normally-small index.
+void encode_enumerated_extension(BitWriter& out, Variant variant, std::size_t ext_index);
+Result<ExtensionIndex> decode_enumerated(BitReader& in, Variant variant,
+                                         std::size_t root_count,
+                                         bool extensible = false);
 
 /// OBJECT IDENTIFIER / RELATIVE-OID: length determinant + BER content octets.
 void encode_object_identifier(BitWriter& out, Variant variant,
                               Span<const std::uint64_t> arcs, bool relative = false);
 Result<std::vector<std::uint64_t>> decode_object_identifier(BitReader& in, Variant variant,
                                                            bool relative = false);
+
+/// REAL: length determinant + BER REAL content octets (X.691).
+void encode_real(BitWriter& out, Variant variant, double value);
+Result<double> decode_real(BitReader& in, Variant variant);
 
 }  // namespace per
 
@@ -129,9 +170,17 @@ inline void encode_integer(BitWriter& out, std::int64_t value,
                            const per::IntegerConstraint& c = {}) {
   per::encode_integer(out, kVariant, value, c);
 }
+inline void encode_integer(BitWriter& out, const BigInteger& value,
+                           const per::IntegerConstraint& c = {}) {
+  per::encode_integer(out, kVariant, value, c);
+}
 inline Result<std::int64_t> decode_integer(BitReader& in,
                                            const per::IntegerConstraint& c = {}) {
   return per::decode_integer(in, kVariant, c);
+}
+inline Result<BigInteger> decode_big_integer(BitReader& in,
+                                             const per::IntegerConstraint& c = {}) {
+  return per::decode_big_integer(in, kVariant, c);
 }
 
 inline void encode_octet_string(BitWriter& out, Span<const std::uint8_t> value,
@@ -163,17 +212,36 @@ inline Result<std::string> decode_utf8_string(BitReader& in,
 }
 
 inline void encode_sequence_preamble(BitWriter& out, bool extensible,
+                                     bool extensions_present,
                                      Span<const std::uint8_t> optionals_present) {
-  per::encode_sequence_preamble(out, kVariant, extensible, optionals_present);
+  per::encode_sequence_preamble(out, kVariant, extensible, extensions_present,
+                                optionals_present);
 }
-inline Result<std::vector<std::uint8_t>> decode_sequence_preamble(
-    BitReader& in, bool extensible, std::size_t n_optionals) {
+inline Result<per::SequencePreamble> decode_sequence_preamble(BitReader& in, bool extensible,
+                                                              std::size_t n_optionals) {
   return per::decode_sequence_preamble(in, kVariant, extensible, n_optionals);
+}
+
+inline void encode_extension_additions(
+    BitWriter& out, Span<const std::uint8_t> presence,
+    const std::vector<std::vector<std::uint8_t>>& open_types) {
+  per::encode_extension_additions(out, kVariant, presence, open_types);
+}
+inline Result<per::ExtensionAdditions> decode_extension_additions(BitReader& in) {
+  return per::decode_extension_additions(in, kVariant);
 }
 
 inline void encode_choice_root(BitWriter& out, std::size_t index, std::size_t root_count,
                                bool extensible = false) {
   per::encode_choice_root(out, kVariant, index, root_count, extensible);
+}
+inline void encode_choice_extension(BitWriter& out, std::size_t ext_index,
+                                    Span<const std::uint8_t> open_type_content) {
+  per::encode_choice_extension(out, kVariant, ext_index, open_type_content);
+}
+inline Result<per::ExtensionIndex> decode_choice(BitReader& in, std::size_t root_count,
+                                                 bool extensible = false) {
+  return per::decode_choice(in, kVariant, root_count, extensible);
 }
 inline Result<std::size_t> decode_choice_root(BitReader& in, std::size_t root_count,
                                               bool extensible = false) {
@@ -193,8 +261,11 @@ inline void encode_enumerated(BitWriter& out, std::size_t root_index, std::size_
                               bool extensible = false) {
   per::encode_enumerated(out, kVariant, root_index, root_count, extensible);
 }
-inline Result<std::size_t> decode_enumerated(BitReader& in, std::size_t root_count,
-                                             bool extensible = false) {
+inline void encode_enumerated_extension(BitWriter& out, std::size_t ext_index) {
+  per::encode_enumerated_extension(out, kVariant, ext_index);
+}
+inline Result<per::ExtensionIndex> decode_enumerated(BitReader& in, std::size_t root_count,
+                                                     bool extensible = false) {
   return per::decode_enumerated(in, kVariant, root_count, extensible);
 }
 
@@ -205,6 +276,20 @@ inline void encode_object_identifier(BitWriter& out, Span<const std::uint64_t> a
 inline Result<std::vector<std::uint64_t>> decode_object_identifier(BitReader& in,
                                                                   bool relative = false) {
   return per::decode_object_identifier(in, kVariant, relative);
+}
+
+inline void encode_real(BitWriter& out, double value) {
+  per::encode_real(out, kVariant, value);
+}
+inline Result<double> decode_real(BitReader& in) {
+  return per::decode_real(in, kVariant);
+}
+
+inline void encode_open_type(BitWriter& out, Span<const std::uint8_t> content) {
+  per::encode_open_type(out, kVariant, content);
+}
+inline Result<std::vector<std::uint8_t>> decode_open_type(BitReader& in) {
+  return per::decode_open_type(in, kVariant);
 }
 
 }  // namespace uper
@@ -229,9 +314,17 @@ inline void encode_integer(BitWriter& out, std::int64_t value,
                            const per::IntegerConstraint& c = {}) {
   per::encode_integer(out, kVariant, value, c);
 }
+inline void encode_integer(BitWriter& out, const BigInteger& value,
+                           const per::IntegerConstraint& c = {}) {
+  per::encode_integer(out, kVariant, value, c);
+}
 inline Result<std::int64_t> decode_integer(BitReader& in,
                                            const per::IntegerConstraint& c = {}) {
   return per::decode_integer(in, kVariant, c);
+}
+inline Result<BigInteger> decode_big_integer(BitReader& in,
+                                             const per::IntegerConstraint& c = {}) {
+  return per::decode_big_integer(in, kVariant, c);
 }
 
 inline void encode_octet_string(BitWriter& out, Span<const std::uint8_t> value,
@@ -263,17 +356,36 @@ inline Result<std::string> decode_utf8_string(BitReader& in,
 }
 
 inline void encode_sequence_preamble(BitWriter& out, bool extensible,
+                                     bool extensions_present,
                                      Span<const std::uint8_t> optionals_present) {
-  per::encode_sequence_preamble(out, kVariant, extensible, optionals_present);
+  per::encode_sequence_preamble(out, kVariant, extensible, extensions_present,
+                                optionals_present);
 }
-inline Result<std::vector<std::uint8_t>> decode_sequence_preamble(
-    BitReader& in, bool extensible, std::size_t n_optionals) {
+inline Result<per::SequencePreamble> decode_sequence_preamble(BitReader& in, bool extensible,
+                                                              std::size_t n_optionals) {
   return per::decode_sequence_preamble(in, kVariant, extensible, n_optionals);
+}
+
+inline void encode_extension_additions(
+    BitWriter& out, Span<const std::uint8_t> presence,
+    const std::vector<std::vector<std::uint8_t>>& open_types) {
+  per::encode_extension_additions(out, kVariant, presence, open_types);
+}
+inline Result<per::ExtensionAdditions> decode_extension_additions(BitReader& in) {
+  return per::decode_extension_additions(in, kVariant);
 }
 
 inline void encode_choice_root(BitWriter& out, std::size_t index, std::size_t root_count,
                                bool extensible = false) {
   per::encode_choice_root(out, kVariant, index, root_count, extensible);
+}
+inline void encode_choice_extension(BitWriter& out, std::size_t ext_index,
+                                    Span<const std::uint8_t> open_type_content) {
+  per::encode_choice_extension(out, kVariant, ext_index, open_type_content);
+}
+inline Result<per::ExtensionIndex> decode_choice(BitReader& in, std::size_t root_count,
+                                                 bool extensible = false) {
+  return per::decode_choice(in, kVariant, root_count, extensible);
 }
 inline Result<std::size_t> decode_choice_root(BitReader& in, std::size_t root_count,
                                               bool extensible = false) {
@@ -293,8 +405,11 @@ inline void encode_enumerated(BitWriter& out, std::size_t root_index, std::size_
                               bool extensible = false) {
   per::encode_enumerated(out, kVariant, root_index, root_count, extensible);
 }
-inline Result<std::size_t> decode_enumerated(BitReader& in, std::size_t root_count,
-                                             bool extensible = false) {
+inline void encode_enumerated_extension(BitWriter& out, std::size_t ext_index) {
+  per::encode_enumerated_extension(out, kVariant, ext_index);
+}
+inline Result<per::ExtensionIndex> decode_enumerated(BitReader& in, std::size_t root_count,
+                                                     bool extensible = false) {
   return per::decode_enumerated(in, kVariant, root_count, extensible);
 }
 
@@ -305,6 +420,20 @@ inline void encode_object_identifier(BitWriter& out, Span<const std::uint64_t> a
 inline Result<std::vector<std::uint64_t>> decode_object_identifier(BitReader& in,
                                                                   bool relative = false) {
   return per::decode_object_identifier(in, kVariant, relative);
+}
+
+inline void encode_real(BitWriter& out, double value) {
+  per::encode_real(out, kVariant, value);
+}
+inline Result<double> decode_real(BitReader& in) {
+  return per::decode_real(in, kVariant);
+}
+
+inline void encode_open_type(BitWriter& out, Span<const std::uint8_t> content) {
+  per::encode_open_type(out, kVariant, content);
+}
+inline Result<std::vector<std::uint8_t>> decode_open_type(BitReader& in) {
+  return per::decode_open_type(in, kVariant);
 }
 
 }  // namespace aper

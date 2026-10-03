@@ -35,7 +35,9 @@ void print_usage(std::ostream& out) {
       << "  --dump-ast              Parse each file and print the AST\n"
       << "  --dump-ir               Parse + analyze and print the type IR\n"
       << "  --emit-dir <dir>        Emit generated.hpp / generated.cpp into <dir>\n"
-      << "  --codec <uper|aper|both>  Codec for --emit-dir (default: uper)\n"
+      << "  --codec <uper|aper|both|jer|xer|exer|ber|der|oer|coer|cxer>\n"
+      << "                         Codec for --emit-dir (default: uper)\n"
+      << "  --namespace <id>        C++ namespace for generated types (default: asn1_gen)\n"
       << "\n"
       << "See docs/ARCHITECTURE.md.\n";
 }
@@ -70,16 +72,18 @@ int dump_ast(const std::string& path) {
   asn1::SourceFile file = asn1::SourceFile::from_path(path);
   asn1::Lexer lexer(file, diag);
   asn1::Parser parser(lexer, diag);
-  auto module = parser.parse_module();
-  if (module) {
+  auto modules = parser.parse_modules();
+  if (!modules.empty()) {
     std::cout << "; AST for " << path << '\n';
-    asn1::ast::print(std::cout, *module);
+    for (const auto& module : modules) {
+      asn1::ast::print(std::cout, *module);
+    }
   }
   if (!diag.ok()) {
     diag.print(std::cerr);
     return EXIT_FAILURE;
   }
-  if (!module) {
+  if (modules.empty()) {
     std::cerr << "asn1cxx: failed to parse module\n";
     return EXIT_FAILURE;
   }
@@ -94,8 +98,8 @@ asn1::ir::Model analyze_files(const std::vector<std::string>& paths, asn1::Diagn
     files.push_back(asn1::SourceFile::from_path(path));
     asn1::Lexer lexer(files.back(), diag);
     asn1::Parser parser(lexer, diag);
-    auto module = parser.parse_module();
-    if (module) {
+    auto file_modules = parser.parse_modules();
+    for (auto& module : file_modules) {
       modules.push_back(std::move(module));
     }
   }
@@ -117,7 +121,7 @@ int dump_ir(const std::vector<std::string>& paths) {
 }
 
 int emit_code(const std::vector<std::string>& paths, const std::string& dir,
-              asn1::codegen::CodecKind codec) {
+              asn1::codegen::CodecKind codec, const std::string& namespace_name) {
   asn1::Diagnostics diag;
   std::vector<asn1::SourceFile> files;
   asn1::ir::Model model = analyze_files(paths, diag, files);
@@ -140,6 +144,7 @@ int emit_code(const std::vector<std::string>& paths, const std::string& dir,
   asn1::codegen::EmitOptions opt;
   opt.codec = codec;
   opt.basename = "generated";
+  opt.namespace_name = namespace_name;
   asn1::codegen::CppGenerator gen;
   gen.emit(model, opt, diag, header, &source);
   if (!diag.ok()) {
@@ -163,6 +168,7 @@ int main(int argc, char** argv) {
   bool dump_ast_flag = false;
   bool dump_ir_flag = false;
   std::string emit_dir;
+  std::string namespace_name = "asn1_gen";
   asn1::codegen::CodecKind codec = asn1::codegen::CodecKind::Uper;
   std::vector<std::string> files;
 
@@ -196,9 +202,17 @@ int main(int argc, char** argv) {
       emit_dir = argv[++i];
       continue;
     }
+    if (arg == "--namespace") {
+      if (i + 1 >= argc) {
+        std::cerr << "asn1cxx: --namespace requires an identifier\n";
+        return EXIT_FAILURE;
+      }
+      namespace_name = argv[++i];
+      continue;
+    }
     if (arg == "--codec") {
       if (i + 1 >= argc) {
-        std::cerr << "asn1cxx: --codec requires uper|aper|both\n";
+        std::cerr << "asn1cxx: --codec requires uper|aper|both|jer|xer|exer|ber|der|oer|coer|cxer\n";
         return EXIT_FAILURE;
       }
       const std::string_view v = argv[++i];
@@ -208,6 +222,22 @@ int main(int argc, char** argv) {
         codec = asn1::codegen::CodecKind::Aper;
       } else if (v == "both") {
         codec = asn1::codegen::CodecKind::Both;
+      } else if (v == "jer") {
+        codec = asn1::codegen::CodecKind::Jer;
+      } else if (v == "xer") {
+        codec = asn1::codegen::CodecKind::Xer;
+      } else if (v == "exer") {
+        codec = asn1::codegen::CodecKind::Exer;
+      } else if (v == "ber") {
+        codec = asn1::codegen::CodecKind::Ber;
+      } else if (v == "der") {
+        codec = asn1::codegen::CodecKind::Der;
+      } else if (v == "oer") {
+        codec = asn1::codegen::CodecKind::Oer;
+      } else if (v == "coer") {
+        codec = asn1::codegen::CodecKind::Coer;
+      } else if (v == "cxer") {
+        codec = asn1::codegen::CodecKind::Cxer;
       } else {
         std::cerr << "asn1cxx: unknown codec '" << v << "'\n";
         return EXIT_FAILURE;
@@ -239,7 +269,7 @@ int main(int argc, char** argv) {
       }
     }
     if (!emit_dir.empty()) {
-      if (emit_code(files, emit_dir, codec) != EXIT_SUCCESS) {
+      if (emit_code(files, emit_dir, codec, namespace_name) != EXIT_SUCCESS) {
         status = EXIT_FAILURE;
       }
     }

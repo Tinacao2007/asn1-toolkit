@@ -245,6 +245,13 @@ ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag) {
     return out;
   }
 
+  // ContentsConstraint (CONTAINING / ENCODED BY) does not constrain SIZE or value
+  // ranges; treat as unconstrained so it can intersect with SIZE.
+  if (dynamic_cast<const ast::ContentsConstraint*>(c)) {
+    out.statically_foldable = true;
+    return out;
+  }
+
   out.statically_foldable = false;
   diag.warning(c->range(), "unsupported constraint form in Phase 5 normalizer");
   return out;

@@ -27,6 +27,10 @@ std::size_t ByteReader::remaining() const noexcept {
   return pos_ < data_.size() ? data_.size() - pos_ : 0;
 }
 
+Span<const std::uint8_t> ByteReader::remaining_span() const noexcept {
+  return Span<const std::uint8_t>(data_.data() + pos_, remaining());
+}
+
 Result<std::uint8_t> ByteReader::get() {
   if (pos_ >= data_.size()) {
     return make_error(Error::Code::Truncated, pos_, "unexpected end of input");

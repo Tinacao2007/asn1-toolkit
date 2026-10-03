@@ -1,6 +1,7 @@
 #pragma once
 
 #include <asn1/runtime/bit_io.hpp>
+#include <asn1/runtime/bigint.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -44,8 +45,11 @@ Result<std::int64_t> decode_semi_constrained_whole_number(BitReader& in,
 
 void encode_unconstrained_whole_number(BitWriter& out, Variant variant,
                                        std::int64_t value);
+void encode_unconstrained_whole_number(BitWriter& out, Variant variant,
+                                       const BigInteger& value);
 Result<std::int64_t> decode_unconstrained_whole_number(BitReader& in,
                                                        Variant variant);
+Result<BigInteger> decode_unconstrained_big_integer(BitReader& in, Variant variant);
 
 void encode_normally_small_non_negative_whole_number(BitWriter& out, Variant variant,
                                                      std::uint64_t value);

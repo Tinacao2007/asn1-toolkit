@@ -1,0 +1,79 @@
+-- Slim RRC Rel-8 slice for codec round-trips (Phase 38).
+-- Types adapted from TS 36.331 V8.12.0 EUTRA-RRC-Definitions.
+-- Anonymous nested CHOICE/SEQUENCE named for C++ codegen.
+
+EUTRA-RRC-Slice DEFINITIONS AUTOMATIC TAGS ::=
+
+BEGIN
+
+EmptySeq ::= SEQUENCE {}
+
+BCCH-BCH-Message ::= SEQUENCE {
+    message                 BCCH-BCH-MessageType
+}
+
+BCCH-BCH-MessageType ::=                        MasterInformationBlock
+
+PCCH-Message ::= SEQUENCE {
+    message                 PCCH-MessageType
+}
+
+PCCH-MessageType ::= CHOICE {
+    c1                      PCCH-MessageType-c1,
+    messageClassExtension   EmptySeq
+}
+
+PCCH-MessageType-c1 ::= CHOICE {
+    paging                                  Paging
+}
+
+MasterInformationBlock ::=          SEQUENCE {
+    dl-Bandwidth                        ENUMERATED {
+                                            n6, n15, n25, n50, n75, n100},
+    phich-Config                        PHICH-Config,
+    systemFrameNumber                   BIT STRING (SIZE (8)),
+    spare                               BIT STRING (SIZE (10))
+}
+
+PHICH-Config ::=                    SEQUENCE {
+    phich-Duration                      ENUMERATED {normal, extended},
+    phich-Resource                      ENUMERATED {oneSixth, half, one, two}
+}
+
+SystemInfoModification ::= ENUMERATED {true}
+
+ETWS-Indication ::= ENUMERATED {true}
+
+Paging ::=                  SEQUENCE {
+    pagingRecordList                    PagingRecordList                    OPTIONAL,
+    systemInfoModification              SystemInfoModification              OPTIONAL,
+    etws-Indication                     ETWS-Indication                     OPTIONAL,
+    nonCriticalExtension                EmptySeq                            OPTIONAL
+}
+
+PagingRecordList ::=                SEQUENCE (SIZE (1..16)) OF PagingRecord
+
+PagingRecord ::=                    SEQUENCE {
+    ue-Identity                         PagingUE-Identity,
+    cn-Domain                           ENUMERATED  {ps, cs},
+    ...
+}
+
+PagingUE-Identity ::=               CHOICE {
+    s-TMSI                              S-TMSI,
+    imsi                                IMSI,
+    ...
+}
+
+IMSI ::=                            SEQUENCE (SIZE (6..21)) OF IMSI-Digit
+
+IMSI-Digit ::=                      INTEGER (0..9)
+
+S-TMSI ::=                          SEQUENCE {
+    mmec                                MMEC,
+    m-TMSI                              BIT STRING (SIZE (32))
+}
+
+MMEC ::=                            BIT STRING (SIZE (8))
+
+END

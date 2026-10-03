@@ -222,6 +222,26 @@ void encode_integer(BitWriter& out, Variant variant, std::int64_t value,
   encode_unconstrained_whole_number(out, variant, value);
 }
 
+void encode_integer(BitWriter& out, Variant variant, const BigInteger& value,
+                    const IntegerConstraint& constraint) {
+  // Constrained host paths stay on int64; BigInteger uses the unconstrained form
+  // (or extension addition) unless the value fits the int64 root range.
+  if (constraint.lower || constraint.upper || constraint.extensible) {
+    auto v = value.as_i64();
+    if (v) {
+      encode_integer(out, variant, *v, constraint);
+      return;
+    }
+    if (constraint.extensible) {
+      out.put_bit(true);
+      encode_unconstrained_whole_number(out, variant, value);
+      return;
+    }
+    // Unconstrained with leftover bounds that don't fit int64 → length+octets.
+  }
+  encode_unconstrained_whole_number(out, variant, value);
+}
+
 Result<std::int64_t> decode_integer(BitReader& in, Variant variant,
                                     const IntegerConstraint& constraint) {
   if (constraint.extensible) {
@@ -242,6 +262,35 @@ Result<std::int64_t> decode_integer(BitReader& in, Variant variant,
     return decode_semi_constrained_whole_number(in, variant, *constraint.lower);
   }
   return decode_unconstrained_whole_number(in, variant);
+}
+
+Result<BigInteger> decode_big_integer(BitReader& in, Variant variant,
+                                      const IntegerConstraint& constraint) {
+  if (constraint.extensible) {
+    auto ext = in.get_bit();
+    if (!ext) {
+      return ext.error();
+    }
+    if (ext.value()) {
+      return decode_unconstrained_big_integer(in, variant);
+    }
+  }
+  if (constraint.lower && constraint.upper) {
+    auto v = decode_constrained_whole_number(in, variant, *constraint.lower,
+                                            *constraint.upper);
+    if (!v) {
+      return v.error();
+    }
+    return BigInteger::from_i64(v.value());
+  }
+  if (constraint.lower) {
+    auto v = decode_semi_constrained_whole_number(in, variant, *constraint.lower);
+    if (!v) {
+      return v.error();
+    }
+    return BigInteger::from_i64(v.value());
+  }
+  return decode_unconstrained_big_integer(in, variant);
 }
 
 void encode_octet_string(BitWriter& out, Variant variant,
@@ -412,28 +461,77 @@ Result<std::string> decode_utf8_string(BitReader& in, Variant variant,
 }
 
 void encode_sequence_preamble(BitWriter& out, Variant /*variant*/, bool extensible,
+                              bool extensions_present,
                               Span<const std::uint8_t> optionals_present) {
   if (extensible) {
-    out.put_bit(false);  // no extension additions in Phase 9 encode path
+    out.put_bit(extensions_present);
   }
   encode_bitmap(out, optionals_present);
 }
 
-Result<std::vector<std::uint8_t>> decode_sequence_preamble(BitReader& in,
-                                                           Variant /*variant*/,
-                                                           bool extensible,
-                                                           std::size_t n_optionals) {
+Result<SequencePreamble> decode_sequence_preamble(BitReader& in, Variant /*variant*/,
+                                                  bool extensible,
+                                                  std::size_t n_optionals) {
+  SequencePreamble pre;
   if (extensible) {
     auto ext = in.get_bit();
     if (!ext) {
       return ext.error();
     }
-    if (ext.value()) {
-      return make_error(Error::Code::Unsupported, in.bit_offset(),
-                        "SEQUENCE extension additions not supported in Phase 9");
-    }
+    pre.extensions_present = ext.value();
   }
-  return decode_bitmap(in, n_optionals);
+  auto bm = decode_bitmap(in, n_optionals);
+  if (!bm) {
+    return bm.error();
+  }
+  pre.optionals = std::move(bm.value());
+  return pre;
+}
+
+void encode_extension_additions(BitWriter& out, Variant variant,
+                                Span<const std::uint8_t> presence,
+                                const std::vector<std::vector<std::uint8_t>>& open_types) {
+  const std::size_t n = presence.size();
+  if (n == 0) {
+    return;
+  }
+  encode_normally_small_length(out, variant, n);
+  encode_bitmap(out, presence);
+  std::size_t ot_i = 0;
+  for (std::size_t i = 0; i < n; ++i) {
+    if (!presence[i]) {
+      continue;
+    }
+    if (ot_i >= open_types.size()) {
+      break;
+    }
+    encode_open_type(out, variant, open_types[ot_i]);
+    ++ot_i;
+  }
+}
+
+Result<ExtensionAdditions> decode_extension_additions(BitReader& in, Variant variant) {
+  auto n = decode_normally_small_length(in, variant);
+  if (!n) {
+    return n.error();
+  }
+  auto bm = decode_bitmap(in, n.value());
+  if (!bm) {
+    return bm.error();
+  }
+  ExtensionAdditions out;
+  out.presence = std::move(bm.value());
+  for (std::uint8_t bit : out.presence) {
+    if (!bit) {
+      continue;
+    }
+    auto ot = decode_open_type(in, variant);
+    if (!ot) {
+      return ot.error();
+    }
+    out.open_types.push_back(std::move(ot.value()));
+  }
+  return out;
 }
 
 void encode_choice_root(BitWriter& out, Variant variant, std::size_t index,
@@ -444,19 +542,50 @@ void encode_choice_root(BitWriter& out, Variant variant, std::size_t index,
   encode_choice_index(out, variant, index, root_count);
 }
 
-Result<std::size_t> decode_choice_root(BitReader& in, Variant variant,
-                                       std::size_t root_count, bool extensible) {
+void encode_choice_extension(BitWriter& out, Variant variant, std::size_t ext_index,
+                             Span<const std::uint8_t> open_type_content) {
+  out.put_bit(true);
+  encode_normally_small_non_negative_whole_number(out, variant, ext_index);
+  encode_open_type(out, variant, open_type_content);
+}
+
+Result<ExtensionIndex> decode_choice(BitReader& in, Variant variant, std::size_t root_count,
+                                     bool extensible) {
+  ExtensionIndex idx;
   if (extensible) {
     auto ext = in.get_bit();
     if (!ext) {
       return ext.error();
     }
     if (ext.value()) {
-      return make_error(Error::Code::Unsupported, in.bit_offset(),
-                        "CHOICE extension alternative not supported in Phase 9");
+      idx.extension = true;
+      auto n = decode_normally_small_non_negative_whole_number(in, variant);
+      if (!n) {
+        return n.error();
+      }
+      idx.index = static_cast<std::size_t>(n.value());
+      return idx;
     }
   }
-  return decode_choice_index(in, variant, root_count);
+  auto root = decode_choice_index(in, variant, root_count);
+  if (!root) {
+    return root.error();
+  }
+  idx.index = root.value();
+  return idx;
+}
+
+Result<std::size_t> decode_choice_root(BitReader& in, Variant variant,
+                                       std::size_t root_count, bool extensible) {
+  auto idx = decode_choice(in, variant, root_count, extensible);
+  if (!idx) {
+    return idx.error();
+  }
+  if (idx.value().extension) {
+    return make_error(Error::Code::Unsupported, in.bit_offset(),
+                      "CHOICE extension alternative; use decode_choice");
+  }
+  return idx.value().index;
 }
 
 void encode_sequence_of_length(BitWriter& out, Variant variant, std::size_t count,
@@ -482,21 +611,32 @@ void encode_enumerated(BitWriter& out, Variant variant, std::size_t root_index,
   out.put_bits(static_cast<std::uint64_t>(root_index), nbits);
 }
 
-Result<std::size_t> decode_enumerated(BitReader& in, Variant variant, std::size_t root_count,
-                                      bool extensible) {
-  (void)variant;
+void encode_enumerated_extension(BitWriter& out, Variant variant, std::size_t ext_index) {
+  out.put_bit(true);
+  encode_normally_small_non_negative_whole_number(out, variant, ext_index);
+}
+
+Result<ExtensionIndex> decode_enumerated(BitReader& in, Variant variant,
+                                         std::size_t root_count, bool extensible) {
+  ExtensionIndex result;
   if (extensible) {
     auto ext = in.get_bit();
     if (!ext) {
       return ext.error();
     }
     if (ext.value()) {
-      return make_error(Error::Code::Unsupported, in.bit_offset(),
-                        "ENUMERATED extension value not supported in Phase 12");
+      result.extension = true;
+      auto n = decode_normally_small_non_negative_whole_number(in, variant);
+      if (!n) {
+        return n.error();
+      }
+      result.index = static_cast<std::size_t>(n.value());
+      return result;
     }
   }
   if (root_count <= 1) {
-    return std::size_t{0};
+    result.index = 0;
+    return result;
   }
   const std::size_t nbits = bits_for_range(root_count);
   auto idx = in.get_bits(nbits);
@@ -507,7 +647,8 @@ Result<std::size_t> decode_enumerated(BitReader& in, Variant variant, std::size_
     return make_error(Error::Code::InvalidArgument, in.bit_offset(),
                       "ENUMERATED index out of range");
   }
-  return static_cast<std::size_t>(idx.value());
+  result.index = static_cast<std::size_t>(idx.value());
+  return result;
 }
 
 void encode_object_identifier(BitWriter& out, Variant variant, Span<const std::uint64_t> arcs,
@@ -536,6 +677,25 @@ Result<std::vector<std::uint64_t>> decode_object_identifier(BitReader& in, Varia
     return ber::decode_relative_oid_content(r, bytes.value().size());
   }
   return ber::decode_object_identifier_content(r, bytes.value().size());
+}
+
+void encode_real(BitWriter& out, Variant variant, double value) {
+  ByteWriter content;
+  ber::encode_real_content(content, value);
+  maybe_align(out, variant);
+  encode_length_chunks(out, variant, content.buffer().size(), content.buffer());
+}
+
+Result<double> decode_real(BitReader& in, Variant variant) {
+  if (auto a = maybe_align(in, variant); !a) {
+    return a.error();
+  }
+  auto bytes = decode_length_chunks(in, variant);
+  if (!bytes) {
+    return bytes.error();
+  }
+  ByteReader r(bytes.value());
+  return ber::decode_real_content(r, bytes.value().size());
 }
 
 }  // namespace per

@@ -9,7 +9,7 @@
 namespace asn1 {
 namespace codegen {
 
-enum class CodecKind { Uper, Aper, Both };
+enum class CodecKind { Uper, Aper, Both, Jer, Xer, Exer, Ber, Der, Oer, Coer, Cxer };
 
 struct EmitOptions {
   std::string namespace_name = "asn1_gen";
@@ -23,7 +23,7 @@ class CppGenerator {
   /// Write a self-contained header (types + inline encode/decode) to `header`,
   /// and an optional companion `.cpp` (currently empty preamble) to `source`
   /// when non-null. Does not link or include the codec runtime implementation
-  /// libraries — only prints calls into `asn1::uper` / `asn1::aper`.
+  /// libraries — only prints calls into the selected runtime codec namespace.
   void emit(const ir::Model& model, const EmitOptions& options, Diagnostics& diag,
             std::ostream& header, std::ostream* source = nullptr);
 

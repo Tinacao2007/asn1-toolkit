@@ -1,4 +1,6 @@
 #include <asn1/ast/print.hpp>
+#include <asn1/ast/encoding.hpp>
+#include <asn1/ast/ioc.hpp>
 
 #include <sstream>
 
@@ -13,8 +15,20 @@ class Printer : public Visitor {
   void visit(const Module& n) override {
     indent() << "Module " << n.name()
              << " tagDefault=" << tag_default_name(n.tag_default())
-             << " extensibilityImplied=" << (n.extensibility_implied() ? "true" : "false")
-             << '\n';
+             << " extensibilityImplied=" << (n.extensibility_implied() ? "true" : "false");
+    if (n.jer_instructions()) {
+      out_ << " jerInstructions=true";
+    }
+    if (n.xer_instructions()) {
+      out_ << " xerInstructions=true";
+    }
+    if (!n.jer_encoding_control().empty()) {
+      out_ << " jerEncodingControl=" << n.jer_encoding_control().size();
+    }
+    if (!n.xer_encoding_control().empty()) {
+      out_ << " xerEncodingControl=" << n.xer_encoding_control().size();
+    }
+    out_ << '\n';
     ++depth_;
     if (n.exports_all()) {
       indent() << "Exports ALL\n";
@@ -32,6 +46,9 @@ class Printer : public Visitor {
           out_ << ", ";
         }
         out_ << imp.symbols[i].name;
+        if (imp.symbols[i].parameterized) {
+          out_ << "{}";
+        }
       }
       out_ << "}\n";
     }
@@ -42,7 +59,22 @@ class Printer : public Visitor {
   }
 
   void visit(const TypeAssignment& n) override {
-    indent() << "TypeAssignment " << n.name() << '\n';
+    indent() << "TypeAssignment " << n.name();
+    if (!n.parameters().empty()) {
+      out_ << " {";
+      for (std::size_t i = 0; i < n.parameters().size(); ++i) {
+        if (i) {
+          out_ << ", ";
+        }
+        const auto& p = n.parameters()[i];
+        if (!p.governor.empty()) {
+          out_ << p.governor << " : ";
+        }
+        out_ << p.name;
+      }
+      out_ << '}';
+    }
+    out_ << '\n';
     ++depth_;
     n.type().accept(*this);
     --depth_;
@@ -53,6 +85,84 @@ class Printer : public Visitor {
     ++depth_;
     n.type().accept(*this);
     n.value().accept(*this);
+    --depth_;
+  }
+
+  void visit(const ObjectClassAssignment& n) override {
+    indent() << "ObjectClassAssignment " << n.name() << '\n';
+    ++depth_;
+    n.defn().accept(*this);
+    --depth_;
+  }
+  void visit(const ObjectAssignment& n) override {
+    indent() << "ObjectAssignment " << n.name() << " class=" << n.class_name() << '\n';
+    ++depth_;
+    n.defn().accept(*this);
+    --depth_;
+  }
+  void visit(const ObjectSetAssignment& n) override {
+    indent() << "ObjectSetAssignment " << n.name() << " class=" << n.class_name() << '\n';
+    ++depth_;
+    n.defn().accept(*this);
+    --depth_;
+  }
+  void visit(const FieldSpec& n) override {
+    indent() << "FieldSpec &" << n.name()
+             << (n.kind() == FieldSpecKind::TypeField ? " TypeField" : " ValueField");
+    if (n.unique()) {
+      out_ << " UNIQUE";
+    }
+    out_ << ' ' << presence_name(n.presence()) << '\n';
+    ++depth_;
+    if (n.field_type()) {
+      n.field_type()->accept(*this);
+    }
+    if (n.default_value()) {
+      n.default_value()->accept(*this);
+    }
+    --depth_;
+  }
+  void visit(const ObjectClassDefn& n) override {
+    indent() << "ObjectClassDefn\n";
+    ++depth_;
+    for (const auto& f : n.fields()) {
+      f->accept(*this);
+    }
+    if (!n.with_syntax().empty()) {
+      indent() << "WithSyntax";
+      for (const auto& t : n.with_syntax()) {
+        out_ << ' ' << (t.is_field ? ("&" + t.text) : t.text);
+      }
+      out_ << '\n';
+    }
+    --depth_;
+  }
+  void visit(const ObjectDefn& n) override {
+    indent() << "ObjectDefn\n";
+    ++depth_;
+    for (const auto& s : n.settings()) {
+      indent() << "FieldSetting &" << s.field_name << '\n';
+      ++depth_;
+      if (s.type_setting) {
+        s.type_setting->accept(*this);
+      }
+      if (s.value_setting) {
+        s.value_setting->accept(*this);
+      }
+      --depth_;
+    }
+    --depth_;
+  }
+  void visit(const ObjectSetDefn& n) override {
+    indent() << "ObjectSetDefn" << (n.extensible() ? " extensible" : "") << '\n';
+    ++depth_;
+    for (const auto& e : n.elements()) {
+      if (e.object_ref) {
+        indent() << "ObjectRef " << *e.object_ref << '\n';
+      } else if (e.inline_object) {
+        e.inline_object->accept(*this);
+      }
+    }
     --depth_;
   }
 
@@ -179,12 +289,66 @@ class Printer : public Visitor {
     type_line("RealType", n);
     print_constraint(n);
   }
+  void visit(const ExternalType& n) override {
+    type_line("ExternalType", n);
+    print_constraint(n);
+  }
+  void visit(const EmbeddedPdvType& n) override {
+    type_line("EmbeddedPdvType", n);
+    print_constraint(n);
+  }
+  void visit(const CharacterStringType& n) override {
+    type_line("CharacterStringType", n);
+    print_constraint(n);
+  }
+  void visit(const InstanceOfType& n) override {
+    type_line("InstanceOfType", n);
+    indent() << "className " << n.class_name() << '\n';
+    print_constraint(n);
+  }
   void visit(const ReferencedType& n) override {
     indent() << "ReferencedType ";
     if (n.module()) {
       out_ << *n.module() << '.';
     }
     out_ << n.name();
+    if (!n.actuals().empty()) {
+      out_ << " {";
+      for (std::size_t i = 0; i < n.actuals().size(); ++i) {
+        if (i) {
+          out_ << ", ";
+        }
+        const auto& a = n.actuals()[i];
+        if (a.type) {
+          out_ << "type";
+        } else if (a.value) {
+          out_ << "value";
+        } else if (a.object_set_name) {
+          out_ << "{" << *a.object_set_name << "}";
+        } else if (a.inline_object_set) {
+          out_ << "objectSet";
+        } else {
+          out_ << "?";
+        }
+      }
+      out_ << '}';
+    }
+    print_tag(n);
+    out_ << '\n';
+    ++depth_;
+    for (const auto& a : n.actuals()) {
+      if (a.type) {
+        a.type->accept(*this);
+      }
+      if (a.value) {
+        a.value->accept(*this);
+      }
+    }
+    --depth_;
+    print_constraint(n);
+  }
+  void visit(const ObjectClassFieldType& n) override {
+    indent() << "ObjectClassFieldType " << n.class_name() << ".&" << n.field_name();
     print_tag(n);
     out_ << '\n';
     print_constraint(n);
@@ -201,6 +365,15 @@ class Printer : public Visitor {
   }
 
   void visit(const ExtensionMarker&) override { indent() << "ExtensionMarker\n"; }
+
+  void visit(const VersionAdditionGroup& n) override {
+    indent() << "VersionAdditionGroup\n";
+    ++depth_;
+    for (const auto& item : n.items()) {
+      item->accept(*this);
+    }
+    --depth_;
+  }
 
   void visit(const ValueRangeConstraint& n) override {
     indent() << "ValueRangeConstraint\n";
@@ -250,6 +423,71 @@ class Printer : public Visitor {
     ++depth_;
     if (n.root()) {
       n.root()->accept(*this);
+    }
+    --depth_;
+  }
+  void visit(const ContentsConstraint& n) override {
+    indent() << "ContentsConstraint\n";
+    ++depth_;
+    if (n.contained()) {
+      indent() << "CONTAINING\n";
+      ++depth_;
+      n.contained()->accept(*this);
+      --depth_;
+    }
+    if (n.encoded_by()) {
+      indent() << "ENCODED BY\n";
+      ++depth_;
+      n.encoded_by()->accept(*this);
+      --depth_;
+    }
+    --depth_;
+  }
+  void visit(const WithComponentsConstraint& n) override {
+    indent() << "WithComponentsConstraint\n";
+    ++depth_;
+    for (const auto& c : n.components()) {
+      indent() << "Component " << c.name;
+      if (c.presence == ComponentPresence::Present) {
+        out_ << " PRESENT";
+      } else if (c.presence == ComponentPresence::Absent) {
+        out_ << " ABSENT";
+      } else if (c.presence == ComponentPresence::Optional) {
+        out_ << " OPTIONAL";
+      }
+      out_ << '\n';
+      if (c.value_constraint) {
+        ++depth_;
+        c.value_constraint->accept(*this);
+        --depth_;
+      }
+    }
+    --depth_;
+  }
+  void visit(const TableConstraint& n) override {
+    indent() << "TableConstraint";
+    if (!n.object_set_name().empty()) {
+      out_ << ' ' << n.object_set_name();
+    }
+    out_ << '\n';
+    ++depth_;
+    if (n.inline_set()) {
+      n.inline_set()->accept(*this);
+    }
+    --depth_;
+  }
+  void visit(const ComponentRelationConstraint& n) override {
+    indent() << "ComponentRelationConstraint";
+    if (!n.object_set_name().empty()) {
+      out_ << ' ' << n.object_set_name();
+    }
+    for (const auto& c : n.at_components()) {
+      out_ << " @" << c;
+    }
+    out_ << '\n';
+    ++depth_;
+    if (n.inline_set()) {
+      n.inline_set()->accept(*this);
     }
     --depth_;
   }
@@ -358,6 +596,10 @@ class Printer : public Visitor {
         return "BMPString";
       case StringKind::UniversalString:
         return "UniversalString";
+      case StringKind::UTCTime:
+        return "UTCTime";
+      case StringKind::GeneralizedTime:
+        return "GeneralizedTime";
     }
     return "?";
   }
@@ -387,10 +629,50 @@ class Printer : public Visitor {
     }
   }
 
+  static const char* ei_kind_brief(EncodingInstructionKind k) {
+    switch (k) {
+      case EncodingInstructionKind::Array:
+        return "ARRAY";
+      case EncodingInstructionKind::Base64:
+        return "BASE64";
+      case EncodingInstructionKind::Object:
+        return "OBJECT";
+      case EncodingInstructionKind::Unwrapped:
+        return "UNWRAPPED";
+      case EncodingInstructionKind::Name:
+        return "NAME";
+      case EncodingInstructionKind::Text:
+        return "TEXT";
+      case EncodingInstructionKind::Attribute:
+        return "ATTRIBUTE";
+      case EncodingInstructionKind::UseNumber:
+        return "USE-NUMBER";
+      case EncodingInstructionKind::List:
+        return "LIST";
+      case EncodingInstructionKind::Untagged:
+        return "UNTAGGED";
+      case EncodingInstructionKind::UseNil:
+        return "USE-NIL";
+    }
+    return "?";
+  }
+
+  void print_encoding_instructions(const Type& n) {
+    if (n.encoding_instructions().empty()) {
+      return;
+    }
+    indent() << "encodingInstructions";
+    for (const auto& ei : n.encoding_instructions()) {
+      out_ << ' ' << ei_kind_brief(ei.kind);
+    }
+    out_ << '\n';
+  }
+
   void type_line(const char* name, const Type& n) {
     indent() << name;
     print_tag(n);
     out_ << '\n';
+    print_encoding_instructions(n);
   }
 
   void print_constraint(const Type& n) {

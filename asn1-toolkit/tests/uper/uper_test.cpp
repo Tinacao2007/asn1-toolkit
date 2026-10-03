@@ -206,7 +206,8 @@ TEST(Uper, SequenceWithOptional) {
   // bits: 1 1 1 -> E0
   asn1::BitWriter w;
   const std::uint8_t present[] = {1};
-  asn1::uper::encode_sequence_preamble(w, false, asn1::Span<const std::uint8_t>(present, 1));
+  asn1::uper::encode_sequence_preamble(w, false, false,
+                                       asn1::Span<const std::uint8_t>(present, 1));
   asn1::uper::encode_boolean(w, true);
   asn1::uper::encode_boolean(w, true);
   expect_bytes(finish(w), hex({0xE0}));
@@ -215,8 +216,9 @@ TEST(Uper, SequenceWithOptional) {
   asn1::BitReader r(_bits7);
   auto bm = asn1::uper::decode_sequence_preamble(r, false, 1);
   ASSERT_TRUE(bm.ok());
-  ASSERT_EQ(bm.value().size(), 1u);
-  EXPECT_EQ(bm.value()[0], 1);
+  ASSERT_EQ(bm.value().optionals.size(), 1u);
+  EXPECT_EQ(bm.value().optionals[0], 1);
+  EXPECT_FALSE(bm.value().extensions_present);
   auto a = asn1::uper::decode_boolean(r);
   auto b = asn1::uper::decode_boolean(r);
   ASSERT_TRUE(a.ok());
@@ -272,7 +274,8 @@ TEST(Uper, PersonLikeRoundTrip) {
 
   asn1::BitWriter w;
   const std::uint8_t opt[] = {has_age ? 1 : 0};
-  asn1::uper::encode_sequence_preamble(w, false, asn1::Span<const std::uint8_t>(opt, 1));
+  asn1::uper::encode_sequence_preamble(w, false, false,
+                                       asn1::Span<const std::uint8_t>(opt, 1));
   asn1::uper::encode_integer(w, id, asn1::per::IntegerConstraint{0, 65535, false});
   asn1::uper::encode_utf8_string(w, name);
   if (has_age) {
@@ -289,7 +292,7 @@ TEST(Uper, PersonLikeRoundTrip) {
   ASSERT_TRUE(name_v.ok());
   EXPECT_EQ(id_v.value(), 42);
   EXPECT_EQ(name_v.value(), "Ada");
-  ASSERT_EQ(bm.value()[0], 1);
+  ASSERT_EQ(bm.value().optionals[0], 1);
   auto age_v = asn1::uper::decode_integer(r, asn1::per::IntegerConstraint{0, 150, false});
   ASSERT_TRUE(age_v.ok());
   EXPECT_EQ(age_v.value(), 36);
@@ -303,7 +306,8 @@ TEST(Uper, EnumeratedAndOid) {
     asn1::BitReader r(bytes);
     auto v = asn1::uper::decode_enumerated(r, 3, false);
     ASSERT_TRUE(v.ok());
-    EXPECT_EQ(v.value(), 1u);
+    EXPECT_FALSE(v.value().extension);
+    EXPECT_EQ(v.value().index, 1u);
   }
   {
     asn1::BitWriter w;
@@ -312,7 +316,8 @@ TEST(Uper, EnumeratedAndOid) {
     asn1::BitReader r(bytes);
     auto v = asn1::uper::decode_enumerated(r, 2, true);
     ASSERT_TRUE(v.ok());
-    EXPECT_EQ(v.value(), 0u);
+    EXPECT_FALSE(v.value().extension);
+    EXPECT_EQ(v.value().index, 0u);
   }
   {
     std::vector<std::uint64_t> arcs = {1, 3, 6, 1};
@@ -327,4 +332,118 @@ TEST(Uper, EnumeratedAndOid) {
       EXPECT_EQ(v.value()[i], arcs[i]);
     }
   }
+}
+
+TEST(Uper, RealRoundTripAndVector) {
+  {
+    asn1::BitWriter w;
+    asn1::uper::encode_real(w, 1.0);
+    expect_bytes(finish(w), hex({0x03, 0x80, 0x00, 0x01}));
+    const auto bits = hex({0x03, 0x80, 0x00, 0x01});
+    asn1::BitReader r(bits);
+    auto v = asn1::uper::decode_real(r);
+    ASSERT_TRUE(v.ok());
+    EXPECT_EQ(v.value(), 1.0);
+  }
+  {
+    asn1::BitWriter w;
+    asn1::uper::encode_real(w, -100.0);
+    auto bytes = finish(w);
+    asn1::BitReader r(bytes);
+    auto v = asn1::uper::decode_real(r);
+    ASSERT_TRUE(v.ok());
+    EXPECT_EQ(v.value(), -100.0);
+  }
+  {
+    asn1::BitWriter w;
+    asn1::uper::encode_real(w, 0.0);
+    expect_bytes(finish(w), hex({0x00}));
+  }
+}
+
+TEST(Uper, SequenceExtensionAdditions) {
+  // SEQUENCE { a BOOLEAN, ..., b BOOLEAN, c BOOLEAN }
+  // value { a=true, b=true, c=true }: ext bit 1, a=1, NSL(2)=000001, bitmap 11,
+  // then open type for b (1 octet 0x80), open type for c (1 octet 0x80)
+  asn1::BitWriter w;
+  asn1::uper::encode_sequence_preamble(w, true, true,
+                                       asn1::Span<const std::uint8_t>(nullptr, 0));
+  asn1::uper::encode_boolean(w, true);
+  const std::uint8_t ep[] = {1, 1};
+  std::vector<std::vector<std::uint8_t>> ots;
+  {
+    asn1::BitWriter ow;
+    asn1::uper::encode_boolean(ow, true);
+    ow.align_to_octet();
+    ots.push_back(ow.take());
+  }
+  {
+    asn1::BitWriter ow;
+    asn1::uper::encode_boolean(ow, true);
+    ow.align_to_octet();
+    ots.push_back(ow.take());
+  }
+  asn1::uper::encode_extension_additions(w, asn1::Span<const std::uint8_t>(ep, 2), ots);
+  auto bytes = finish(w);
+
+  asn1::BitReader r(bytes);
+  auto pre = asn1::uper::decode_sequence_preamble(r, true, 0);
+  ASSERT_TRUE(pre.ok());
+  EXPECT_TRUE(pre.value().extensions_present);
+  auto a = asn1::uper::decode_boolean(r);
+  ASSERT_TRUE(a.ok());
+  EXPECT_TRUE(a.value());
+  auto ext = asn1::uper::decode_extension_additions(r);
+  ASSERT_TRUE(ext.ok());
+  ASSERT_EQ(ext.value().presence.size(), 2u);
+  EXPECT_EQ(ext.value().presence[0], 1);
+  EXPECT_EQ(ext.value().presence[1], 1);
+  ASSERT_EQ(ext.value().open_types.size(), 2u);
+  {
+    asn1::BitReader er(ext.value().open_types[0]);
+    auto b = asn1::uper::decode_boolean(er);
+    ASSERT_TRUE(b.ok());
+    EXPECT_TRUE(b.value());
+  }
+  {
+    asn1::BitReader er(ext.value().open_types[1]);
+    auto c = asn1::uper::decode_boolean(er);
+    ASSERT_TRUE(c.ok());
+    EXPECT_TRUE(c.value());
+  }
+}
+
+TEST(Uper, ChoiceExtensionAlternative) {
+  // CHOICE { a BOOLEAN, ..., b INTEGER (0..7) } selecting b=5
+  asn1::BitWriter ow;
+  asn1::uper::encode_integer(ow, 5, asn1::per::IntegerConstraint{0, 7, false});
+  ow.align_to_octet();
+  auto content = ow.take();
+
+  asn1::BitWriter w;
+  asn1::uper::encode_choice_extension(w, 0, content);
+  auto bytes = finish(w);
+
+  asn1::BitReader r(bytes);
+  auto idx = asn1::uper::decode_choice(r, 1, true);
+  ASSERT_TRUE(idx.ok());
+  EXPECT_TRUE(idx.value().extension);
+  EXPECT_EQ(idx.value().index, 0u);
+  auto ot = asn1::uper::decode_open_type(r);
+  ASSERT_TRUE(ot.ok());
+  asn1::BitReader er(ot.value());
+  auto v = asn1::uper::decode_integer(er, asn1::per::IntegerConstraint{0, 7, false});
+  ASSERT_TRUE(v.ok());
+  EXPECT_EQ(v.value(), 5);
+}
+
+TEST(Uper, EnumeratedExtensionIndex) {
+  asn1::BitWriter w;
+  asn1::uper::encode_enumerated_extension(w, 0);
+  auto bytes = finish(w);
+  asn1::BitReader r(bytes);
+  auto v = asn1::uper::decode_enumerated(r, 2, true);
+  ASSERT_TRUE(v.ok());
+  EXPECT_TRUE(v.value().extension);
+  EXPECT_EQ(v.value().index, 0u);
 }

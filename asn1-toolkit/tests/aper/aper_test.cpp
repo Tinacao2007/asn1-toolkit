@@ -195,7 +195,8 @@ TEST(Aper, ChoiceAndSequenceOfRoundTrip) {
 TEST(Aper, PersonLikeRoundTrip) {
   asn1::BitWriter w;
   const std::uint8_t opt[] = {1};
-  asn1::aper::encode_sequence_preamble(w, false, asn1::Span<const std::uint8_t>(opt, 1));
+  asn1::aper::encode_sequence_preamble(w, false, false,
+                                       asn1::Span<const std::uint8_t>(opt, 1));
   asn1::aper::encode_integer(w, 42, asn1::per::IntegerConstraint{0, 65535, false});
   asn1::aper::encode_utf8_string(w, "Ada");
   asn1::aper::encode_integer(w, 36, asn1::per::IntegerConstraint{0, 150, false});
@@ -210,7 +211,7 @@ TEST(Aper, PersonLikeRoundTrip) {
   ASSERT_TRUE(id.ok());
   ASSERT_TRUE(name.ok());
   ASSERT_TRUE(age.ok());
-  EXPECT_EQ(bm.value()[0], 1);
+  EXPECT_EQ(bm.value().optionals[0], 1);
   EXPECT_EQ(id.value(), 42);
   EXPECT_EQ(name.value(), "Ada");
   EXPECT_EQ(age.value(), 36);

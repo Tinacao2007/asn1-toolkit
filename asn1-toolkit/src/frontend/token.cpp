@@ -52,6 +52,10 @@ const char* to_string(TokenKind kind) {
       return "^";
     case TokenKind::Colon:
       return ":";
+    case TokenKind::Dot:
+      return ".";
+    case TokenKind::Ampersand:
+      return "&";
     case TokenKind::At:
       return "@";
     case TokenKind::Exclamation:
@@ -70,8 +74,16 @@ const char* to_string(TokenKind kind) {
       return "ALL";
     case TokenKind::KwAPPLICATION:
       return "APPLICATION";
+    case TokenKind::KwARRAY:
+      return "ARRAY";
+    case TokenKind::KwAS:
+      return "AS";
+    case TokenKind::KwATTRIBUTE:
+      return "ATTRIBUTE";
     case TokenKind::KwAUTOMATIC:
       return "AUTOMATIC";
+    case TokenKind::KwBASE64:
+      return "BASE64";
     case TokenKind::KwBEGIN:
       return "BEGIN";
     case TokenKind::KwBIT:
@@ -82,6 +94,8 @@ const char* to_string(TokenKind kind) {
       return "BOOLEAN";
     case TokenKind::KwBY:
       return "BY";
+    case TokenKind::KwCAPITALIZED:
+      return "CAPITALIZED";
     case TokenKind::KwCHARACTER:
       return "CHARACTER";
     case TokenKind::KwCHOICE:
@@ -102,6 +116,10 @@ const char* to_string(TokenKind kind) {
       return "DEFINITIONS";
     case TokenKind::KwEMBEDDED:
       return "EMBEDDED";
+    case TokenKind::KwENCODED:
+      return "ENCODED";
+    case TokenKind::KwENCODING_CONTROL:
+      return "ENCODING-CONTROL";
     case TokenKind::KwEND:
       return "END";
     case TokenKind::KwENUMERATED:
@@ -112,6 +130,8 @@ const char* to_string(TokenKind kind) {
       return "EXPLICIT";
     case TokenKind::KwEXPORTS:
       return "EXPORTS";
+    case TokenKind::KwEXTENDED_XER:
+      return "EXTENDED-XER";
     case TokenKind::KwEXTENSIBILITY:
       return "EXTENSIBILITY";
     case TokenKind::KwEXTERNAL:
@@ -140,18 +160,28 @@ const char* to_string(TokenKind kind) {
       return "INCLUDES";
     case TokenKind::KwINSTANCE:
       return "INSTANCE";
+    case TokenKind::KwINSTRUCTIONS:
+      return "INSTRUCTIONS";
     case TokenKind::KwINTEGER:
       return "INTEGER";
     case TokenKind::KwINTERSECTION:
       return "INTERSECTION";
     case TokenKind::KwISO646String:
       return "ISO646String";
+    case TokenKind::KwJER:
+      return "JER";
+    case TokenKind::KwLIST:
+      return "LIST";
+    case TokenKind::KwLOWERCASED:
+      return "LOWERCASED";
     case TokenKind::KwMAX:
       return "MAX";
     case TokenKind::KwMIN:
       return "MIN";
     case TokenKind::KwMINUS_INFINITY:
       return "MINUS-INFINITY";
+    case TokenKind::KwNAME:
+      return "NAME";
     case TokenKind::KwNULL:
       return "NULL";
     case TokenKind::KwNumericString:
@@ -198,6 +228,8 @@ const char* to_string(TokenKind kind) {
       return "TAGS";
     case TokenKind::KwTeletexString:
       return "TeletexString";
+    case TokenKind::KwTEXT:
+      return "TEXT";
     case TokenKind::KwTRUE:
       return "TRUE";
     case TokenKind::KwTYPE_IDENTIFIER:
@@ -210,6 +242,16 @@ const char* to_string(TokenKind kind) {
       return "UNIVERSAL";
     case TokenKind::KwUniversalString:
       return "UniversalString";
+    case TokenKind::KwUNTAGGED:
+      return "UNTAGGED";
+    case TokenKind::KwUNWRAPPED:
+      return "UNWRAPPED";
+    case TokenKind::KwUPPERCASED:
+      return "UPPERCASED";
+    case TokenKind::KwUSE_NIL:
+      return "USE-NIL";
+    case TokenKind::KwUSE_NUMBER:
+      return "USE-NUMBER";
     case TokenKind::KwUTCTime:
       return "UTCTime";
     case TokenKind::KwUTF8String:
@@ -220,6 +262,8 @@ const char* to_string(TokenKind kind) {
       return "VisibleString";
     case TokenKind::KwWITH:
       return "WITH";
+    case TokenKind::KwXER:
+      return "XER";
     case TokenKind::Invalid:
       return "invalid";
   }

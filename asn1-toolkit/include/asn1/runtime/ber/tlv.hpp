@@ -49,11 +49,13 @@ constexpr std::uint64_t kTagObjectDescriptor = 7;
 constexpr std::uint64_t kTagExternal = 8;
 constexpr std::uint64_t kTagReal = 9;
 constexpr std::uint64_t kTagEnumerated = 10;
+constexpr std::uint64_t kTagEmbeddedPdv = 11;
 constexpr std::uint64_t kTagUtf8String = 12;
 constexpr std::uint64_t kTagRelativeOid = 13;
 constexpr std::uint64_t kTagSequence = 16;
 constexpr std::uint64_t kTagSet = 17;
 constexpr std::uint64_t kTagIa5String = 22;
+constexpr std::uint64_t kTagCharacterString = 29;
 
 struct Length {
   bool indefinite = false;

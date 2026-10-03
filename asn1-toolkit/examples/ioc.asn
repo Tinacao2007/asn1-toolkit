@@ -1,0 +1,26 @@
+IOC DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+
+  ERROR ::= CLASS {
+    &errorCode INTEGER UNIQUE,
+    &Type
+  }
+
+  ErrorSet ERROR ::= {
+    { &errorCode 1, &Type INTEGER } |
+    { &errorCode 2, &Type UTF8String },
+    ...
+  }
+
+  ErrorPDU ::= SEQUENCE {
+    code  ERROR.&errorCode ({ErrorSet}),
+    param ERROR.&Type ({ErrorSet}{@code})
+  }
+
+  TI-Type ::= TYPE-IDENTIFIER.&Type
+  AS-Type ::= ABSTRACT-SYNTAX.&Type
+  AS-Id ::= ABSTRACT-SYNTAX.&id
+  my-as ABSTRACT-SYNTAX ::= { INTEGER IDENTIFIED BY { 2 1 1 } }
+  OpenAS ::= INSTANCE OF ABSTRACT-SYNTAX
+
+END

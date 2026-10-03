@@ -11,7 +11,7 @@
 
 namespace asn1 {
 
-enum class SymbolKind { Type, Value, Module };
+enum class SymbolKind { Type, Value, Module, ObjectClass, Object, ObjectSet };
 
 struct Symbol {
   SymbolKind kind = SymbolKind::Type;

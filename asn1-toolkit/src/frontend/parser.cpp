@@ -13,10 +13,48 @@ SourceRange merge_range(const SourceRange& a, const SourceRange& b) {
   return r;
 }
 
+bool is_encoding_instruction_keyword(TokenKind kind) {
+  switch (kind) {
+    case TokenKind::KwARRAY:
+    case TokenKind::KwBASE64:
+    case TokenKind::KwOBJECT:
+    case TokenKind::KwUNWRAPPED:
+    case TokenKind::KwNAME:
+    case TokenKind::KwTEXT:
+    case TokenKind::KwATTRIBUTE:
+    case TokenKind::KwUSE_NUMBER:
+    case TokenKind::KwLIST:
+    case TokenKind::KwUNTAGGED:
+    case TokenKind::KwUSE_NIL:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
 Parser::Parser(Lexer& lexer, Diagnostics& diagnostics)
-    : lexer_(lexer), diagnostics_(diagnostics), current_(lexer_.next()) {}
+    : lexer_(lexer), diagnostics_(diagnostics), current_(lexer_.next()) {
+  // X.681 useful object classes — builtin WITH SYNTAX for defined-syntax objects.
+  remember_class_syntax("TYPE-IDENTIFIER", {
+      {"Type", {}, true},
+      {"IDENTIFIED", {}, false},
+      {"BY", {}, false},
+      {"id", {}, true},
+  });
+  remember_class_syntax("ABSTRACT-SYNTAX", {
+      {"Type", {}, true},
+      {"IDENTIFIED", {}, false},
+      {"BY", {}, false},
+      {"id", {}, true},
+      {"[", {}, false},
+      {"HAS", {}, false},
+      {"PROPERTY", {}, false},
+      {"property", {}, true},
+      {"]", {}, false},
+  });
+}
 
 Token Parser::advance() {
   Token prev = current_;
@@ -51,20 +89,22 @@ void Parser::error_at(const Token& at, std::string message) {
   diagnostics_.error(at.range, std::move(message));
 }
 
-bool Parser::is_unsupported_construct(TokenKind kind) const {
-  switch (kind) {
-    case TokenKind::KwCLASS:
-    case TokenKind::KwINSTANCE:
-    case TokenKind::KwSYNTAX:
-    case TokenKind::KwTYPE_IDENTIFIER:
-    case TokenKind::KwABSTRACT_SYNTAX:
-    case TokenKind::KwEMBEDDED:
-    case TokenKind::KwEXTERNAL:
-    case TokenKind::KwCHARACTER:
-      return true;
-    default:
-      return false;
+bool Parser::is_unsupported_construct(TokenKind /*kind*/) const {
+  return false;
+}
+
+bool Parser::is_useful_object_class_token(TokenKind kind) const {
+  return kind == TokenKind::KwTYPE_IDENTIFIER || kind == TokenKind::KwABSTRACT_SYNTAX;
+}
+
+std::string Parser::useful_object_class_name(TokenKind kind) const {
+  if (kind == TokenKind::KwTYPE_IDENTIFIER) {
+    return "TYPE-IDENTIFIER";
   }
+  if (kind == TokenKind::KwABSTRACT_SYNTAX) {
+    return "ABSTRACT-SYNTAX";
+  }
+  return {};
 }
 
 void Parser::report_unsupported(const Token& tok) {
@@ -95,6 +135,18 @@ std::unique_ptr<ast::Module> Parser::parse_module() {
   return parse_module_body(name_tok);
 }
 
+std::vector<std::unique_ptr<ast::Module>> Parser::parse_modules() {
+  std::vector<std::unique_ptr<ast::Module>> modules;
+  while (check(TokenKind::TypeReference) && !check(TokenKind::EndOfFile)) {
+    auto module = parse_module();
+    if (!module) {
+      break;
+    }
+    modules.push_back(std::move(module));
+  }
+  return modules;
+}
+
 std::unique_ptr<ast::Module> Parser::parse_module_body(Token name_tok) {
   // Optional object identifier value after module name is skipped as unsupported form
   // if '{' appears before DEFINITIONS - Phase 3: report and skip balanced braces.
@@ -115,6 +167,20 @@ std::unique_ptr<ast::Module> Parser::parse_module_body(Token name_tok) {
 
   if (!expect(TokenKind::KwDEFINITIONS, "DEFINITIONS")) {
     return nullptr;
+  }
+
+  bool jer_instructions = false;
+  bool xer_instructions = false;
+  if (match(TokenKind::KwJER)) {
+    if (!expect(TokenKind::KwINSTRUCTIONS, "INSTRUCTIONS")) {
+      return nullptr;
+    }
+    jer_instructions = true;
+  } else if (match(TokenKind::KwXER) || match(TokenKind::KwEXTENDED_XER)) {
+    if (!expect(TokenKind::KwINSTRUCTIONS, "INSTRUCTIONS")) {
+      return nullptr;
+    }
+    xer_instructions = true;
   }
 
   ast::TagDefault tag_default = ast::TagDefault::Explicit;
@@ -154,20 +220,34 @@ std::unique_ptr<ast::Module> Parser::parse_module_body(Token name_tok) {
   }
 
   std::vector<std::unique_ptr<ast::Assignment>> assignments;
-  while (!check(TokenKind::KwEND) && !check(TokenKind::EndOfFile)) {
+  while (!check(TokenKind::KwEND) && !check(TokenKind::KwENCODING_CONTROL) &&
+         !check(TokenKind::EndOfFile)) {
     auto assignment = parse_assignment();
     if (assignment) {
       assignments.push_back(std::move(assignment));
     } else {
-      if (check(TokenKind::KwEND) || check(TokenKind::EndOfFile)) {
+      if (check(TokenKind::KwEND) || check(TokenKind::KwENCODING_CONTROL) ||
+          check(TokenKind::EndOfFile)) {
         break;
       }
       synchronize_assignment();
       if (check(TokenKind::TypeReference) || check(TokenKind::Identifier)) {
         continue;
       }
-      if (!check(TokenKind::KwEND)) {
+      if (!check(TokenKind::KwEND) && !check(TokenKind::KwENCODING_CONTROL)) {
         advance();
+      }
+    }
+  }
+
+  std::vector<ast::EncodingControlClause> jer_control;
+  std::vector<ast::EncodingControlClause> xer_control;
+  while (check(TokenKind::KwENCODING_CONTROL)) {
+    for (auto clause : parse_encoding_control()) {
+      if (clause.family == ast::EncodingControlFamily::Jer) {
+        jer_control.push_back(std::move(clause));
+      } else {
+        xer_control.push_back(std::move(clause));
       }
     }
   }
@@ -176,10 +256,14 @@ std::unique_ptr<ast::Module> Parser::parse_module_body(Token name_tok) {
   expect(TokenKind::KwEND, "END");
 
   SourceRange range = merge_range(name_tok.range, end_tok.range);
-  return std::make_unique<ast::Module>(std::move(range), std::string(name_tok.text),
-                                       tag_default, extensibility_implied, std::move(exports),
-                                       exports_all, std::move(imports),
-                                       std::move(assignments));
+  auto module = std::make_unique<ast::Module>(
+      std::move(range), std::string(name_tok.text), tag_default, extensibility_implied,
+      std::move(exports), exports_all, std::move(imports), std::move(assignments));
+  module->set_jer_instructions(jer_instructions);
+  module->set_xer_instructions(xer_instructions);
+  module->set_jer_encoding_control(std::move(jer_control));
+  module->set_xer_encoding_control(std::move(xer_control));
+  return module;
 }
 
 void Parser::parse_exports(std::vector<std::string>& exports, bool& exports_all) {
@@ -224,8 +308,13 @@ void Parser::parse_imports(std::vector<ast::ImportFrom>& imports) {
         ast::ImportedSymbol sym;
         sym.name = std::string(current_.text);
         sym.range = current_.range;
-        imp.symbols.push_back(std::move(sym));
         advance();
+        // IMPORTS Name{} marks a parameterized reference.
+        if (match(TokenKind::LBrace)) {
+          expect(TokenKind::RBrace, "'}'");
+          sym.parameterized = true;
+        }
+        imp.symbols.push_back(std::move(sym));
       } else {
         break;
       }
@@ -261,10 +350,118 @@ void Parser::parse_imports(std::vector<ast::ImportFrom>& imports) {
 std::unique_ptr<ast::Assignment> Parser::parse_assignment() {
   if (check(TokenKind::TypeReference)) {
     Token name = advance();
-    return parse_type_assignment(name);
+    // ObjectSetAssignment: Name ClassName ::= { ... }
+    if (check(TokenKind::TypeReference) || is_useful_object_class_token(current_.kind)) {
+      Token class_tok = advance();
+      return parse_object_set_assignment(name, class_tok);
+    }
+    // Parameterized type assignment: Name { formals } ::= Type
+    if (check(TokenKind::LBrace)) {
+      auto formals = parse_formal_parameter_list();
+      if (!expect(TokenKind::Assign, "'::='")) {
+        return nullptr;
+      }
+      if (check(TokenKind::KwCLASS)) {
+        error_at(current_, "parameterized object class assignments are not supported");
+        return nullptr;
+      }
+      auto type = parse_type();
+      if (!type) {
+        return nullptr;
+      }
+      SourceRange range = merge_range(name.range, type->range());
+      return std::make_unique<ast::TypeAssignment>(std::move(range), std::string(name.text),
+                                                   std::move(type), std::move(formals));
+    }
+    if (check(TokenKind::Assign)) {
+      // Peek: ObjectClassAssignment if next after ::= is CLASS.
+      // We only have one-token lookahead; consume Assign then branch.
+      advance();  // ::=
+      if (check(TokenKind::KwCLASS)) {
+        // Re-enter class assignment without re-reading Assign.
+        auto defn = parse_object_class_defn();
+        if (!defn) {
+          return nullptr;
+        }
+        remember_class_syntax(std::string(name.text), defn->with_syntax());
+        SourceRange range = merge_range(name.range, defn->range());
+        return std::make_unique<ast::ObjectClassAssignment>(
+            std::move(range), std::string(name.text), std::move(defn));
+      }
+      // Type assignment: already consumed ::=, parse type.
+      auto type = parse_type();
+      if (!type) {
+        return nullptr;
+      }
+      SourceRange range = merge_range(name.range, type->range());
+      return std::make_unique<ast::TypeAssignment>(std::move(range), std::string(name.text),
+                                                   std::move(type));
+    }
+    error_at(current_, "expected '::=' or object class name in assignment");
+    return nullptr;
   }
   if (check(TokenKind::Identifier)) {
     Token name = advance();
+    // ObjectAssignment: name ClassName ::= { ... }
+    if (check(TokenKind::TypeReference) || is_useful_object_class_token(current_.kind)) {
+      Token class_tok = current_;
+      const std::string class_name = is_useful_object_class_token(class_tok.kind)
+                                         ? useful_object_class_name(class_tok.kind)
+                                         : std::string(class_tok.text);
+      // Ambiguity with ValueAssignment: name Type ::= value
+      // Object assignments always use '{' after ::=; value assignments use a value.
+      advance();  // class / type name
+      if (check(TokenKind::Assign)) {
+        Token assign = advance();
+        if (check(TokenKind::LBrace)) {
+          auto defn = parse_object_defn(class_name);
+          if (!defn) {
+            return nullptr;
+          }
+          SourceRange range = merge_range(name.range, defn->range());
+          return std::make_unique<ast::ObjectAssignment>(
+              std::move(range), std::string(name.text), class_name, std::move(defn));
+        }
+        // Value assignment: name Type ::= value (Assign already consumed).
+        // Useful object class names are not ASN.1 types.
+        if (is_useful_object_class_token(class_tok.kind)) {
+          error_at(class_tok, "expected object definition '{' after " + class_name);
+          return nullptr;
+        }
+        auto type = std::make_unique<ast::ReferencedType>(
+            class_tok.range, std::nullopt, nullptr, std::nullopt, std::string(class_tok.text));
+        if (auto c = parse_optional_constraint()) {
+          type->set_constraint(std::move(c));
+        }
+        auto value = parse_value();
+        if (!value) {
+          return nullptr;
+        }
+        SourceRange range = merge_range(name.range, value->range());
+        (void)assign;
+        return std::make_unique<ast::ValueAssignment>(std::move(range), std::string(name.text),
+                                                      std::move(type), std::move(value));
+      }
+      if (is_useful_object_class_token(class_tok.kind)) {
+        error_at(class_tok, "expected '::=' after object class " + class_name);
+        return nullptr;
+      }
+      auto type = std::make_unique<ast::ReferencedType>(
+          class_tok.range, std::nullopt, nullptr, std::nullopt, std::string(class_tok.text));
+      if (auto c = parse_optional_constraint()) {
+        type->set_constraint(std::move(c));
+      }
+      if (!expect(TokenKind::Assign, "'::='")) {
+        return nullptr;
+      }
+      auto value = parse_value();
+      if (!value) {
+        return nullptr;
+      }
+      SourceRange range = merge_range(name.range, value->range());
+      return std::make_unique<ast::ValueAssignment>(std::move(range), std::string(name.text),
+                                                    std::move(type), std::move(value));
+    }
     return parse_value_assignment(name);
   }
   if (is_unsupported_construct(current_.kind)) {
@@ -307,8 +504,288 @@ std::unique_ptr<ast::ValueAssignment> Parser::parse_value_assignment(Token name_
 }
 
 std::unique_ptr<ast::Type> Parser::parse_type() {
-  auto tag = parse_optional_tag();
-  return parse_untagged_type(std::move(tag));
+  std::vector<ast::EncodingInstruction> eis;
+  std::optional<ast::Tag> tag;
+
+  while (check(TokenKind::LBracket)) {
+    Token start = advance();  // [
+    const bool is_ei = is_encoding_instruction_keyword(current_.kind);
+    if (is_ei) {
+      // Finish encoding instruction ( `[` already consumed ).
+      ast::EncodingInstruction ei;
+      ei.range = start.range;
+      if (match(TokenKind::KwARRAY)) {
+        ei.kind = ast::EncodingInstructionKind::Array;
+      } else if (match(TokenKind::KwBASE64)) {
+        ei.kind = ast::EncodingInstructionKind::Base64;
+      } else if (match(TokenKind::KwOBJECT)) {
+        ei.kind = ast::EncodingInstructionKind::Object;
+      } else if (match(TokenKind::KwUNWRAPPED)) {
+        ei.kind = ast::EncodingInstructionKind::Unwrapped;
+      } else if (match(TokenKind::KwNAME)) {
+        ei.kind = ast::EncodingInstructionKind::Name;
+        if (!expect(TokenKind::KwAS, "AS")) {
+          return nullptr;
+        }
+        std::string lit;
+        auto tr = parse_name_transform(&lit);
+        if (!tr) {
+          return nullptr;
+        }
+        ei.transform = *tr;
+        ei.literal = std::move(lit);
+      } else if (match(TokenKind::KwTEXT)) {
+        ei.kind = ast::EncodingInstructionKind::Text;
+        if (match(TokenKind::KwALL)) {
+          ei.text_all = true;
+          if (!expect(TokenKind::KwAS, "AS")) {
+            return nullptr;
+          }
+          std::string lit;
+          auto tr = parse_name_transform(&lit);
+          if (!tr) {
+            return nullptr;
+          }
+          ei.transform = *tr;
+          ei.literal = std::move(lit);
+        } else if (check(TokenKind::Identifier)) {
+          ei.text_item = std::string(current_.text);
+          advance();
+          if (!expect(TokenKind::KwAS, "AS")) {
+            return nullptr;
+          }
+          std::string lit;
+          auto tr = parse_name_transform(&lit);
+          if (!tr) {
+            return nullptr;
+          }
+          ei.transform = *tr;
+          ei.literal = std::move(lit);
+        }
+      } else if (match(TokenKind::KwATTRIBUTE)) {
+        ei.kind = ast::EncodingInstructionKind::Attribute;
+      } else if (match(TokenKind::KwUSE_NUMBER)) {
+        ei.kind = ast::EncodingInstructionKind::UseNumber;
+      } else if (match(TokenKind::KwLIST)) {
+        ei.kind = ast::EncodingInstructionKind::List;
+      } else if (match(TokenKind::KwUNTAGGED)) {
+        ei.kind = ast::EncodingInstructionKind::Untagged;
+      } else if (match(TokenKind::KwUSE_NIL)) {
+        ei.kind = ast::EncodingInstructionKind::UseNil;
+      }
+      Token end = current_;
+      if (!expect(TokenKind::RBracket, "']'")) {
+        return nullptr;
+      }
+      ei.range = merge_range(start.range, end.range);
+      eis.push_back(std::move(ei));
+    } else {
+      // Classic ASN.1 tag ( `[` already consumed ).
+      ast::Tag t;
+      t.range = start.range;
+      t.cls = ast::TagClass::Context;
+      if (match(TokenKind::KwUNIVERSAL)) {
+        t.cls = ast::TagClass::Universal;
+      } else if (match(TokenKind::KwAPPLICATION)) {
+        t.cls = ast::TagClass::Application;
+      } else if (match(TokenKind::KwPRIVATE)) {
+        t.cls = ast::TagClass::Private;
+      }
+      if (!check(TokenKind::Number)) {
+        error_at(current_, "expected tag number or encoding instruction");
+        return nullptr;
+      }
+      t.number_text = std::string(current_.text);
+      Token num = advance();
+      if (!expect(TokenKind::RBracket, "']'")) {
+        return nullptr;
+      }
+      if (match(TokenKind::KwIMPLICIT)) {
+        t.mode = ast::TagMode::Implicit;
+      } else if (match(TokenKind::KwEXPLICIT)) {
+        t.mode = ast::TagMode::Explicit;
+      }
+      t.range = merge_range(start.range, num.range);
+      tag = std::move(t);
+      // Only one ASN.1 tag is meaningful; stop prefix scan after it.
+      break;
+    }
+  }
+
+  auto type = parse_untagged_type(std::move(tag));
+  if (type && !eis.empty()) {
+    type->set_encoding_instructions(std::move(eis));
+  }
+  return type;
+}
+
+std::optional<ast::NameTransform> Parser::parse_name_transform(std::string* literal_out) {
+  if (match(TokenKind::KwCAPITALIZED)) {
+    return ast::NameTransform::Capitalized;
+  }
+  if (match(TokenKind::KwUPPERCASED)) {
+    return ast::NameTransform::Uppercased;
+  }
+  if (match(TokenKind::KwLOWERCASED)) {
+    return ast::NameTransform::Lowercased;
+  }
+  if (check(TokenKind::CharacterString)) {
+    if (literal_out) {
+      std::string t(current_.text);
+      if (t.size() >= 2 && t.front() == '"' && t.back() == '"') {
+        t = t.substr(1, t.size() - 2);
+      }
+      *literal_out = std::move(t);
+    }
+    advance();
+    return ast::NameTransform::Literal;
+  }
+  error_at(current_, "expected CAPITALIZED, UPPERCASED, LOWERCASED, or character string");
+  return std::nullopt;
+}
+
+std::optional<ast::EncodingInstruction> Parser::parse_one_encoding_instruction() {
+  if (!check(TokenKind::LBracket)) {
+    return std::nullopt;
+  }
+  Token start = advance();  // [
+  if (!is_encoding_instruction_keyword(current_.kind)) {
+    error_at(current_, "expected encoding instruction after '['");
+    return std::nullopt;
+  }
+  ast::EncodingInstruction ei;
+  ei.range = start.range;
+  if (match(TokenKind::KwARRAY)) {
+    ei.kind = ast::EncodingInstructionKind::Array;
+  } else if (match(TokenKind::KwBASE64)) {
+    ei.kind = ast::EncodingInstructionKind::Base64;
+  } else if (match(TokenKind::KwOBJECT)) {
+    ei.kind = ast::EncodingInstructionKind::Object;
+  } else if (match(TokenKind::KwUNWRAPPED)) {
+    ei.kind = ast::EncodingInstructionKind::Unwrapped;
+  } else if (match(TokenKind::KwNAME)) {
+    ei.kind = ast::EncodingInstructionKind::Name;
+    if (!expect(TokenKind::KwAS, "AS")) {
+      return std::nullopt;
+    }
+    std::string lit;
+    auto tr = parse_name_transform(&lit);
+    if (!tr) {
+      return std::nullopt;
+    }
+    ei.transform = *tr;
+    ei.literal = std::move(lit);
+  } else if (match(TokenKind::KwTEXT)) {
+    ei.kind = ast::EncodingInstructionKind::Text;
+    if (match(TokenKind::KwALL)) {
+      ei.text_all = true;
+      if (!expect(TokenKind::KwAS, "AS")) {
+        return std::nullopt;
+      }
+      std::string lit;
+      auto tr = parse_name_transform(&lit);
+      if (!tr) {
+        return std::nullopt;
+      }
+      ei.transform = *tr;
+      ei.literal = std::move(lit);
+    } else if (check(TokenKind::Identifier)) {
+      ei.text_item = std::string(current_.text);
+      advance();
+      if (!expect(TokenKind::KwAS, "AS")) {
+        return std::nullopt;
+      }
+      std::string lit;
+      auto tr = parse_name_transform(&lit);
+      if (!tr) {
+        return std::nullopt;
+      }
+      ei.transform = *tr;
+      ei.literal = std::move(lit);
+    }
+  } else if (match(TokenKind::KwATTRIBUTE)) {
+    ei.kind = ast::EncodingInstructionKind::Attribute;
+  } else if (match(TokenKind::KwUSE_NUMBER)) {
+    ei.kind = ast::EncodingInstructionKind::UseNumber;
+  } else if (match(TokenKind::KwLIST)) {
+    ei.kind = ast::EncodingInstructionKind::List;
+  } else if (match(TokenKind::KwUNTAGGED)) {
+    ei.kind = ast::EncodingInstructionKind::Untagged;
+  } else if (match(TokenKind::KwUSE_NIL)) {
+    ei.kind = ast::EncodingInstructionKind::UseNil;
+  }
+  Token end = current_;
+  if (!expect(TokenKind::RBracket, "']'")) {
+    return std::nullopt;
+  }
+  ei.range = merge_range(start.range, end.range);
+  return ei;
+}
+
+std::vector<ast::EncodingInstruction> Parser::parse_encoding_instructions() {
+  std::vector<ast::EncodingInstruction> out;
+  while (check(TokenKind::LBracket)) {
+    auto ei = parse_one_encoding_instruction();
+    if (!ei) {
+      break;
+    }
+    out.push_back(std::move(*ei));
+  }
+  return out;
+}
+
+std::vector<ast::EncodingControlClause> Parser::parse_encoding_control() {
+  std::vector<ast::EncodingControlClause> clauses;
+  advance();  // ENCODING-CONTROL
+  ast::EncodingControlFamily family = ast::EncodingControlFamily::Jer;
+  if (match(TokenKind::KwJER)) {
+    family = ast::EncodingControlFamily::Jer;
+  } else if (match(TokenKind::KwXER) || match(TokenKind::KwEXTENDED_XER)) {
+    family = ast::EncodingControlFamily::Xer;
+  } else {
+    error_at(current_, "expected JER, XER, or EXTENDED-XER after ENCODING-CONTROL");
+    return clauses;
+  }
+  while (check(TokenKind::LBracket)) {
+    auto ei = parse_one_encoding_instruction();
+    if (!ei) {
+      break;
+    }
+    ast::EncodingControlClause clause;
+    clause.instruction = std::move(*ei);
+    clause.range = clause.instruction.range;
+    clause.family = family;
+    if (match(TokenKind::KwOCTET)) {
+      expect(TokenKind::KwSTRING, "STRING");
+      clause.target = ast::EncodingControlTarget::OctetString;
+    } else if (match(TokenKind::KwBIT)) {
+      expect(TokenKind::KwSTRING, "STRING");
+      clause.target = ast::EncodingControlTarget::BitString;
+    } else if (match(TokenKind::KwBOOLEAN)) {
+      clause.target = ast::EncodingControlTarget::Boolean;
+    } else if (match(TokenKind::KwSEQUENCE)) {
+      if (match(TokenKind::KwOF)) {
+        clause.target = ast::EncodingControlTarget::SequenceOf;
+      } else {
+        clause.target = ast::EncodingControlTarget::Sequence;
+      }
+    } else if (match(TokenKind::KwCHOICE)) {
+      clause.target = ast::EncodingControlTarget::Choice;
+    } else if (match(TokenKind::KwSET)) {
+      if (match(TokenKind::KwOF)) {
+        clause.target = ast::EncodingControlTarget::SetOf;
+      } else {
+        clause.target = ast::EncodingControlTarget::Unknown;
+      }
+    } else if (match(TokenKind::KwENUMERATED)) {
+      clause.target = ast::EncodingControlTarget::Enumerated;
+    } else {
+      error_at(current_, "expected encoding-control target type");
+      break;
+    }
+    clauses.push_back(std::move(clause));
+  }
+  return clauses;
 }
 
 std::optional<ast::Tag> Parser::parse_optional_tag() {
@@ -403,6 +880,18 @@ std::unique_ptr<ast::Type> Parser::parse_untagged_type(std::optional<ast::Tag> t
     type = std::make_unique<ast::NullType>(start.range, std::move(tag), nullptr);
   } else if (match(TokenKind::KwREAL)) {
     type = std::make_unique<ast::RealType>(start.range, std::move(tag), nullptr);
+  } else if (match(TokenKind::KwEXTERNAL)) {
+    type = std::make_unique<ast::ExternalType>(start.range, std::move(tag), nullptr);
+  } else if (match(TokenKind::KwEMBEDDED)) {
+    if (!expect(TokenKind::KwPDV, "PDV")) {
+      return nullptr;
+    }
+    type = std::make_unique<ast::EmbeddedPdvType>(start.range, std::move(tag), nullptr);
+  } else if (match(TokenKind::KwCHARACTER)) {
+    if (!expect(TokenKind::KwSTRING, "STRING")) {
+      return nullptr;
+    }
+    type = std::make_unique<ast::CharacterStringType>(start.range, std::move(tag), nullptr);
   } else if (match(TokenKind::KwOBJECT)) {
     if (!expect(TokenKind::KwIDENTIFIER, "IDENTIFIER")) {
       return nullptr;
@@ -410,8 +899,38 @@ std::unique_ptr<ast::Type> Parser::parse_untagged_type(std::optional<ast::Tag> t
     type = std::make_unique<ast::ObjectIdentifierType>(start.range, std::move(tag), nullptr);
   } else if (match(TokenKind::KwRELATIVE_OID)) {
     type = std::make_unique<ast::RelativeOidType>(start.range, std::move(tag), nullptr);
+  } else if (match(TokenKind::KwINSTANCE)) {
+    if (!expect(TokenKind::KwOF, "OF")) {
+      return nullptr;
+    }
+    std::string class_name;
+    if (is_useful_object_class_token(current_.kind)) {
+      class_name = useful_object_class_name(current_.kind);
+      advance();
+    } else if (check(TokenKind::TypeReference)) {
+      class_name = std::string(current_.text);
+      advance();
+    } else {
+      error_at(current_,
+               "expected DefinedObjectClass (TypeReference, TYPE-IDENTIFIER, or ABSTRACT-SYNTAX)");
+      return nullptr;
+    }
+    type = std::make_unique<ast::InstanceOfType>(start.range, std::move(tag), nullptr,
+                                                 std::move(class_name));
   } else if (match(TokenKind::KwSEQUENCE)) {
-    if (match(TokenKind::KwOF)) {
+    if (check(TokenKind::LParen)) {
+      auto constraint = parse_optional_constraint();
+      if (!expect(TokenKind::KwOF, "OF")) {
+        return nullptr;
+      }
+      auto element = parse_type();
+      if (!element) {
+        return nullptr;
+      }
+      SourceRange range = merge_range(start.range, element->range());
+      type = std::make_unique<ast::SequenceOfType>(std::move(range), std::move(tag),
+                                                   std::move(constraint), std::move(element));
+    } else if (match(TokenKind::KwOF)) {
       auto element = parse_type();
       if (!element) {
         return nullptr;
@@ -431,7 +950,19 @@ std::unique_ptr<ast::Type> Parser::parse_untagged_type(std::optional<ast::Tag> t
                                                  std::move(items));
     }
   } else if (match(TokenKind::KwSET)) {
-    if (match(TokenKind::KwOF)) {
+    if (check(TokenKind::LParen)) {
+      auto constraint = parse_optional_constraint();
+      if (!expect(TokenKind::KwOF, "OF")) {
+        return nullptr;
+      }
+      auto element = parse_type();
+      if (!element) {
+        return nullptr;
+      }
+      SourceRange range = merge_range(start.range, element->range());
+      type = std::make_unique<ast::SetOfType>(std::move(range), std::move(tag),
+                                              std::move(constraint), std::move(element));
+    } else if (match(TokenKind::KwOF)) {
       auto element = parse_type();
       if (!element) {
         return nullptr;
@@ -465,7 +996,8 @@ std::unique_ptr<ast::Type> Parser::parse_untagged_type(std::optional<ast::Tag> t
              check(TokenKind::KwNumericString) || check(TokenKind::KwTeletexString) ||
              check(TokenKind::KwVideotexString) || check(TokenKind::KwGraphicString) ||
              check(TokenKind::KwGeneralString) || check(TokenKind::KwBMPString) ||
-             check(TokenKind::KwUniversalString)) {
+             check(TokenKind::KwUniversalString) || check(TokenKind::KwUTCTime) ||
+             check(TokenKind::KwGeneralizedTime)) {
     ast::StringKind kind = ast::StringKind::UTF8String;
     switch (current_.kind) {
       case TokenKind::KwUTF8String:
@@ -501,26 +1033,67 @@ std::unique_ptr<ast::Type> Parser::parse_untagged_type(std::optional<ast::Tag> t
       case TokenKind::KwUniversalString:
         kind = ast::StringKind::UniversalString;
         break;
+      case TokenKind::KwUTCTime:
+        kind = ast::StringKind::UTCTime;
+        break;
+      case TokenKind::KwGeneralizedTime:
+        kind = ast::StringKind::GeneralizedTime;
+        break;
       default:
         break;
     }
     advance();
     type = std::make_unique<ast::StringType>(start.range, std::move(tag), nullptr, kind);
-  } else if (check(TokenKind::TypeReference)) {
+  } else if (check(TokenKind::TypeReference) || is_useful_object_class_token(current_.kind)) {
     std::optional<std::string> module;
-    std::string name(current_.text);
+    std::string name = is_useful_object_class_token(current_.kind)
+                           ? useful_object_class_name(current_.kind)
+                           : std::string(current_.text);
     Token name_tok = advance();
-    type = std::make_unique<ast::ReferencedType>(name_tok.range, std::move(tag), nullptr,
-                                                 std::move(module), std::move(name));
+    if (match(TokenKind::Dot)) {
+      if (!expect(TokenKind::Ampersand, "'&' after '.' in object class field type")) {
+        return nullptr;
+      }
+      if (!check(TokenKind::TypeReference) && !check(TokenKind::Identifier)) {
+        error_at(current_, "expected field name after '.&'");
+        return nullptr;
+      }
+      Token field = advance();
+      SourceRange range = merge_range(name_tok.range, field.range);
+      type = std::make_unique<ast::ObjectClassFieldType>(
+          std::move(range), std::move(tag), nullptr, std::move(name), std::string(field.text));
+    } else {
+      std::vector<ast::ActualParameter> actuals;
+      if (check(TokenKind::LBrace)) {
+        actuals = parse_actual_parameter_list();
+      }
+      type = std::make_unique<ast::ReferencedType>(name_tok.range, std::move(tag), nullptr,
+                                                   std::move(module), std::move(name),
+                                                   std::move(actuals));
+    }
   } else {
     error_at(current_, "expected ASN.1 type");
     return nullptr;
   }
 
-  if (auto c = parse_optional_constraint()) {
-    SourceRange range = merge_range(type->range(), c->range());
+  // Zero or more successive constraints (X.680); combine with intersection.
+  std::vector<std::unique_ptr<ast::Constraint>> constraints;
+  while (auto c = parse_optional_constraint()) {
+    constraints.push_back(std::move(c));
+  }
+  if (!constraints.empty()) {
+    std::unique_ptr<ast::Constraint> combined;
+    if (constraints.size() == 1) {
+      combined = std::move(constraints[0]);
+    } else {
+      SourceRange range =
+          merge_range(constraints.front()->range(), constraints.back()->range());
+      combined = std::make_unique<ast::IntersectionConstraint>(std::move(range),
+                                                               std::move(constraints));
+    }
+    SourceRange range = merge_range(type->range(), combined->range());
     type->set_range(range);
-    type->set_constraint(std::move(c));
+    type->set_constraint(std::move(combined));
   }
   return type;
 }
@@ -530,15 +1103,80 @@ std::unique_ptr<ast::Constraint> Parser::parse_optional_constraint() {
     return nullptr;
   }
   Token start = advance();  // (
+  // ContentsConstraint: (CONTAINING Type ...) or (ENCODED BY ...)
+  if (check(TokenKind::KwCONTAINING) || check(TokenKind::KwENCODED)) {
+    auto contents = parse_contents_constraint();
+    Token end = current_;
+    expect(TokenKind::RParen, "')'");
+    if (contents) {
+      contents->set_range(merge_range(start.range, end.range));
+    }
+    return contents;
+  }
+  // Table / component-relation constraints (X.682).
+  if (check(TokenKind::TypeReference) || check(TokenKind::LBrace)) {
+    // Ambiguity: ({1}) could be weird; prefer table when '{' looks like object set
+    // (identifier or nested '{' or ellipsis) or TypeReference as set name.
+    bool try_table = check(TokenKind::TypeReference);
+    if (check(TokenKind::LBrace)) {
+      // Peek one token after '{' without a real peek API: if Identifier / '{' / Ellipsis
+      // treat as object set; if Number treat as OID value in single-value — rare in
+      // constraint position. Use Identifier/Ampersand/Ellipsis/LBrace as object-set cues.
+      // We can't peek; consume via table parser which expects object set form.
+      try_table = true;
+    }
+    if (try_table) {
+      auto table = parse_table_or_component_constraint();
+      Token end = current_;
+      expect(TokenKind::RParen, "')'");
+      if (table) {
+        table->set_range(merge_range(start.range, end.range));
+      }
+      return table;
+    }
+  }
   auto inner = parse_subtype_constraint();
   Token end = current_;
   expect(TokenKind::RParen, "')'");
   if (!inner) {
     return nullptr;
   }
-  // If the constraint already has a range, keep it; else wrap span.
   inner->set_range(merge_range(start.range, end.range));
   return inner;
+}
+
+std::unique_ptr<ast::Constraint> Parser::parse_contents_constraint() {
+  Token start = current_;
+  std::unique_ptr<ast::Type> contained;
+  std::unique_ptr<ast::Value> encoded_by;
+
+  if (match(TokenKind::KwCONTAINING)) {
+    contained = parse_type();
+    if (!contained) {
+      return nullptr;
+    }
+  }
+  if (match(TokenKind::KwENCODED)) {
+    if (!expect(TokenKind::KwBY, "BY")) {
+      return nullptr;
+    }
+    encoded_by = parse_value();
+    if (!encoded_by) {
+      return nullptr;
+    }
+  }
+  if (!contained && !encoded_by) {
+    error_at(start, "expected CONTAINING Type or ENCODED BY Value");
+    return nullptr;
+  }
+  SourceRange range = start.range;
+  if (encoded_by) {
+    range = merge_range(range, encoded_by->range());
+  } else if (contained) {
+    range = merge_range(range, contained->range());
+  }
+  return std::make_unique<ast::ContentsConstraint>(std::move(range), std::move(contained),
+                                                   std::move(encoded_by));
 }
 
 std::unique_ptr<ast::Constraint> Parser::parse_subtype_constraint() {
@@ -610,12 +1248,71 @@ std::unique_ptr<ast::Constraint> Parser::parse_constraint_atom() {
     SourceRange range = merge_range(size_tok.range, end.range);
     return std::make_unique<ast::SizeConstraint>(std::move(range), std::move(inner));
   }
+  if (check(TokenKind::KwWITH)) {
+    return parse_with_components_constraint();
+  }
+  if (check(TokenKind::KwCONTAINING) || check(TokenKind::KwENCODED)) {
+    return parse_contents_constraint();
+  }
   if (match(TokenKind::LParen)) {
     auto inner = parse_subtype_constraint();
     expect(TokenKind::RParen, "')'");
     return inner;
   }
   return parse_constraint_element();
+}
+
+std::unique_ptr<ast::Constraint> Parser::parse_with_components_constraint() {
+  Token start = current_;
+  if (!expect(TokenKind::KwWITH, "WITH")) {
+    return nullptr;
+  }
+  if (!expect(TokenKind::KwCOMPONENTS, "COMPONENTS")) {
+    return nullptr;
+  }
+  if (!expect(TokenKind::LBrace, "'{' after WITH COMPONENTS")) {
+    return nullptr;
+  }
+  std::vector<ast::NamedComponentConstraint> components;
+  if (!check(TokenKind::RBrace)) {
+    do {
+      if (check(TokenKind::RBrace)) {
+        break;
+      }
+      if (!check(TokenKind::Identifier)) {
+        error_at(current_, "expected component identifier in WITH COMPONENTS");
+        return nullptr;
+      }
+      ast::NamedComponentConstraint nc;
+      nc.name = std::string(current_.text);
+      nc.range = current_.range;
+      advance();
+      if (match(TokenKind::LParen)) {
+        nc.value_constraint = parse_subtype_constraint();
+        if (!nc.value_constraint) {
+          return nullptr;
+        }
+        expect(TokenKind::RParen, "')' after component constraint");
+      }
+      if (match(TokenKind::KwPRESENT)) {
+        nc.presence = ast::ComponentPresence::Present;
+      } else if (match(TokenKind::KwABSENT)) {
+        nc.presence = ast::ComponentPresence::Absent;
+      } else if (match(TokenKind::KwOPTIONAL)) {
+        nc.presence = ast::ComponentPresence::Optional;
+      }
+      if (nc.value_constraint) {
+        nc.range = merge_range(nc.range, nc.value_constraint->range());
+      }
+      components.push_back(std::move(nc));
+    } while (match(TokenKind::Comma));
+  }
+  Token end = current_;
+  if (!expect(TokenKind::RBrace, "'}' after WITH COMPONENTS")) {
+    return nullptr;
+  }
+  return std::make_unique<ast::WithComponentsConstraint>(merge_range(start.range, end.range),
+                                                         std::move(components));
 }
 
 std::unique_ptr<ast::Constraint> Parser::parse_constraint_element() {
@@ -809,6 +1506,9 @@ std::unique_ptr<ast::ComponentItem> Parser::parse_component_item(bool choice) {
     Token e = advance();
     return std::make_unique<ast::ExtensionMarker>(e.range);
   }
+  if (check(TokenKind::VersionLBracket)) {
+    return parse_version_addition_group(choice);
+  }
 
   if (!check(TokenKind::Identifier)) {
     error_at(current_, choice ? "expected CHOICE alternative name"
@@ -842,6 +1542,35 @@ std::unique_ptr<ast::ComponentItem> Parser::parse_component_item(bool choice) {
   return std::make_unique<ast::Component>(std::move(range), std::string(name.text),
                                           std::move(type), presence,
                                           std::move(default_value));
+}
+
+std::unique_ptr<ast::ComponentItem> Parser::parse_version_addition_group(bool choice) {
+  Token start = current_;
+  if (!expect(TokenKind::VersionLBracket, "'[['")) {
+    return nullptr;
+  }
+  std::vector<std::unique_ptr<ast::ComponentItem>> items;
+  if (!check(TokenKind::VersionRBracket)) {
+    do {
+      if (check(TokenKind::VersionRBracket)) {
+        break;
+      }
+      // Nested version groups / ellipsis are unusual inside [[ ]]; allow components only.
+      if (check(TokenKind::Ellipsis) || check(TokenKind::VersionLBracket)) {
+        error_at(current_, "unexpected token inside version brackets");
+        break;
+      }
+      auto item = parse_component_item(choice);
+      if (!item) {
+        break;
+      }
+      items.push_back(std::move(item));
+    } while (match(TokenKind::Comma));
+  }
+  Token end = current_;
+  expect(TokenKind::VersionRBracket, "']]'");
+  return std::make_unique<ast::VersionAdditionGroup>(merge_range(start.range, end.range),
+                                                     std::move(items));
 }
 
 std::unique_ptr<ast::Value> Parser::parse_integer_value() {
@@ -1000,6 +1729,164 @@ std::unique_ptr<ast::Value> Parser::parse_value() {
   }
   error_at(current_, "expected ASN.1 value");
   return nullptr;
+}
+
+bool Parser::is_governor_type_token(TokenKind kind) const {
+  switch (kind) {
+    case TokenKind::TypeReference:
+    case TokenKind::KwBOOLEAN:
+    case TokenKind::KwINTEGER:
+    case TokenKind::KwBIT:
+    case TokenKind::KwOCTET:
+    case TokenKind::KwNULL:
+    case TokenKind::KwREAL:
+    case TokenKind::KwEXTERNAL:
+    case TokenKind::KwEMBEDDED:
+    case TokenKind::KwCHARACTER:
+    case TokenKind::KwENUMERATED:
+    case TokenKind::KwSEQUENCE:
+    case TokenKind::KwSET:
+    case TokenKind::KwCHOICE:
+    case TokenKind::KwOBJECT:
+    case TokenKind::KwRELATIVE_OID:
+    case TokenKind::KwUTF8String:
+    case TokenKind::KwIA5String:
+    case TokenKind::KwPrintableString:
+    case TokenKind::KwVisibleString:
+    case TokenKind::KwNumericString:
+    case TokenKind::KwTeletexString:
+    case TokenKind::KwVideotexString:
+    case TokenKind::KwGraphicString:
+    case TokenKind::KwGeneralString:
+    case TokenKind::KwBMPString:
+    case TokenKind::KwUniversalString:
+    case TokenKind::KwUTCTime:
+    case TokenKind::KwGeneralizedTime:
+    case TokenKind::KwTYPE_IDENTIFIER:
+    case TokenKind::KwABSTRACT_SYNTAX:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool Parser::is_type_start_token(TokenKind kind) const {
+  return is_governor_type_token(kind) || kind == TokenKind::LBracket ||
+         kind == TokenKind::KwINSTANCE;
+}
+
+std::string Parser::consume_governor_name() {
+  if (check(TokenKind::KwBIT)) {
+    advance();
+    expect(TokenKind::KwSTRING, "STRING");
+    return "BIT STRING";
+  }
+  if (check(TokenKind::KwOCTET)) {
+    advance();
+    expect(TokenKind::KwSTRING, "STRING");
+    return "OCTET STRING";
+  }
+  if (check(TokenKind::KwOBJECT)) {
+    advance();
+    expect(TokenKind::KwIDENTIFIER, "IDENTIFIER");
+    return "OBJECT IDENTIFIER";
+  }
+  std::string name = std::string(current_.text);
+  advance();
+  return name;
+}
+
+std::vector<ast::FormalParameter> Parser::parse_formal_parameter_list() {
+  std::vector<ast::FormalParameter> formals;
+  if (!expect(TokenKind::LBrace, "'{'")) {
+    return formals;
+  }
+  if (!check(TokenKind::RBrace)) {
+    do {
+      if (check(TokenKind::RBrace)) {
+        break;
+      }
+      ast::FormalParameter fp;
+      if (is_governor_type_token(current_.kind)) {
+        // Governor : Dummy  OR  Dummy alone (TypeReference type parameter)
+        Token first = current_;
+        std::string first_name = consume_governor_name();
+        if (match(TokenKind::Colon)) {
+          fp.governor = std::move(first_name);
+          if (!check(TokenKind::TypeReference) && !check(TokenKind::Identifier)) {
+            error_at(current_, "expected dummy reference after ':'");
+            break;
+          }
+          fp.type_ref_name = check(TokenKind::TypeReference);
+          fp.name = std::string(current_.text);
+          advance();
+        } else {
+          // DummyReference alone — must be a type parameter (TypeReference).
+          if (first.kind != TokenKind::TypeReference) {
+            error_at(first, "expected TypeReference dummy parameter or Governor : Dummy");
+            break;
+          }
+          fp.name = std::move(first_name);
+          fp.type_ref_name = true;
+        }
+      } else if (check(TokenKind::Identifier)) {
+        fp.name = std::string(current_.text);
+        fp.type_ref_name = false;
+        advance();
+      } else {
+        error_at(current_, "expected formal parameter");
+        break;
+      }
+      formals.push_back(std::move(fp));
+    } while (match(TokenKind::Comma));
+  }
+  expect(TokenKind::RBrace, "'}'");
+  return formals;
+}
+
+std::vector<ast::ActualParameter> Parser::parse_actual_parameter_list() {
+  std::vector<ast::ActualParameter> actuals;
+  if (!expect(TokenKind::LBrace, "'{'")) {
+    return actuals;
+  }
+  if (!check(TokenKind::RBrace)) {
+    do {
+      if (check(TokenKind::RBrace)) {
+        break;
+      }
+      ast::ActualParameter ap;
+      if (check(TokenKind::LBrace)) {
+        // Object set actual — may be {{Name}} nested.
+        auto set = parse_object_set_defn();
+        if (!set) {
+          break;
+        }
+        ap.inline_object_set = true;
+        if (set->elements().size() == 1 && set->elements()[0].object_ref) {
+          ap.object_set_name = *set->elements()[0].object_ref;
+        }
+      } else if (check(TokenKind::Number) || check(TokenKind::Minus) ||
+                 check(TokenKind::KwTRUE) || check(TokenKind::KwFALSE) ||
+                 check(TokenKind::CharacterString) || check(TokenKind::BinaryString) ||
+                 check(TokenKind::HexString) || check(TokenKind::Identifier)) {
+        ap.value = parse_value();
+        if (!ap.value) {
+          break;
+        }
+      } else if (is_type_start_token(current_.kind)) {
+        ap.type = parse_type();
+        if (!ap.type) {
+          break;
+        }
+      } else {
+        error_at(current_, "expected actual parameter (type, value, or object set)");
+        break;
+      }
+      actuals.push_back(std::move(ap));
+    } while (match(TokenKind::Comma));
+  }
+  expect(TokenKind::RBrace, "'}'");
+  return actuals;
 }
 
 }  // namespace asn1

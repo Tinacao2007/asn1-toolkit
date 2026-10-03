@@ -1,14 +1,123 @@
 #include <asn1/semantic/analyzer.hpp>
 
+#include <asn1/ast/encoding.hpp>
+#include <asn1/ast/ioc.hpp>
 #include <asn1/ast/type.hpp>
 #include <asn1/constraints/normalize.hpp>
 
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
 namespace asn1 {
 namespace {
+
+/// Extract a closed integer interval from a simple value / range constraint.
+bool extract_i64_bounds(const ast::Constraint* c, std::int64_t& lo, std::int64_t& hi) {
+  if (!c) {
+    return false;
+  }
+  if (const auto* single = dynamic_cast<const ast::SingleValueConstraint*>(c)) {
+    const auto* iv = dynamic_cast<const ast::IntegerValue*>(&single->value());
+    if (!iv) {
+      return false;
+    }
+    auto v = ir::BigInt::from_decimal(iv->text(), iv->negative());
+    if (!v.as_i64) {
+      return false;
+    }
+    lo = hi = *v.as_i64;
+    return true;
+  }
+  if (const auto* range = dynamic_cast<const ast::ValueRangeConstraint*>(c)) {
+    if (!range->lower() || !range->upper()) {
+      return false;
+    }
+    const auto* lo_v = dynamic_cast<const ast::IntegerValue*>(range->lower());
+    const auto* hi_v = dynamic_cast<const ast::IntegerValue*>(range->upper());
+    if (!lo_v || !hi_v) {
+      return false;
+    }
+    auto lo_b = ir::BigInt::from_decimal(lo_v->text(), lo_v->negative());
+    auto hi_b = ir::BigInt::from_decimal(hi_v->text(), hi_v->negative());
+    if (!lo_b.as_i64 || !hi_b.as_i64) {
+      return false;
+    }
+    lo = *lo_b.as_i64;
+    hi = *hi_b.as_i64;
+    return true;
+  }
+  if (const auto* u = dynamic_cast<const ast::UnionConstraint*>(c)) {
+    if (u->alternatives().size() == 1) {
+      return extract_i64_bounds(u->alternatives()[0].get(), lo, hi);
+    }
+  }
+  if (const auto* inter = dynamic_cast<const ast::IntersectionConstraint*>(c)) {
+    if (inter->parts().size() == 1) {
+      return extract_i64_bounds(inter->parts()[0].get(), lo, hi);
+    }
+  }
+  return false;
+}
+
+ir::RealIeeeForm classify_real_with_components(const ast::WithComponentsConstraint& wc) {
+  std::optional<std::int64_t> mant_lo, mant_hi, base, exp_lo, exp_hi;
+  for (const auto& c : wc.components()) {
+    std::int64_t lo = 0;
+    std::int64_t hi = 0;
+    if (!c.value_constraint || !extract_i64_bounds(c.value_constraint.get(), lo, hi)) {
+      continue;
+    }
+    if (c.name == "mantissa") {
+      mant_lo = lo;
+      mant_hi = hi;
+    } else if (c.name == "base") {
+      if (lo == hi) {
+        base = lo;
+      }
+    } else if (c.name == "exponent") {
+      exp_lo = lo;
+      exp_hi = hi;
+    }
+  }
+  if (!mant_lo || !mant_hi || !base || !exp_lo || !exp_hi) {
+    return ir::RealIeeeForm::Unconstrained;
+  }
+  if (*base == 2 && *mant_lo >= -16777215 && *mant_hi <= 16777215 && *exp_lo >= -149 &&
+      *exp_hi <= 104) {
+    return ir::RealIeeeForm::Binary32;
+  }
+  if (*base == 2 && *mant_lo >= -9007199254740991LL && *mant_hi <= 9007199254740991LL &&
+      *exp_lo >= -1074 && *exp_hi <= 971) {
+    return ir::RealIeeeForm::Binary64;
+  }
+  return ir::RealIeeeForm::Unconstrained;
+}
+
+ir::RealIeeeForm real_ieee_form_from_constraint(const ast::Constraint* c) {
+  if (!c) {
+    return ir::RealIeeeForm::Unconstrained;
+  }
+  if (const auto* wc = dynamic_cast<const ast::WithComponentsConstraint*>(c)) {
+    return classify_real_with_components(*wc);
+  }
+  if (const auto* inter = dynamic_cast<const ast::IntersectionConstraint*>(c)) {
+    for (const auto& p : inter->parts()) {
+      auto f = real_ieee_form_from_constraint(p.get());
+      if (f != ir::RealIeeeForm::Unconstrained) {
+        return f;
+      }
+    }
+  }
+  if (const auto* u = dynamic_cast<const ast::UnionConstraint*>(c)) {
+    if (u->alternatives().size() == 1) {
+      return real_ieee_form_from_constraint(u->alternatives()[0].get());
+    }
+  }
+  return ir::RealIeeeForm::Unconstrained;
+}
 
 ir::Tag universal(std::uint64_t number) {
   return ir::Tag{ir::TagClass::Universal, number, false};
@@ -39,8 +148,18 @@ ir::Tag builtin_tag_for(const ast::Type& type) {
   if (dynamic_cast<const ast::EnumeratedType*>(&type)) {
     return universal(10);
   }
+  if (dynamic_cast<const ast::EmbeddedPdvType*>(&type)) {
+    return universal(11);
+  }
   if (dynamic_cast<const ast::RelativeOidType*>(&type)) {
     return universal(13);
+  }
+  if (dynamic_cast<const ast::CharacterStringType*>(&type)) {
+    return universal(29);
+  }
+  if (dynamic_cast<const ast::ExternalType*>(&type) ||
+      dynamic_cast<const ast::InstanceOfType*>(&type)) {
+    return universal(8);
   }
   if (dynamic_cast<const ast::SequenceOfType*>(&type) ||
       dynamic_cast<const ast::SequenceType*>(&type)) {
@@ -49,6 +168,10 @@ ir::Tag builtin_tag_for(const ast::Type& type) {
   if (dynamic_cast<const ast::SetOfType*>(&type) ||
       dynamic_cast<const ast::SetType*>(&type)) {
     return universal(17);
+  }
+  // Object class field types are open / untagged at the universal level by default.
+  if (dynamic_cast<const ast::ObjectClassFieldType*>(&type)) {
+    return ir::Tag{};
   }
   if (const auto* s = dynamic_cast<const ast::StringType*>(&type)) {
     switch (s->kind()) {
@@ -74,6 +197,10 @@ ir::Tag builtin_tag_for(const ast::Type& type) {
         return universal(28);
       case ast::StringKind::BMPString:
         return universal(30);
+      case ast::StringKind::UTCTime:
+        return universal(23);
+      case ast::StringKind::GeneralizedTime:
+        return universal(24);
     }
   }
   return universal(0);
@@ -121,6 +248,10 @@ ir::StringKind map_string_kind(ast::StringKind k) {
       return ir::StringKind::BMPString;
     case ast::StringKind::UniversalString:
       return ir::StringKind::UniversalString;
+    case ast::StringKind::UTCTime:
+      return ir::StringKind::UTCTime;
+    case ast::StringKind::GeneralizedTime:
+      return ir::StringKind::GeneralizedTime;
   }
   return ir::StringKind::UTF8String;
 }
@@ -171,9 +302,176 @@ struct LowerCtx {
   const ast::Module& mod;
   std::unordered_set<std::string> resolving;
   std::unordered_map<std::string, ir::TypeId> named_ids;
+  std::uint32_t synth_serial = 0;
 };
 
-ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& assigned_name);
+std::string synth_type_name(LowerCtx& ctx, const std::string& assigned, const char* kind) {
+  if (!assigned.empty()) {
+    return assigned;
+  }
+  return std::string("_") + kind + std::to_string(++ctx.synth_serial);
+}
+
+struct SubstEnv {
+  std::unordered_map<std::string, const ast::ActualParameter*> by_name;
+};
+
+/// Walk a constraint tree for the first ContentsConstraint contained type.
+const ast::Type* find_containing_type(const ast::Constraint* c) {
+  if (!c) {
+    return nullptr;
+  }
+  if (const auto* contents = dynamic_cast<const ast::ContentsConstraint*>(c)) {
+    return contents->contained();
+  }
+  if (const auto* size = dynamic_cast<const ast::SizeConstraint*>(c)) {
+    return find_containing_type(&size->inner());
+  }
+  if (const auto* ext = dynamic_cast<const ast::ExtensibleConstraint*>(c)) {
+    return find_containing_type(ext->root());
+  }
+  if (const auto* uni = dynamic_cast<const ast::UnionConstraint*>(c)) {
+    for (const auto& alt : uni->alternatives()) {
+      if (const ast::Type* t = find_containing_type(alt.get())) {
+        return t;
+      }
+    }
+  }
+  if (const auto* inter = dynamic_cast<const ast::IntersectionConstraint*>(c)) {
+    for (const auto& part : inter->parts()) {
+      if (const ast::Type* t = find_containing_type(part.get())) {
+        return t;
+      }
+    }
+  }
+  return nullptr;
+}
+
+ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& assigned_name,
+                      const SubstEnv* subst = nullptr);
+
+ir::Field::JerNameForm map_jer_name_form(ast::NameTransform t) {
+  switch (t) {
+    case ast::NameTransform::AsIs:
+      return ir::Field::JerNameForm::AsIs;
+    case ast::NameTransform::Capitalized:
+      return ir::Field::JerNameForm::Capitalized;
+    case ast::NameTransform::Uppercased:
+      return ir::Field::JerNameForm::Uppercased;
+    case ast::NameTransform::Lowercased:
+      return ir::Field::JerNameForm::Lowercased;
+    case ast::NameTransform::Literal:
+      return ir::Field::JerNameForm::Literal;
+  }
+  return ir::Field::JerNameForm::AsIs;
+}
+
+ir::JerEncoding::TextForm map_jer_text_form(ast::NameTransform t) {
+  switch (t) {
+    case ast::NameTransform::AsIs:
+      return ir::JerEncoding::TextForm::AsIs;
+    case ast::NameTransform::Capitalized:
+      return ir::JerEncoding::TextForm::Capitalized;
+    case ast::NameTransform::Uppercased:
+      return ir::JerEncoding::TextForm::Uppercased;
+    case ast::NameTransform::Lowercased:
+      return ir::JerEncoding::TextForm::Lowercased;
+    case ast::NameTransform::Literal:
+      return ir::JerEncoding::TextForm::Literal;
+  }
+  return ir::JerEncoding::TextForm::AsIs;
+}
+
+void apply_jer_instructions(ir::Type& out,
+                            const std::vector<ast::EncodingInstruction>& eis) {
+  for (const auto& ei : eis) {
+    switch (ei.kind) {
+      case ast::EncodingInstructionKind::Array:
+        out.jer.array = true;
+        break;
+      case ast::EncodingInstructionKind::Base64:
+        out.jer.base64 = true;
+        break;
+      case ast::EncodingInstructionKind::Object:
+        out.jer.object = true;
+        break;
+      case ast::EncodingInstructionKind::Unwrapped:
+        out.jer.unwrapped = true;
+        break;
+      case ast::EncodingInstructionKind::Name:
+        break;
+      case ast::EncodingInstructionKind::Text:
+        out.jer.text_form = map_jer_text_form(ei.transform);
+        out.jer.text_literal = ei.literal;
+        break;
+      case ast::EncodingInstructionKind::Attribute:
+      case ast::EncodingInstructionKind::UseNumber:
+      case ast::EncodingInstructionKind::List:
+      case ast::EncodingInstructionKind::Untagged:
+      case ast::EncodingInstructionKind::UseNil:
+        break;
+    }
+  }
+}
+
+void apply_exer_instructions(ir::Type& out,
+                             const std::vector<ast::EncodingInstruction>& eis) {
+  for (const auto& ei : eis) {
+    switch (ei.kind) {
+      case ast::EncodingInstructionKind::Base64:
+        out.exer.base64 = true;
+        break;
+      case ast::EncodingInstructionKind::Text:
+        out.exer.text = true;
+        break;
+      case ast::EncodingInstructionKind::UseNumber:
+        out.exer.use_number = true;
+        break;
+      case ast::EncodingInstructionKind::List:
+        out.exer.list = true;
+        break;
+      case ast::EncodingInstructionKind::Attribute:
+      case ast::EncodingInstructionKind::Untagged:
+      case ast::EncodingInstructionKind::UseNil:
+      case ast::EncodingInstructionKind::Name:
+      case ast::EncodingInstructionKind::Array:
+      case ast::EncodingInstructionKind::Object:
+      case ast::EncodingInstructionKind::Unwrapped:
+        break;
+    }
+  }
+}
+
+void apply_field_jer_name_from_ast(ir::Field& field, const ast::Type& ast_type) {
+  for (const auto& ei : ast_type.encoding_instructions()) {
+    if (ei.kind == ast::EncodingInstructionKind::Name) {
+      field.jer_name_form = map_jer_name_form(ei.transform);
+      field.jer_name_literal = ei.literal;
+    }
+  }
+}
+
+void apply_field_exer_from_ast(ir::Field& field, const ast::Type& ast_type) {
+  for (const auto& ei : ast_type.encoding_instructions()) {
+    switch (ei.kind) {
+      case ast::EncodingInstructionKind::Attribute:
+        field.exer.attribute = true;
+        break;
+      case ast::EncodingInstructionKind::Untagged:
+        field.exer.untagged = true;
+        break;
+      case ast::EncodingInstructionKind::UseNil:
+        field.exer.use_nil = true;
+        break;
+      case ast::EncodingInstructionKind::Name:
+        field.jer_name_form = map_jer_name_form(ei.transform);
+        field.jer_name_literal = ei.literal;
+        break;
+      default:
+        break;
+    }
+  }
+}
 
 ir::Presence map_presence(ast::Presence p) {
   switch (p) {
@@ -195,8 +493,121 @@ void apply_outer_tag(ir::Type& out, const ast::Type& type, ast::TagDefault tag_d
   }
 }
 
-ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& assigned_name) {
+ir::TypeId make_builtin_scalar(LowerCtx& ctx, ir::TypeKind kind, ir::Tag tag,
+                               ir::StringKind string_kind = ir::StringKind::UTF8String) {
+  ir::Type t;
+  t.kind = kind;
+  t.tag = tag;
+  if (kind == ir::TypeKind::String) {
+    t.string.kind = string_kind;
+  }
+  return ctx.model.arena.add(std::move(t));
+}
+
+ir::Field make_field(std::string name, ir::TypeId type, ir::Presence presence, ir::Tag tag) {
+  ir::Field f;
+  f.name = std::move(name);
+  f.type = type;
+  f.presence = presence;
+  f.tag = tag;
+  return f;
+}
+
+ir::TypeId lower_identification_choice(LowerCtx& ctx, const std::string& base) {
+  const ir::TypeId oid_ty = make_builtin_scalar(ctx, ir::TypeKind::ObjectIdentifier, universal(6));
+  const ir::TypeId int_ty = make_builtin_scalar(ctx, ir::TypeKind::Integer, universal(2));
+  const ir::TypeId null_ty = make_builtin_scalar(ctx, ir::TypeKind::Null, universal(5));
+
+  ir::Type syntaxes;
+  syntaxes.kind = ir::TypeKind::Sequence;
+  syntaxes.module = ctx.mod.name();
+  syntaxes.name = base + "-syntaxes";
+  syntaxes.tag = universal(16);
+  syntaxes.sequence.root.push_back(make_field(
+      "abstract", oid_ty, ir::Presence::Mandatory, ir::Tag{ir::TagClass::Context, 0, false}));
+  syntaxes.sequence.root.push_back(make_field(
+      "transfer", oid_ty, ir::Presence::Mandatory, ir::Tag{ir::TagClass::Context, 1, false}));
+  const ir::TypeId syntaxes_id = ctx.model.arena.add(std::move(syntaxes));
+
+  ir::Type ctx_neg;
+  ctx_neg.kind = ir::TypeKind::Sequence;
+  ctx_neg.module = ctx.mod.name();
+  ctx_neg.name = base + "-context-negotiation";
+  ctx_neg.tag = universal(16);
+  ctx_neg.sequence.root.push_back(
+      make_field("presentation-context-id", int_ty, ir::Presence::Mandatory,
+                 ir::Tag{ir::TagClass::Context, 0, false}));
+  ctx_neg.sequence.root.push_back(
+      make_field("transfer-syntax", oid_ty, ir::Presence::Mandatory,
+                 ir::Tag{ir::TagClass::Context, 1, false}));
+  const ir::TypeId ctx_neg_id = ctx.model.arena.add(std::move(ctx_neg));
+
+  ir::Type ident;
+  ident.kind = ir::TypeKind::Choice;
+  ident.module = ctx.mod.name();
+  ident.name = base + "-identification";
+  ident.choice.alternatives.push_back(make_field(
+      "syntaxes", syntaxes_id, ir::Presence::Mandatory, ir::Tag{ir::TagClass::Context, 0, true}));
+  ident.choice.alternatives.push_back(make_field(
+      "syntax", oid_ty, ir::Presence::Mandatory, ir::Tag{ir::TagClass::Context, 1, false}));
+  ident.choice.alternatives.push_back(
+      make_field("presentation-context-id", int_ty, ir::Presence::Mandatory,
+                 ir::Tag{ir::TagClass::Context, 2, false}));
+  ident.choice.alternatives.push_back(
+      make_field("context-negotiation", ctx_neg_id, ir::Presence::Mandatory,
+                 ir::Tag{ir::TagClass::Context, 3, true}));
+  ident.choice.alternatives.push_back(
+      make_field("transfer-syntax", oid_ty, ir::Presence::Mandatory,
+                 ir::Tag{ir::TagClass::Context, 4, false}));
+  ident.choice.alternatives.push_back(make_field(
+      "fixed", null_ty, ir::Presence::Mandatory, ir::Tag{ir::TagClass::Context, 5, false}));
+  return ctx.model.arena.add(std::move(ident));
+}
+
+ir::TypeId lower_embedded_or_charstring(LowerCtx& ctx, const std::string& assigned_name,
+                                        const ast::Type& ast_type, std::uint64_t univ_tag,
+                                        const char* kind, const char* value_field_name) {
+  const std::string base = synth_type_name(ctx, assigned_name, kind);
+  const ir::TypeId ident_id = lower_identification_choice(ctx, base);
+  const ir::TypeId desc_ty =
+      make_builtin_scalar(ctx, ir::TypeKind::String, universal(7), ir::StringKind::GraphicString);
+  const ir::TypeId oct_ty = make_builtin_scalar(ctx, ir::TypeKind::OctetString, universal(4));
+
+  // X.680 associated SEQUENCE with AUTOMATIC-style tags:
+  // identification [0] EXPLICIT, data-value-descriptor [1] OPTIONAL, value [2].
+  ir::Type seq;
+  seq.kind = ir::TypeKind::Sequence;
+  seq.module = ctx.mod.name();
+  seq.name = base;
+  seq.tag = universal(univ_tag);
+  seq.sequence.root.push_back(
+      make_field("identification", ident_id, ir::Presence::Mandatory,
+                 ir::Tag{ir::TagClass::Context, 0, true}));
+  seq.sequence.root.push_back(
+      make_field("data-value-descriptor", desc_ty, ir::Presence::Optional,
+                 ir::Tag{ir::TagClass::Context, 1, false}));
+  seq.sequence.root.push_back(
+      make_field(value_field_name, oct_ty, ir::Presence::Mandatory,
+                 ir::Tag{ir::TagClass::Context, 2, false}));
+  apply_jer_instructions(seq, ast_type.encoding_instructions());
+  apply_exer_instructions(seq, ast_type.encoding_instructions());
+  apply_outer_tag(seq, ast_type, ctx.mod.tag_default());
+  if (!ast_type.tag()) {
+    seq.tag = universal(univ_tag);
+  }
+  return ctx.model.arena.add(std::move(seq));
+}
+
+ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& assigned_name,
+                      const SubstEnv* subst) {
   if (const auto* ref = dynamic_cast<const ast::ReferencedType*>(&type)) {
+    if (subst) {
+      auto sit = subst->by_name.find(ref->name());
+      if (sit != subst->by_name.end() && sit->second && sit->second->type) {
+        return lower_type(ctx, *sit->second->type, assigned_name, subst);
+      }
+    }
+
     std::string owner = ref->module() ? *ref->module() : ctx.mod.name();
     std::string name = ref->name();
     Symbol* sym = ctx.symbols.lookup(owner, name);
@@ -204,6 +615,27 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       owner = sym->import_from_module;
       sym = ctx.symbols.find(owner, name);
     }
+
+    // Parameterized instantiation.
+    if (!ref->actuals().empty() && sym && sym->kind == SymbolKind::Type && !sym->is_import) {
+      const auto* ta = dynamic_cast<const ast::TypeAssignment*>(sym->ast);
+      if (ta && !ta->parameters().empty()) {
+        SubstEnv local;
+        const auto& formals = ta->parameters();
+        for (std::size_t i = 0; i < formals.size() && i < ref->actuals().size(); ++i) {
+          local.by_name[formals[i].name] = &ref->actuals()[i];
+        }
+        if (subst) {
+          for (const auto& kv : subst->by_name) {
+            if (!local.by_name.count(kv.first)) {
+              local.by_name[kv.first] = kv.second;
+            }
+          }
+        }
+        return lower_type(ctx, ta->type(), assigned_name, &local);
+      }
+    }
+
     const std::string key = owner + "::" + name;
 
     if (auto it = ctx.named_ids.find(key); it != ctx.named_ids.end()) {
@@ -229,10 +661,19 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       }
       const auto* ta = dynamic_cast<const ast::TypeAssignment*>(sym->ast);
       if (ta) {
+        if (!ta->parameters().empty()) {
+          ir::Type t;
+          t.kind = ir::TypeKind::Referenced;
+          t.module = owner;
+          t.name = assigned_name.empty() ? name : assigned_name;
+          t.referenced.module = owner;
+          t.referenced.name = name;
+          return ctx.model.arena.add(std::move(t));
+        }
         ctx.resolving.insert(key);
         ir::TypeId id;
         if (owner == ctx.mod.name()) {
-          id = lower_type(ctx, ta->type(), ta->name());
+          id = lower_type(ctx, ta->type(), ta->name(), subst);
         } else {
           const Symbol* mod_sym = ctx.symbols.find(owner, owner);
           const ast::Module* other =
@@ -245,7 +686,7 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
           }
           LowerCtx other_ctx{ctx.model, ctx.symbols, ctx.diagnostics, *other,
                              ctx.resolving, ctx.named_ids};
-          id = lower_type(other_ctx, ta->type(), ta->name());
+          id = lower_type(other_ctx, ta->type(), ta->name(), subst);
           ctx.resolving = std::move(other_ctx.resolving);
           ctx.named_ids = std::move(other_ctx.named_ids);
         }
@@ -274,6 +715,22 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
     return ctx.model.arena.add(std::move(t));
   }
 
+  // Expand associated types to SEQUENCE/CHOICE IR (X.680).
+  // EXTERNAL uses the modern associated form (identification CHOICE), matching
+  // EMBEDDED PDV / CHARACTER STRING. Classic EXTERNAL remains available in the
+  // BER runtime via encode_external / decode_external.
+  if (dynamic_cast<const ast::ExternalType*>(&type)) {
+    return lower_embedded_or_charstring(ctx, assigned_name, type, 8, "External", "data-value");
+  }
+  if (dynamic_cast<const ast::EmbeddedPdvType*>(&type)) {
+    return lower_embedded_or_charstring(ctx, assigned_name, type, 11, "EmbeddedPdv",
+                                        "data-value");
+  }
+  if (dynamic_cast<const ast::CharacterStringType*>(&type)) {
+    return lower_embedded_or_charstring(ctx, assigned_name, type, 29, "CharacterString",
+                                        "string-value");
+  }
+
   ir::Type out;
   out.module = ctx.mod.name();
   out.name = assigned_name;
@@ -298,10 +755,16 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       out.bit_string.named_bits.push_back(
           ir::NamedNumber{nn.name, ir::BigInt::from_decimal(nn.number_text, false)});
     }
+    if (const ast::Type* contained = find_containing_type(bits->constraint())) {
+      out.bit_string.containing = lower_type(ctx, *contained, "", subst);
+    }
   } else if (const auto* octets = dynamic_cast<const ast::OctetStringType*>(&type)) {
     out.kind = ir::TypeKind::OctetString;
     out.octet_string.size =
         constraints::normalize_size(octets->constraint(), ctx.diagnostics);
+    if (const ast::Type* contained = find_containing_type(octets->constraint())) {
+      out.octet_string.containing = lower_type(ctx, *contained, "", subst);
+    }
   } else if (dynamic_cast<const ast::NullType*>(&type)) {
     out.kind = ir::TypeKind::Null;
   } else if (const auto* str = dynamic_cast<const ast::StringType*>(&type)) {
@@ -311,77 +774,167 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
   } else if (const auto* seq = dynamic_cast<const ast::SequenceType*>(&type)) {
     out.kind = ir::TypeKind::Sequence;
     std::uint64_t auto_index = 0;
-    std::vector<ir::Field>* dest = &out.sequence.root;
-    for (const auto& item : seq->items()) {
-      if (dynamic_cast<const ast::ExtensionMarker*>(item.get())) {
-        out.sequence.extensible = true;
-        out.sequence.extension_groups.emplace_back();
-        dest = &out.sequence.extension_groups.back();
-        continue;
-      }
-      const auto* comp = dynamic_cast<const ast::Component*>(item.get());
-      if (!comp) {
-        continue;
-      }
+    bool in_extensions = false;
+    bool in_trailing_root = false;
+    auto make_field = [&](const ast::Component& comp) {
       ir::Field field;
-      field.name = comp->name();
-      field.presence = map_presence(comp->presence());
-      field.tag = component_tag(comp->type(), ctx.mod.tag_default(), auto_index);
+      field.name = comp.name();
+      field.presence = map_presence(comp.presence());
+      field.tag = component_tag(comp.type(), ctx.mod.tag_default(), auto_index);
       ++auto_index;
-      field.type = lower_type(ctx, comp->type(), "");
-      dest->push_back(std::move(field));
+      field.type = lower_type(ctx, comp.type(), "", subst);
+      apply_field_jer_name_from_ast(field, comp.type());
+      apply_field_exer_from_ast(field, comp.type());
+      return field;
+    };
+    std::function<void(const ast::ComponentItem&)> process =
+        [&](const ast::ComponentItem& item) {
+          if (dynamic_cast<const ast::ExtensionMarker*>(&item)) {
+            if (!out.sequence.extensible) {
+              out.sequence.extensible = true;
+              in_extensions = true;
+              in_trailing_root = false;
+            } else if (in_extensions) {
+              // Second ellipsis: trailing root component list.
+              in_extensions = false;
+              in_trailing_root = true;
+            }
+            return;
+          }
+          if (const auto* grp = dynamic_cast<const ast::VersionAdditionGroup*>(&item)) {
+            if (in_extensions) {
+              out.sequence.extension_groups.emplace_back();
+              auto& dest = out.sequence.extension_groups.back();
+              for (const auto& child : grp->items()) {
+                const auto* comp = dynamic_cast<const ast::Component*>(child.get());
+                if (comp) {
+                  dest.push_back(make_field(*comp));
+                }
+              }
+            }
+            return;
+          }
+          const auto* comp = dynamic_cast<const ast::Component*>(&item);
+          if (!comp) {
+            return;
+          }
+          ir::Field field = make_field(*comp);
+          if (in_extensions) {
+            // Each ComponentType after "..." is its own extension addition.
+            out.sequence.extension_groups.push_back({std::move(field)});
+          } else if (in_trailing_root) {
+            out.sequence.trailing_root.push_back(std::move(field));
+          } else {
+            out.sequence.root.push_back(std::move(field));
+          }
+        };
+    for (const auto& item : seq->items()) {
+      process(*item);
     }
   } else if (const auto* ch = dynamic_cast<const ast::ChoiceType*>(&type)) {
     out.kind = ir::TypeKind::Choice;
     std::uint64_t auto_index = 0;
+    bool in_extensions = false;
+    std::function<void(const ast::ComponentItem&)> process =
+        [&](const ast::ComponentItem& item) {
+          if (dynamic_cast<const ast::ExtensionMarker*>(&item)) {
+            out.choice.extensible = true;
+            in_extensions = true;
+            return;
+          }
+          if (const auto* grp = dynamic_cast<const ast::VersionAdditionGroup*>(&item)) {
+            for (const auto& child : grp->items()) {
+              process(*child);
+            }
+            return;
+          }
+          const auto* comp = dynamic_cast<const ast::Component*>(&item);
+          if (!comp) {
+            return;
+          }
+          ir::Field field;
+          field.name = comp->name();
+          field.presence = ir::Presence::Mandatory;
+          field.tag = component_tag(comp->type(), ctx.mod.tag_default(), auto_index);
+          ++auto_index;
+          field.type = lower_type(ctx, comp->type(), "", subst);
+          apply_field_jer_name_from_ast(field, comp->type());
+          apply_field_exer_from_ast(field, comp->type());
+          if (in_extensions) {
+            out.choice.extensions.push_back(std::move(field));
+          } else {
+            out.choice.alternatives.push_back(std::move(field));
+          }
+        };
     for (const auto& item : ch->alternatives()) {
-      if (dynamic_cast<const ast::ExtensionMarker*>(item.get())) {
-        out.choice.extensible = true;
-        continue;
-      }
-      const auto* comp = dynamic_cast<const ast::Component*>(item.get());
-      if (!comp) {
-        continue;
-      }
-      ir::Field field;
-      field.name = comp->name();
-      field.presence = ir::Presence::Mandatory;
-      field.tag = component_tag(comp->type(), ctx.mod.tag_default(), auto_index);
-      ++auto_index;
-      field.type = lower_type(ctx, comp->type(), "");
-      out.choice.alternatives.push_back(std::move(field));
+      process(*item);
     }
   } else if (const auto* of = dynamic_cast<const ast::SequenceOfType*>(&type)) {
     out.kind = ir::TypeKind::SequenceOf;
-    out.sequence_of.element = lower_type(ctx, of->element(), "");
+    out.sequence_of.element = lower_type(ctx, of->element(), "", subst);
     out.sequence_of.size =
         constraints::normalize_size(of->constraint(), ctx.diagnostics);
   } else if (const auto* set = dynamic_cast<const ast::SetType*>(&type)) {
     out.kind = ir::TypeKind::Set;
     std::uint64_t auto_index = 0;
-    std::vector<ir::Field>* dest = &out.set.root;
-    for (const auto& item : set->items()) {
-      if (dynamic_cast<const ast::ExtensionMarker*>(item.get())) {
-        out.set.extensible = true;
-        out.set.extension_groups.emplace_back();
-        dest = &out.set.extension_groups.back();
-        continue;
-      }
-      const auto* comp = dynamic_cast<const ast::Component*>(item.get());
-      if (!comp) {
-        continue;
-      }
+    bool in_extensions = false;
+    bool in_trailing_root = false;
+    auto make_field = [&](const ast::Component& comp) {
       ir::Field field;
-      field.name = comp->name();
-      field.presence = map_presence(comp->presence());
-      field.tag = component_tag(comp->type(), ctx.mod.tag_default(), auto_index);
+      field.name = comp.name();
+      field.presence = map_presence(comp.presence());
+      field.tag = component_tag(comp.type(), ctx.mod.tag_default(), auto_index);
       ++auto_index;
-      field.type = lower_type(ctx, comp->type(), "");
-      dest->push_back(std::move(field));
+      field.type = lower_type(ctx, comp.type(), "", subst);
+      apply_field_jer_name_from_ast(field, comp.type());
+      apply_field_exer_from_ast(field, comp.type());
+      return field;
+    };
+    std::function<void(const ast::ComponentItem&)> process =
+        [&](const ast::ComponentItem& item) {
+          if (dynamic_cast<const ast::ExtensionMarker*>(&item)) {
+            if (!out.set.extensible) {
+              out.set.extensible = true;
+              in_extensions = true;
+              in_trailing_root = false;
+            } else if (in_extensions) {
+              in_extensions = false;
+              in_trailing_root = true;
+            }
+            return;
+          }
+          if (const auto* grp = dynamic_cast<const ast::VersionAdditionGroup*>(&item)) {
+            if (in_extensions) {
+              out.set.extension_groups.emplace_back();
+              auto& dest = out.set.extension_groups.back();
+              for (const auto& child : grp->items()) {
+                const auto* comp = dynamic_cast<const ast::Component*>(child.get());
+                if (comp) {
+                  dest.push_back(make_field(*comp));
+                }
+              }
+            }
+            return;
+          }
+          const auto* comp = dynamic_cast<const ast::Component*>(&item);
+          if (!comp) {
+            return;
+          }
+          ir::Field field = make_field(*comp);
+          if (in_extensions) {
+            out.set.extension_groups.push_back({std::move(field)});
+          } else if (in_trailing_root) {
+            out.set.trailing_root.push_back(std::move(field));
+          } else {
+            out.set.root.push_back(std::move(field));
+          }
+        };
+    for (const auto& item : set->items()) {
+      process(*item);
     }
   } else if (const auto* setof = dynamic_cast<const ast::SetOfType*>(&type)) {
     out.kind = ir::TypeKind::SetOf;
-    out.set_of.element = lower_type(ctx, setof->element(), "");
+    out.set_of.element = lower_type(ctx, setof->element(), "", subst);
     out.set_of.size =
         constraints::normalize_size(setof->constraint(), ctx.diagnostics);
   } else if (const auto* en = dynamic_cast<const ast::EnumeratedType*>(&type)) {
@@ -423,44 +976,138 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
         constraints::normalize_size(type.constraint(), ctx.diagnostics);
   } else if (dynamic_cast<const ast::RealType*>(&type)) {
     out.kind = ir::TypeKind::Real;
+    out.real.ieee_form = real_ieee_form_from_constraint(type.constraint());
+  } else if (const auto* ocf = dynamic_cast<const ast::ObjectClassFieldType*>(&type)) {
+    out.kind = ir::TypeKind::ObjectClassField;
+    out.object_class_field.class_name = ocf->class_name();
+    out.object_class_field.field_name = ocf->field_name();
+    out.object_class_field.open_type = true;
+    // Resolve against registered object classes.
+    for (const auto& oc : ctx.model.object_classes) {
+      if (oc.name != ocf->class_name()) {
+        continue;
+      }
+      for (const auto& f : oc.fields) {
+        if (f.name != ocf->field_name()) {
+          continue;
+        }
+        if (f.kind == ir::ClassFieldKind::TypeField) {
+          out.object_class_field.open_type = true;
+        } else {
+          out.object_class_field.open_type = false;
+          out.object_class_field.fixed_type = f.fixed_type;
+        }
+        break;
+      }
+      break;
+    }
+  } else if (const auto* inst = dynamic_cast<const ast::InstanceOfType*>(&type)) {
+    out.kind = ir::TypeKind::InstanceOf;
+    out.instance_of.class_name = inst->class_name();
+    const Symbol* cls = ctx.symbols.lookup(ctx.mod.name(), inst->class_name());
+    if (!cls || cls->kind != SymbolKind::ObjectClass) {
+      if (inst->class_name() != "TYPE-IDENTIFIER" &&
+          inst->class_name() != "ABSTRACT-SYNTAX") {
+        ctx.diagnostics.error(inst->range(),
+                              "undefined object class '" + inst->class_name() + "'");
+      }
+    }
   } else {
     ctx.diagnostics.error(type.range(), "internal error: unsupported AST type in lower");
     out.kind = ir::TypeKind::Null;
   }
 
+  apply_jer_instructions(out, type.encoding_instructions());
+  apply_exer_instructions(out, type.encoding_instructions());
   return ctx.model.arena.add(std::move(out));
 }
 
 void check_type_refs(const ast::Type& type, const std::string& module, SymbolTable& symbols,
-                     Diagnostics& diagnostics) {
+                     Diagnostics& diagnostics,
+                     const std::unordered_set<std::string>* formals = nullptr) {
   if (const auto* ref = dynamic_cast<const ast::ReferencedType*>(&type)) {
-    const std::string owner = ref->module() ? *ref->module() : module;
-    const Symbol* sym = symbols.lookup(owner, ref->name());
-    if (!sym || sym->kind != SymbolKind::Type) {
-      diagnostics.error(ref->range(), "undefined ASN.1 type '" + ref->name() + "'");
+    if (formals && formals->count(ref->name())) {
+      // Formal type parameter — ok.
+    } else {
+      const std::string owner = ref->module() ? *ref->module() : module;
+      const Symbol* sym = symbols.lookup(owner, ref->name());
+      if (!sym || sym->kind != SymbolKind::Type) {
+        diagnostics.error(ref->range(), "undefined ASN.1 type '" + ref->name() + "'");
+      }
+    }
+    for (const auto& a : ref->actuals()) {
+      if (a.type) {
+        check_type_refs(*a.type, module, symbols, diagnostics, formals);
+      }
     }
   } else if (const auto* seq = dynamic_cast<const ast::SequenceType*>(&type)) {
     for (const auto& item : seq->items()) {
       if (const auto* comp = dynamic_cast<const ast::Component*>(item.get())) {
-        check_type_refs(comp->type(), module, symbols, diagnostics);
+        check_type_refs(comp->type(), module, symbols, diagnostics, formals);
+      } else if (const auto* grp =
+                     dynamic_cast<const ast::VersionAdditionGroup*>(item.get())) {
+        for (const auto& child : grp->items()) {
+          if (const auto* comp = dynamic_cast<const ast::Component*>(child.get())) {
+            check_type_refs(comp->type(), module, symbols, diagnostics, formals);
+          }
+        }
       }
     }
   } else if (const auto* ch = dynamic_cast<const ast::ChoiceType*>(&type)) {
     for (const auto& item : ch->alternatives()) {
       if (const auto* comp = dynamic_cast<const ast::Component*>(item.get())) {
-        check_type_refs(comp->type(), module, symbols, diagnostics);
+        check_type_refs(comp->type(), module, symbols, diagnostics, formals);
+      } else if (const auto* grp =
+                     dynamic_cast<const ast::VersionAdditionGroup*>(item.get())) {
+        for (const auto& child : grp->items()) {
+          if (const auto* comp = dynamic_cast<const ast::Component*>(child.get())) {
+            check_type_refs(comp->type(), module, symbols, diagnostics, formals);
+          }
+        }
       }
     }
   } else if (const auto* of = dynamic_cast<const ast::SequenceOfType*>(&type)) {
-    check_type_refs(of->element(), module, symbols, diagnostics);
+    check_type_refs(of->element(), module, symbols, diagnostics, formals);
   } else if (const auto* set = dynamic_cast<const ast::SetType*>(&type)) {
     for (const auto& item : set->items()) {
       if (const auto* comp = dynamic_cast<const ast::Component*>(item.get())) {
-        check_type_refs(comp->type(), module, symbols, diagnostics);
+        check_type_refs(comp->type(), module, symbols, diagnostics, formals);
+      } else if (const auto* grp =
+                     dynamic_cast<const ast::VersionAdditionGroup*>(item.get())) {
+        for (const auto& child : grp->items()) {
+          if (const auto* comp = dynamic_cast<const ast::Component*>(child.get())) {
+            check_type_refs(comp->type(), module, symbols, diagnostics, formals);
+          }
+        }
       }
     }
   } else if (const auto* setof = dynamic_cast<const ast::SetOfType*>(&type)) {
-    check_type_refs(setof->element(), module, symbols, diagnostics);
+    check_type_refs(setof->element(), module, symbols, diagnostics, formals);
+  } else if (const auto* ocf = dynamic_cast<const ast::ObjectClassFieldType*>(&type)) {
+    const Symbol* cls = symbols.lookup(module, ocf->class_name());
+    if (!cls || cls->kind != SymbolKind::ObjectClass) {
+      // Useful object classes are injected later; allow unresolved for now.
+      if (ocf->class_name() != "TYPE-IDENTIFIER" &&
+          ocf->class_name() != "ABSTRACT-SYNTAX") {
+        // Governor object-class formals (e.g. PROTOCOL-IES : IEsSetParam) — class name
+        // may be a formal governor type; skip if it looks like a known class formal.
+        if (!(formals && formals->count(ocf->class_name()))) {
+          diagnostics.error(ocf->range(),
+                            "undefined object class '" + ocf->class_name() + "'");
+        }
+      }
+    }
+  } else if (const auto* inst = dynamic_cast<const ast::InstanceOfType*>(&type)) {
+    const Symbol* cls = symbols.lookup(module, inst->class_name());
+    if (!cls || cls->kind != SymbolKind::ObjectClass) {
+      if (inst->class_name() != "TYPE-IDENTIFIER" &&
+          inst->class_name() != "ABSTRACT-SYNTAX") {
+        if (!(formals && formals->count(inst->class_name()))) {
+          diagnostics.error(inst->range(),
+                            "undefined object class '" + inst->class_name() + "'");
+        }
+      }
+    }
   }
 }
 
@@ -528,7 +1175,53 @@ void Analyzer::declare_pass() {
         s.range = va->range();
         s.ast = va;
         symbols_.declare(std::move(s), diagnostics_);
+      } else if (const auto* oc =
+                     dynamic_cast<const ast::ObjectClassAssignment*>(assignment.get())) {
+        Symbol s;
+        s.kind = SymbolKind::ObjectClass;
+        s.module = mod.name();
+        s.name = oc->name();
+        s.range = oc->range();
+        s.ast = oc;
+        symbols_.declare(std::move(s), diagnostics_);
+      } else if (const auto* obj =
+                     dynamic_cast<const ast::ObjectAssignment*>(assignment.get())) {
+        Symbol s;
+        s.kind = SymbolKind::Object;
+        s.module = mod.name();
+        s.name = obj->name();
+        s.range = obj->range();
+        s.ast = obj;
+        symbols_.declare(std::move(s), diagnostics_);
+      } else if (const auto* oset =
+                     dynamic_cast<const ast::ObjectSetAssignment*>(assignment.get())) {
+        Symbol s;
+        s.kind = SymbolKind::ObjectSet;
+        s.module = mod.name();
+        s.name = oset->name();
+        s.range = oset->range();
+        s.ast = oset;
+        symbols_.declare(std::move(s), diagnostics_);
       }
+    }
+  }
+
+  // Builtin useful object classes (X.681) available in every module scope.
+  for (auto& mod_ptr : modules_) {
+    if (!mod_ptr) {
+      continue;
+    }
+    for (const char* useful : {"TYPE-IDENTIFIER", "ABSTRACT-SYNTAX"}) {
+      if (symbols_.find(mod_ptr->name(), useful)) {
+        continue;
+      }
+      Symbol s;
+      s.kind = SymbolKind::ObjectClass;
+      s.module = mod_ptr->name();
+      s.name = useful;
+      s.range = mod_ptr->range();
+      s.ast = nullptr;
+      symbols_.declare(std::move(s), diagnostics_);
     }
   }
 }
@@ -562,7 +1255,12 @@ void Analyzer::resolve_pass() {
 
     for (const auto& assignment : mod.assignments()) {
       if (const auto* ta = dynamic_cast<const ast::TypeAssignment*>(assignment.get())) {
-        check_type_refs(ta->type(), mod.name(), symbols_, diagnostics_);
+        std::unordered_set<std::string> formals;
+        for (const auto& p : ta->parameters()) {
+          formals.insert(p.name);
+        }
+        check_type_refs(ta->type(), mod.name(), symbols_, diagnostics_,
+                        formals.empty() ? nullptr : &formals);
       } else if (const auto* va =
                      dynamic_cast<const ast::ValueAssignment*>(assignment.get())) {
         check_type_refs(va->type(), mod.name(), symbols_, diagnostics_);
@@ -594,10 +1292,115 @@ void Analyzer::lower_pass() {
 
     LowerCtx ctx{model_, symbols_, diagnostics_, mod, {}, {}};
 
+    // Lower object classes first so ObjectClassFieldType can resolve fields.
+    for (const auto& assignment : mod.assignments()) {
+      const auto* oc = dynamic_cast<const ast::ObjectClassAssignment*>(assignment.get());
+      if (!oc) {
+        continue;
+      }
+      ir::ObjectClassInfo info;
+      info.module = mod.name();
+      info.name = oc->name();
+      for (const auto& fptr : oc->defn().fields()) {
+        const ast::FieldSpec& f = *fptr;
+        ir::ClassField cf;
+        cf.name = f.name();
+        cf.unique = f.unique();
+        cf.presence = map_presence(f.presence());
+        if (f.kind() == ast::FieldSpecKind::TypeField) {
+          cf.kind = ir::ClassFieldKind::TypeField;
+        } else {
+          cf.kind = ir::ClassFieldKind::FixedTypeValueField;
+          if (f.field_type()) {
+            cf.fixed_type = lower_type(ctx, *f.field_type(), "");
+          }
+        }
+        info.fields.push_back(std::move(cf));
+      }
+      model_.object_classes.push_back(std::move(info));
+    }
+
+    // Builtin TYPE-IDENTIFIER / ABSTRACT-SYNTAX (X.681 Annex A / B).
+    auto ensure_useful_class = [&](const char* name, bool with_property) {
+      for (const auto& c : model_.object_classes) {
+        if (c.name == name && c.module == mod.name()) {
+          return;
+        }
+      }
+      ir::ObjectClassInfo cls;
+      cls.module = mod.name();
+      cls.name = name;
+      ir::ClassField id;
+      id.kind = ir::ClassFieldKind::FixedTypeValueField;
+      id.name = "id";
+      id.unique = true;
+      {
+        ir::Type oid;
+        oid.kind = ir::TypeKind::ObjectIdentifier;
+        oid.module = mod.name();
+        oid.tag = universal(6);
+        id.fixed_type = model_.arena.add(std::move(oid));
+      }
+      ir::ClassField ty;
+      ty.kind = ir::ClassFieldKind::TypeField;
+      ty.name = "Type";
+      cls.fields.push_back(std::move(id));
+      cls.fields.push_back(std::move(ty));
+      if (with_property) {
+        ir::ClassField prop;
+        prop.kind = ir::ClassFieldKind::FixedTypeValueField;
+        prop.name = "property";
+        prop.presence = ir::Presence::Default;
+        {
+          ir::Type bits;
+          bits.kind = ir::TypeKind::BitString;
+          bits.module = mod.name();
+          bits.tag = universal(3);
+          prop.fixed_type = model_.arena.add(std::move(bits));
+        }
+        cls.fields.push_back(std::move(prop));
+      }
+      model_.object_classes.push_back(std::move(cls));
+    };
+    ensure_useful_class("TYPE-IDENTIFIER", false);
+    ensure_useful_class("ABSTRACT-SYNTAX", true);
+
+    for (const auto& assignment : mod.assignments()) {
+      if (const auto* obj = dynamic_cast<const ast::ObjectAssignment*>(assignment.get())) {
+        ir::ObjectInfo info;
+        info.module = mod.name();
+        info.name = obj->name();
+        info.class_name = obj->class_name();
+        for (const auto& s : obj->defn().settings()) {
+          ir::ObjectFieldSetting fs;
+          fs.field_name = s.field_name;
+          if (s.type_setting) {
+            fs.type_setting = lower_type(ctx, *s.type_setting, "");
+          }
+          info.settings.push_back(std::move(fs));
+        }
+        model_.objects.push_back(std::move(info));
+      } else if (const auto* oset =
+                     dynamic_cast<const ast::ObjectSetAssignment*>(assignment.get())) {
+        ir::ObjectSetInfo info;
+        info.module = mod.name();
+        info.name = oset->name();
+        info.class_name = oset->class_name();
+        info.extensible = oset->defn().extensible();
+        for (const auto& e : oset->defn().elements()) {
+          if (e.object_ref) {
+            info.object_refs.push_back(*e.object_ref);
+          }
+        }
+        model_.object_sets.push_back(std::move(info));
+      }
+    }
+
     // Reserve stable TypeIds for all named types so recursion can point at them.
+    // Skip parameterized templates — they are lowered only via instantiation.
     for (const auto& assignment : mod.assignments()) {
       const auto* ta = dynamic_cast<const ast::TypeAssignment*>(assignment.get());
-      if (!ta) {
+      if (!ta || !ta->parameters().empty()) {
         continue;
       }
       const std::string key = mod.name() + "::" + ta->name();
@@ -614,7 +1417,7 @@ void Analyzer::lower_pass() {
 
     for (const auto& assignment : mod.assignments()) {
       const auto* ta = dynamic_cast<const ast::TypeAssignment*>(assignment.get());
-      if (!ta) {
+      if (!ta || !ta->parameters().empty()) {
         continue;
       }
       const std::string key = mod.name() + "::" + ta->name();
@@ -624,55 +1427,129 @@ void Analyzer::lower_pass() {
       ctx.resolving.erase(key);
 
       // Move built content into the reserved slot (keep stable id for recursion).
+      // Type aliases (`A ::= B`) where B is not yet lowered still have a Null stub;
+      // keep A as Referenced→B instead of copying the stub (Phase 38).
       if (built != reserved) {
-        model_.arena.get(reserved) = model_.arena.get(built);
-        model_.arena.get(reserved).module = mod.name();
-        model_.arena.get(reserved).name = ta->name();
-        // Redirect any field still pointing at `built` toward `reserved`.
-        for (std::size_t i = 0; i < model_.arena.type_count(); ++i) {
-          ir::Type& t = model_.arena.get(static_cast<ir::TypeId>(i));
-          auto rew = [&](ir::TypeId& id) {
-            if (id == built) {
-              id = reserved;
-            }
-          };
-          if (t.kind == ir::TypeKind::Sequence) {
-            for (auto& f : t.sequence.root) {
-              rew(f.type);
-            }
-            for (auto& g : t.sequence.extension_groups) {
-              for (auto& f : g) {
+        const ir::Type& built_t = model_.arena.get(built);
+        const bool alias_to_unready_stub =
+            built_t.kind == ir::TypeKind::Null && !built_t.name.empty() &&
+            built_t.name != ta->name();
+        if (alias_to_unready_stub) {
+          ir::Type alias;
+          alias.kind = ir::TypeKind::Referenced;
+          alias.module = mod.name();
+          alias.name = ta->name();
+          alias.referenced.module = mod.name();
+          alias.referenced.name = built_t.name;
+          alias.referenced.resolved = built;
+          model_.arena.get(reserved) = std::move(alias);
+        } else {
+          model_.arena.get(reserved) = model_.arena.get(built);
+          model_.arena.get(reserved).module = mod.name();
+          model_.arena.get(reserved).name = ta->name();
+          // Redirect any field still pointing at `built` toward `reserved`.
+          for (std::size_t i = 0; i < model_.arena.type_count(); ++i) {
+            ir::Type& t = model_.arena.get(static_cast<ir::TypeId>(i));
+            auto rew = [&](ir::TypeId& id) {
+              if (id == built) {
+                id = reserved;
+              }
+            };
+            if (t.kind == ir::TypeKind::Sequence) {
+              for (auto& f : t.sequence.root) {
                 rew(f.type);
               }
-            }
-          } else if (t.kind == ir::TypeKind::Set) {
-            for (auto& f : t.set.root) {
-              rew(f.type);
-            }
-            for (auto& g : t.set.extension_groups) {
-              for (auto& f : g) {
+              for (auto& g : t.sequence.extension_groups) {
+                for (auto& f : g) {
+                  rew(f.type);
+                }
+              }
+              for (auto& f : t.sequence.trailing_root) {
                 rew(f.type);
               }
-            }
-          } else if (t.kind == ir::TypeKind::Choice) {
-            for (auto& f : t.choice.alternatives) {
-              rew(f.type);
-            }
-          } else if (t.kind == ir::TypeKind::SequenceOf) {
-            rew(t.sequence_of.element);
-          } else if (t.kind == ir::TypeKind::SetOf) {
-            rew(t.set_of.element);
-          } else if (t.kind == ir::TypeKind::Referenced) {
-            if (t.referenced.resolved == built) {
-              t.referenced.resolved = reserved;
+            } else if (t.kind == ir::TypeKind::Set) {
+              for (auto& f : t.set.root) {
+                rew(f.type);
+              }
+              for (auto& g : t.set.extension_groups) {
+                for (auto& f : g) {
+                  rew(f.type);
+                }
+              }
+              for (auto& f : t.set.trailing_root) {
+                rew(f.type);
+              }
+            } else if (t.kind == ir::TypeKind::Choice) {
+              for (auto& f : t.choice.alternatives) {
+                rew(f.type);
+              }
+              for (auto& f : t.choice.extensions) {
+                rew(f.type);
+              }
+            } else if (t.kind == ir::TypeKind::SequenceOf) {
+              rew(t.sequence_of.element);
+            } else if (t.kind == ir::TypeKind::SetOf) {
+              rew(t.set_of.element);
+            } else if (t.kind == ir::TypeKind::Referenced) {
+              if (t.referenced.resolved == built) {
+                t.referenced.resolved = reserved;
+              }
             }
           }
         }
       }
 
+      apply_jer_instructions(model_.arena.get(reserved), ta->type().encoding_instructions());
+      apply_exer_instructions(model_.arena.get(reserved), ta->type().encoding_instructions());
+
       info.types.push_back(reserved);
       model_.exported_types.push_back(reserved);
     }
+
+    info.jer_instructions = mod.jer_instructions();
+    info.xer_instructions = mod.xer_instructions();
+    for (const auto& clause : mod.jer_encoding_control()) {
+      if (clause.target == ast::EncodingControlTarget::OctetString &&
+          clause.instruction.kind == ast::EncodingInstructionKind::Base64) {
+        for (std::size_t ti = 0; ti < model_.arena.type_count(); ++ti) {
+          ir::Type& ot = model_.arena.get(static_cast<ir::TypeId>(ti));
+          if (ot.module == mod.name() && ot.kind == ir::TypeKind::OctetString &&
+              !ot.jer.base64) {
+            ot.jer.base64 = true;
+          }
+        }
+      }
+    }
+    for (const auto& clause : mod.xer_encoding_control()) {
+      for (std::size_t ti = 0; ti < model_.arena.type_count(); ++ti) {
+        ir::Type& ty = model_.arena.get(static_cast<ir::TypeId>(ti));
+        if (ty.module != mod.name()) {
+          continue;
+        }
+        if (clause.target == ast::EncodingControlTarget::OctetString &&
+            clause.instruction.kind == ast::EncodingInstructionKind::Base64 &&
+            ty.kind == ir::TypeKind::OctetString) {
+          ty.exer.base64 = true;
+        }
+        if (clause.target == ast::EncodingControlTarget::Boolean &&
+            clause.instruction.kind == ast::EncodingInstructionKind::Text &&
+            ty.kind == ir::TypeKind::Boolean) {
+          ty.exer.text = true;
+        }
+        if (clause.target == ast::EncodingControlTarget::Enumerated &&
+            clause.instruction.kind == ast::EncodingInstructionKind::UseNumber &&
+            ty.kind == ir::TypeKind::Enumerated) {
+          ty.exer.use_number = true;
+        }
+        if ((clause.target == ast::EncodingControlTarget::SequenceOf ||
+             clause.target == ast::EncodingControlTarget::SetOf) &&
+            clause.instruction.kind == ast::EncodingInstructionKind::List &&
+            (ty.kind == ir::TypeKind::SequenceOf || ty.kind == ir::TypeKind::SetOf)) {
+          ty.exer.list = true;
+        }
+      }
+    }
+
     model_.modules.push_back(std::move(info));
   }
 }
@@ -726,6 +1603,9 @@ void Analyzer::tag_pass() {
       }
     } else if (t.kind == ir::TypeKind::Choice) {
       for (auto& f : t.choice.alternatives) {
+        rewrite(f.type);
+      }
+      for (auto& f : t.choice.extensions) {
         rewrite(f.type);
       }
     } else if (t.kind == ir::TypeKind::SequenceOf) {

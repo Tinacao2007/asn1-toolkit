@@ -2,7 +2,9 @@
 #include <asn1/runtime/ber/tlv.hpp>
 #include <asn1/runtime/byte_io.hpp>
 
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -95,6 +97,248 @@ TEST(BerCodec, BooleanRoundTripAndVectors) {
     auto v = asn1::ber::decode_boolean(r);
     ASSERT_TRUE(v.ok());
     EXPECT_FALSE(v.value());
+  }
+}
+
+TEST(BerCodec, AssociatedPdvConstructedOctetAndModernExternal) {
+  // EMBEDDED PDV with constructed [2] OCTET STRING fragments.
+  // A0 02 85 00 | A2 08 04 02 AA BB 04 02 CC DD
+  {
+    const auto enc = hex({0x2B, 0x0E, 0xA0, 0x02, 0x85, 0x00, 0xA2, 0x08, 0x04, 0x02, 0xAA,
+                          0xBB, 0x04, 0x02, 0xCC, 0xDD});
+    asn1::ByteReader r(enc);
+    auto d = asn1::ber::decode_embedded_pdv(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().identification.kind, asn1::ber::Identification::Kind::Fixed);
+    ASSERT_EQ(d.value().data_value.size(), 4u);
+    EXPECT_EQ(d.value().data_value[0], 0xAA);
+    EXPECT_EQ(d.value().data_value[3], 0xDD);
+  }
+  // Indefinite-length outer SEQUENCE (EOC).
+  {
+    const auto enc =
+        hex({0x2B, 0x80, 0xA0, 0x02, 0x85, 0x00, 0x82, 0x01, 0x7E, 0x00, 0x00});
+    asn1::ByteReader r(enc);
+    auto d = asn1::ber::decode_embedded_pdv(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    ASSERT_EQ(d.value().data_value.size(), 1u);
+    EXPECT_EQ(d.value().data_value[0], 0x7E);
+  }
+  // Modern EXTERNAL (UNIVERSAL 8) shares associated SEQUENCE shape.
+  {
+    asn1::ber::ModernExternalValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::Fixed;
+    v.data_value_descriptor = "d";
+    v.data_value = {0x01};
+    asn1::ByteWriter w;
+    asn1::ber::encode_external_modern(w, v);
+    expect_bytes(w.buffer(),
+                 hex({0x28, 0x0A, 0xA0, 0x02, 0x85, 0x00, 0x81, 0x01, 'd', 0x82, 0x01, 0x01}));
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::ber::decode_external_modern(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().identification.kind, asn1::ber::Identification::Kind::Fixed);
+    ASSERT_TRUE(d.value().data_value_descriptor.has_value());
+    EXPECT_EQ(*d.value().data_value_descriptor, "d");
+    ASSERT_EQ(d.value().data_value.size(), 1u);
+    EXPECT_EQ(d.value().data_value[0], 0x01);
+  }
+}
+
+TEST(BerCodec, EmbeddedPdvAndCharacterString) {
+  // fixed identification + data-value 0xAB
+  // 2B 07 A0 02 85 00 82 01 AB
+  {
+    asn1::ber::EmbeddedPdvValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::Fixed;
+    v.data_value = {0xAB};
+    asn1::ByteWriter w;
+    asn1::ber::encode_embedded_pdv(w, v);
+    expect_bytes(w.buffer(), hex({0x2B, 0x07, 0xA0, 0x02, 0x85, 0x00, 0x82, 0x01, 0xAB}));
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::ber::decode_embedded_pdv(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().identification.kind, asn1::ber::Identification::Kind::Fixed);
+    ASSERT_EQ(d.value().data_value.size(), 1u);
+    EXPECT_EQ(d.value().data_value[0], 0xAB);
+    EXPECT_FALSE(d.value().data_value_descriptor.has_value());
+  }
+  // syntax OID 1.2.3 + descriptor + value
+  {
+    asn1::ber::EmbeddedPdvValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::Syntax;
+    v.identification.transfer_syntax = {1, 2, 3};
+    v.data_value_descriptor = "x";
+    v.data_value = {0x01, 0x02};
+    asn1::ByteWriter w;
+    asn1::ber::encode_embedded_pdv(w, v);
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::ber::decode_embedded_pdv(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().identification.kind, asn1::ber::Identification::Kind::Syntax);
+    ASSERT_EQ(d.value().identification.transfer_syntax.size(), 3u);
+    EXPECT_EQ(d.value().identification.transfer_syntax[0], 1u);
+    EXPECT_EQ(d.value().identification.transfer_syntax[2], 3u);
+    ASSERT_TRUE(d.value().data_value_descriptor.has_value());
+    EXPECT_EQ(*d.value().data_value_descriptor, "x");
+    ASSERT_EQ(d.value().data_value.size(), 2u);
+    EXPECT_EQ(d.value().data_value[1], 0x02);
+  }
+  // syntaxes + context-negotiation + transfer-syntax + presentation-context-id round-trips
+  {
+    asn1::ber::EmbeddedPdvValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::Syntaxes;
+    v.identification.abstract_syntax = {1, 2, 3};
+    v.identification.transfer_syntax = {1, 2, 4};
+    v.data_value = {0xEE};
+    asn1::ByteWriter w;
+    asn1::ber::encode_embedded_pdv(w, v);
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::ber::decode_embedded_pdv(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().identification.kind, asn1::ber::Identification::Kind::Syntaxes);
+    EXPECT_EQ(d.value().identification.abstract_syntax, (std::vector<std::uint64_t>{1, 2, 3}));
+    EXPECT_EQ(d.value().identification.transfer_syntax, (std::vector<std::uint64_t>{1, 2, 4}));
+  }
+  {
+    asn1::ber::EmbeddedPdvValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::ContextNegotiation;
+    v.identification.presentation_context_id = 7;
+    v.identification.transfer_syntax = {1, 3, 6};
+    v.data_value = {0x00};
+    asn1::ByteWriter w;
+    asn1::ber::encode_embedded_pdv(w, v);
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::ber::decode_embedded_pdv(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().identification.kind,
+              asn1::ber::Identification::Kind::ContextNegotiation);
+    EXPECT_EQ(d.value().identification.presentation_context_id, 7);
+    EXPECT_EQ(d.value().identification.transfer_syntax, (std::vector<std::uint64_t>{1, 3, 6}));
+  }
+  {
+    asn1::ber::EmbeddedPdvValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::PresentationContextId;
+    v.identification.presentation_context_id = 42;
+    v.data_value = {0xFF};
+    asn1::ByteWriter w;
+    asn1::ber::encode_embedded_pdv(w, v);
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::ber::decode_embedded_pdv(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().identification.kind,
+              asn1::ber::Identification::Kind::PresentationContextId);
+    EXPECT_EQ(d.value().identification.presentation_context_id, 42);
+  }
+  {
+    asn1::ber::EmbeddedPdvValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::TransferSyntax;
+    v.identification.transfer_syntax = {2, 1};
+    v.data_value = {0x10};
+    asn1::ByteWriter w;
+    asn1::ber::encode_embedded_pdv(w, v);
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::ber::decode_embedded_pdv(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().identification.kind, asn1::ber::Identification::Kind::TransferSyntax);
+    EXPECT_EQ(d.value().identification.transfer_syntax, (std::vector<std::uint64_t>{2, 1}));
+  }
+  // CHARACTER STRING UNIVERSAL 29 (0x3D constructed)
+  {
+    asn1::ber::CharacterStringValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::Fixed;
+    v.string_value = {0x41, 0x42};
+    asn1::ByteWriter w;
+    asn1::ber::encode_character_string(w, v);
+    expect_bytes(w.buffer(),
+                 hex({0x3D, 0x08, 0xA0, 0x02, 0x85, 0x00, 0x82, 0x02, 0x41, 0x42}));
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::ber::decode_character_string(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().identification.kind, asn1::ber::Identification::Kind::Fixed);
+    ASSERT_EQ(d.value().string_value.size(), 2u);
+    EXPECT_EQ(d.value().string_value[0], 0x41);
+    EXPECT_EQ(d.value().string_value[1], 0x42);
+  }
+}
+
+TEST(BerCodec, ExternalClassicVectors) {
+  {
+    asn1::ber::ExternalValue v;
+    v.encoding = asn1::ber::ExternalValue::Encoding::OctetAligned;
+    v.encoding_value = {0x12};
+    asn1::ByteWriter w;
+    asn1::ber::encode_external(w, v);
+    expect_bytes(w.buffer(), hex({0x28, 0x03, 0x81, 0x01, 0x12}));
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::ber::decode_external(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().encoding, asn1::ber::ExternalValue::Encoding::OctetAligned);
+    ASSERT_EQ(d.value().encoding_value.size(), 1u);
+    EXPECT_EQ(d.value().encoding_value[0], 0x12);
+  }
+  {
+    asn1::ber::ExternalValue v;
+    v.data_value_descriptor = "12";
+    v.encoding = asn1::ber::ExternalValue::Encoding::OctetAligned;
+    v.encoding_value = {0x34};
+    asn1::ByteWriter w;
+    asn1::ber::encode_external(w, v);
+    expect_bytes(w.buffer(), hex({0x28, 0x07, 0x07, 0x02, '1', '2', 0x81, 0x01, 0x34}));
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::ber::decode_external(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    ASSERT_TRUE(d.value().data_value_descriptor.has_value());
+    EXPECT_EQ(*d.value().data_value_descriptor, "12");
+    ASSERT_EQ(d.value().encoding_value.size(), 1u);
+    EXPECT_EQ(d.value().encoding_value[0], 0x34);
+  }
+}
+
+TEST(BerCodec, RealKnownVectors) {
+  struct Case {
+    double value;
+    std::vector<std::uint8_t> encoding;
+  };
+  const Case cases[] = {
+      {0.0, hex({0x09, 0x00})},
+      {1.0, hex({0x09, 0x03, 0x80, 0x00, 0x01})},
+      {100.0, hex({0x09, 0x03, 0x80, 0x02, 0x19})},
+      {-100.0, hex({0x09, 0x03, 0xC0, 0x02, 0x19})},
+      {8.0, hex({0x09, 0x03, 0x80, 0x03, 0x01})},
+      {0.625, hex({0x09, 0x03, 0x80, 0xFD, 0x05})},
+      {1.1, hex({0x09, 0x09, 0x80, 0xCD, 0x08, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCD})},
+      {std::numeric_limits<double>::infinity(), hex({0x09, 0x01, 0x40})},
+      {-std::numeric_limits<double>::infinity(), hex({0x09, 0x01, 0x41})},
+  };
+  for (const auto& c : cases) {
+    asn1::ByteWriter w;
+    asn1::ber::encode_real(w, c.value);
+    expect_bytes(w.buffer(), c.encoding);
+
+    asn1::ByteReader r(c.encoding);
+    auto v = asn1::ber::decode_real(r);
+    ASSERT_TRUE(v.ok()) << c.encoding.size();
+    EXPECT_EQ(v.value(), c.value);
+  }
+
+  {
+    asn1::ByteWriter w;
+    asn1::ber::encode_real(w, std::numeric_limits<double>::quiet_NaN());
+    expect_bytes(w.buffer(), hex({0x09, 0x01, 0x42}));
+    asn1::ByteReader r(w.buffer());
+    auto v = asn1::ber::decode_real(r);
+    ASSERT_TRUE(v.ok());
+    EXPECT_TRUE(std::isnan(v.value()));
+  }
+
+  // Decimal NR form (decode only).
+  {
+    auto enc = hex({0x09, 0x05, 0x03, '1', '.', 'E', '2'});
+    asn1::ByteReader r(enc);
+    auto v = asn1::ber::decode_real(r);
+    ASSERT_TRUE(v.ok());
+    EXPECT_DOUBLE_EQ(v.value(), 100.0);
   }
 }
 

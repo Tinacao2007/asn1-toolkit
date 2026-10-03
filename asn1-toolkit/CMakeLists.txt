@@ -44,6 +44,7 @@ add_library(asn1_frontend STATIC
   src/frontend/token.cpp
   src/frontend/lexer.cpp
   src/frontend/parser.cpp
+  src/frontend/parser_ioc.cpp
 )
 add_library(asn1::frontend ALIAS asn1_frontend)
 target_include_directories(asn1_frontend PUBLIC
@@ -87,6 +88,7 @@ target_link_libraries(asn1_semantic PUBLIC asn1::ast asn1::ir asn1::constraints)
 add_library(asn1_runtime STATIC
   src/runtime/byte_io.cpp
   src/runtime/bit_io.cpp
+  src/runtime/bigint.cpp
 )
 add_library(asn1::runtime ALIAS asn1_runtime)
 target_include_directories(asn1_runtime PUBLIC
@@ -127,6 +129,78 @@ target_include_directories(asn1_per PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(asn1_per PUBLIC asn1::runtime asn1::ber)
+
+add_library(asn1_oer STATIC
+  src/runtime/oer/codec.cpp
+)
+add_library(asn1::oer ALIAS asn1_oer)
+target_include_directories(asn1_oer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(asn1_oer PUBLIC asn1::runtime asn1::ber)
+
+add_library(asn1_coer STATIC
+  src/runtime/coer/codec.cpp
+)
+add_library(asn1::coer ALIAS asn1_coer)
+target_include_directories(asn1_coer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(asn1_coer PUBLIC asn1::oer)
+
+add_library(asn1_xer STATIC
+  src/runtime/xer/xml.cpp
+  src/runtime/xer/codec.cpp
+)
+add_library(asn1::xer ALIAS asn1_xer)
+target_include_directories(asn1_xer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(asn1_xer PUBLIC asn1::runtime)
+
+add_library(asn1_cxer STATIC
+  src/runtime/cxer/codec.cpp
+)
+add_library(asn1::cxer ALIAS asn1_cxer)
+target_include_directories(asn1_cxer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(asn1_cxer PUBLIC asn1::xer)
+
+add_library(asn1_exer STATIC
+  src/runtime/exer/codec.cpp
+)
+add_library(asn1::exer ALIAS asn1_exer)
+target_include_directories(asn1_exer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(asn1_exer PUBLIC asn1::xer)
+
+add_library(asn1_jer STATIC
+  src/runtime/jer/json.cpp
+  src/runtime/jer/codec.cpp
+)
+add_library(asn1::jer ALIAS asn1_jer)
+target_include_directories(asn1_jer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(asn1_jer PUBLIC asn1::runtime)
+
+add_library(asn1_jeri STATIC
+  src/runtime/jeri/codec.cpp
+)
+add_library(asn1::jeri ALIAS asn1_jeri)
+target_include_directories(asn1_jeri PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(asn1_jeri PUBLIC asn1::jer)
 
 add_library(asn1_codegen STATIC
   src/codegen/emit.cpp

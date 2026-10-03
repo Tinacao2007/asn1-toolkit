@@ -176,4 +176,69 @@ TEST(DerCodec, RoundTripPrimitives) {
     ASSERT_TRUE(v.ok());
     EXPECT_EQ(v.value(), "der");
   }
+  {
+    asn1::ByteWriter w;
+    asn1::der::encode_real(w, 100.0);
+    expect_bytes(w.buffer(), hex({0x09, 0x03, 0x80, 0x02, 0x19}));
+    asn1::ByteReader r(w.buffer());
+    auto v = asn1::der::decode_real(r);
+    ASSERT_TRUE(v.ok());
+    EXPECT_EQ(v.value(), 100.0);
+  }
+}
+
+TEST(DerCodec, EmbeddedPdvCharacterStringAndModernExternal) {
+  {
+    asn1::ber::EmbeddedPdvValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::Fixed;
+    v.data_value = {0xAB};
+    asn1::ByteWriter w;
+    asn1::der::encode_embedded_pdv(w, v);
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::der::decode_embedded_pdv(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().data_value, v.data_value);
+  }
+  {
+    asn1::ber::CharacterStringValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::Syntax;
+    v.identification.transfer_syntax = {1, 2, 3};
+    v.string_value = {0x41};
+    asn1::ByteWriter w;
+    asn1::der::encode_character_string(w, v);
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::der::decode_character_string(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().identification.kind, asn1::ber::Identification::Kind::Syntax);
+    EXPECT_EQ(d.value().string_value, v.string_value);
+  }
+  {
+    asn1::ber::ModernExternalValue v;
+    v.identification.kind = asn1::ber::Identification::Kind::Fixed;
+    v.data_value = {0x09};
+    asn1::ByteWriter w;
+    asn1::der::encode_external_modern(w, v);
+    asn1::ByteReader r(w.buffer());
+    auto d = asn1::der::decode_external_modern(r);
+    ASSERT_TRUE(d.ok()) << d.error().message;
+    EXPECT_EQ(d.value().data_value, v.data_value);
+  }
+  // DER rejects constructed OCTET STRING value component (accepted by BER).
+  {
+    const auto enc = hex({0x2B, 0x0E, 0xA0, 0x02, 0x85, 0x00, 0xA2, 0x08, 0x04, 0x02, 0xAA,
+                          0xBB, 0x04, 0x02, 0xCC, 0xDD});
+    asn1::ByteReader r(enc);
+    auto d = asn1::der::decode_embedded_pdv(r);
+    ASSERT_FALSE(d.ok());
+    EXPECT_EQ(d.error().code, asn1::Error::Code::NonCanonical);
+  }
+  // DER rejects indefinite outer length.
+  {
+    const auto enc =
+        hex({0x2B, 0x80, 0xA0, 0x02, 0x85, 0x00, 0x82, 0x01, 0x7E, 0x00, 0x00});
+    asn1::ByteReader r(enc);
+    auto d = asn1::der::decode_embedded_pdv(r);
+    ASSERT_FALSE(d.ok());
+    EXPECT_EQ(d.error().code, asn1::Error::Code::NonCanonical);
+  }
 }

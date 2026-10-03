@@ -156,14 +156,10 @@ Result<bool> decode_boolean_content_der(ByteReader& in, std::size_t length) {
   return b.value() == 0xFFu;
 }
 
-Result<std::int64_t> decode_integer_content_der(ByteReader& in, std::size_t length) {
+Result<BigInteger> decode_big_integer_content_der(ByteReader& in, std::size_t length) {
   if (length == 0) {
     return make_error(Error::Code::InvalidArgument, in.offset(),
                       "INTEGER content must not be empty");
-  }
-  if (length > 8) {
-    return make_error(Error::Code::Unsupported, in.offset(),
-                      "INTEGER wider than 64 bits not supported in Phase 7");
   }
   const std::size_t off = in.offset();
   auto bytes_r = in.read(length);
@@ -174,14 +170,20 @@ Result<std::int64_t> decode_integer_content_der(ByteReader& in, std::size_t leng
   if (auto r = check_integer_minimal(bytes, off); !r) {
     return r.error();
   }
-  std::int64_t value = 0;
-  if ((bytes[0] & 0x80u) != 0) {
-    value = -1;
+  return BigInteger::from_twos_complement(bytes);
+}
+
+Result<std::int64_t> decode_integer_content_der(ByteReader& in, std::size_t length) {
+  auto big = decode_big_integer_content_der(in, length);
+  if (!big) {
+    return big.error();
   }
-  for (std::size_t i = 0; i < bytes.size(); ++i) {
-    value = (value << 8) | bytes[i];
+  auto v = big.value().as_i64();
+  if (!v) {
+    return make_error(Error::Code::Unsupported, in.offset(),
+                      "INTEGER wider than 64 bits; use decode_big_integer");
   }
-  return value;
+  return *v;
 }
 
 Result<ber::BitStringValue> decode_bit_string_content_der(ByteReader& in,
@@ -233,8 +235,16 @@ void encode_integer(ByteWriter& out, std::int64_t value, ber::Tag tag) {
   ber::encode_integer(out, value, tag);
 }
 
+void encode_integer(ByteWriter& out, const BigInteger& value, ber::Tag tag) {
+  ber::encode_integer(out, value, tag);
+}
+
 Result<std::int64_t> decode_integer(ByteReader& in, ber::Tag expected) {
   return decode_primitive<std::int64_t>(in, expected, decode_integer_content_der);
+}
+
+Result<BigInteger> decode_big_integer(ByteReader& in, ber::Tag expected) {
+  return decode_primitive<BigInteger>(in, expected, decode_big_integer_content_der);
 }
 
 void encode_null(ByteWriter& out, ber::Tag tag) {
@@ -339,6 +349,18 @@ Result<std::vector<std::uint64_t>> decode_relative_oid(ByteReader& in, ber::Tag 
                                                       ber::decode_relative_oid_content);
 }
 
+void encode_real(ByteWriter& out, double value, ber::Tag tag) {
+  ber::Tag t = tag;
+  t.constructed = false;
+  ber::encode_real(out, value, t);
+}
+
+Result<double> decode_real(ByteReader& in, ber::Tag expected) {
+  ber::Tag want = expected;
+  want.constructed = false;
+  return decode_primitive<double>(in, want, ber::decode_real_content);
+}
+
 void encode_sequence(ByteWriter& out, Span<const std::uint8_t> components, ber::Tag tag) {
   ber::encode_constructed(out, tag, components);
 }
@@ -377,6 +399,138 @@ Result<std::vector<std::uint8_t>> decode_set(ByteReader& in, ber::Tag expected) 
     return r.error();
   }
   return content;
+}
+
+namespace {
+
+Result<void> validate_associated_pdv_der_content(Span<const std::uint8_t> content) {
+  ByteReader r(content);
+  while (!r.eof()) {
+    auto hdr = decode_tlv_header(r);
+    if (!hdr) {
+      return hdr.error();
+    }
+    if (hdr.value().length.indefinite) {
+      return make_error(Error::Code::NonCanonical, r.offset(),
+                        "DER forbids indefinite length");
+    }
+    if (hdr.value().tag.cls != ber::TagClass::Context) {
+      return make_error(Error::Code::InvalidArgument, r.offset(),
+                        "unexpected component in associated PDV SEQUENCE");
+    }
+    if ((hdr.value().tag.number == 1 || hdr.value().tag.number == 2) &&
+        hdr.value().tag.constructed) {
+      return make_error(Error::Code::NonCanonical, r.offset(),
+                        "DER forbids constructed string components in associated PDV");
+    }
+    auto bytes = r.read(hdr.value().length.value);
+    if (!bytes) {
+      return bytes.error();
+    }
+  }
+  return Result<void>::success();
+}
+
+template <typename T>
+Result<T> decode_associated_pdv_der(
+    ByteReader& in, ber::Tag expected,
+    Result<T> (*ber_decode)(ByteReader&, ber::Tag)) {
+  ber::Tag want = expected;
+  want.constructed = true;
+  auto hdr = decode_tlv_header(in);
+  if (!hdr) {
+    return hdr.error();
+  }
+  if (auto r = require_tag_number(in, want, hdr.value().tag); !r) {
+    return r.error();
+  }
+  if (auto r = require_constructed(in, hdr.value().tag); !r) {
+    return r.error();
+  }
+  if (hdr.value().length.indefinite) {
+    return make_error(Error::Code::NonCanonical, in.offset(),
+                      "DER forbids indefinite length");
+  }
+  const std::size_t len = hdr.value().length.value;
+  if (auto rem = ensure_remaining(in, len); !rem) {
+    return rem.error();
+  }
+  auto content = in.read(len);
+  if (!content) {
+    return content.error();
+  }
+  if (auto v = validate_associated_pdv_der_content(content.value()); !v) {
+    return v.error();
+  }
+  ByteWriter full;
+  ber::encode_tlv(full, want, content.value());
+  ByteReader fr(full.buffer());
+  return ber_decode(fr, expected);
+}
+
+}  // namespace
+
+void encode_embedded_pdv(ByteWriter& out, const ber::EmbeddedPdvValue& value, ber::Tag tag) {
+  ber::encode_embedded_pdv(out, value, tag);
+}
+
+Result<ber::EmbeddedPdvValue> decode_embedded_pdv(ByteReader& in, ber::Tag expected) {
+  return decode_associated_pdv_der<ber::EmbeddedPdvValue>(in, expected, ber::decode_embedded_pdv);
+}
+
+void encode_character_string(ByteWriter& out, const ber::CharacterStringValue& value,
+                             ber::Tag tag) {
+  ber::encode_character_string(out, value, tag);
+}
+
+Result<ber::CharacterStringValue> decode_character_string(ByteReader& in, ber::Tag expected) {
+  return decode_associated_pdv_der<ber::CharacterStringValue>(in, expected,
+                                                              ber::decode_character_string);
+}
+
+void encode_external_modern(ByteWriter& out, const ber::ModernExternalValue& value,
+                            ber::Tag tag) {
+  ber::encode_external_modern(out, value, tag);
+}
+
+Result<ber::ModernExternalValue> decode_external_modern(ByteReader& in, ber::Tag expected) {
+  return decode_associated_pdv_der<ber::ModernExternalValue>(in, expected,
+                                                             ber::decode_external_modern);
+}
+
+void encode_external(ByteWriter& out, const ber::ExternalValue& value, ber::Tag tag) {
+  ber::encode_external(out, value, tag);
+}
+
+Result<ber::ExternalValue> decode_external(ByteReader& in, ber::Tag expected) {
+  ber::Tag want = expected;
+  want.constructed = true;
+  auto hdr = decode_tlv_header(in);
+  if (!hdr) {
+    return hdr.error();
+  }
+  if (auto r = require_tag_number(in, want, hdr.value().tag); !r) {
+    return r.error();
+  }
+  if (auto r = require_constructed(in, hdr.value().tag); !r) {
+    return r.error();
+  }
+  if (hdr.value().length.indefinite) {
+    return make_error(Error::Code::NonCanonical, in.offset(),
+                      "DER forbids indefinite length");
+  }
+  const std::size_t len = hdr.value().length.value;
+  if (auto rem = ensure_remaining(in, len); !rem) {
+    return rem.error();
+  }
+  auto content = in.read(len);
+  if (!content) {
+    return content.error();
+  }
+  ByteWriter full;
+  ber::encode_tlv(full, want, content.value());
+  ByteReader fr(full.buffer());
+  return ber::decode_external(fr, expected);
 }
 
 }  // namespace der

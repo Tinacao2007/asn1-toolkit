@@ -33,12 +33,17 @@ const std::unordered_map<std::string_view, TokenKind>& keyword_map() {
       {"ABSTRACT-SYNTAX", TokenKind::KwABSTRACT_SYNTAX},
       {"ALL", TokenKind::KwALL},
       {"APPLICATION", TokenKind::KwAPPLICATION},
+      {"ARRAY", TokenKind::KwARRAY},
+      {"AS", TokenKind::KwAS},
+      {"ATTRIBUTE", TokenKind::KwATTRIBUTE},
       {"AUTOMATIC", TokenKind::KwAUTOMATIC},
+      {"BASE64", TokenKind::KwBASE64},
       {"BEGIN", TokenKind::KwBEGIN},
       {"BIT", TokenKind::KwBIT},
       {"BMPString", TokenKind::KwBMPString},
       {"BOOLEAN", TokenKind::KwBOOLEAN},
       {"BY", TokenKind::KwBY},
+      {"CAPITALIZED", TokenKind::KwCAPITALIZED},
       {"CHARACTER", TokenKind::KwCHARACTER},
       {"CHOICE", TokenKind::KwCHOICE},
       {"CLASS", TokenKind::KwCLASS},
@@ -49,11 +54,14 @@ const std::unordered_map<std::string_view, TokenKind>& keyword_map() {
       {"DEFAULT", TokenKind::KwDEFAULT},
       {"DEFINITIONS", TokenKind::KwDEFINITIONS},
       {"EMBEDDED", TokenKind::KwEMBEDDED},
+      {"ENCODED", TokenKind::KwENCODED},
+      {"ENCODING-CONTROL", TokenKind::KwENCODING_CONTROL},
       {"END", TokenKind::KwEND},
       {"ENUMERATED", TokenKind::KwENUMERATED},
       {"EXCEPT", TokenKind::KwEXCEPT},
       {"EXPLICIT", TokenKind::KwEXPLICIT},
       {"EXPORTS", TokenKind::KwEXPORTS},
+      {"EXTENDED-XER", TokenKind::KwEXTENDED_XER},
       {"EXTENSIBILITY", TokenKind::KwEXTENSIBILITY},
       {"EXTERNAL", TokenKind::KwEXTERNAL},
       {"FALSE", TokenKind::KwFALSE},
@@ -68,12 +76,17 @@ const std::unordered_map<std::string_view, TokenKind>& keyword_map() {
       {"IMPORTS", TokenKind::KwIMPORTS},
       {"INCLUDES", TokenKind::KwINCLUDES},
       {"INSTANCE", TokenKind::KwINSTANCE},
+      {"INSTRUCTIONS", TokenKind::KwINSTRUCTIONS},
       {"INTEGER", TokenKind::KwINTEGER},
       {"INTERSECTION", TokenKind::KwINTERSECTION},
       {"ISO646String", TokenKind::KwISO646String},
+      {"JER", TokenKind::KwJER},
+      {"LIST", TokenKind::KwLIST},
+      {"LOWERCASED", TokenKind::KwLOWERCASED},
       {"MAX", TokenKind::KwMAX},
       {"MIN", TokenKind::KwMIN},
       {"MINUS-INFINITY", TokenKind::KwMINUS_INFINITY},
+      {"NAME", TokenKind::KwNAME},
       {"NULL", TokenKind::KwNULL},
       {"NumericString", TokenKind::KwNumericString},
       {"OBJECT", TokenKind::KwOBJECT},
@@ -97,17 +110,24 @@ const std::unordered_map<std::string_view, TokenKind>& keyword_map() {
       {"T61String", TokenKind::KwT61String},
       {"TAGS", TokenKind::KwTAGS},
       {"TeletexString", TokenKind::KwTeletexString},
+      {"TEXT", TokenKind::KwTEXT},
       {"TRUE", TokenKind::KwTRUE},
       {"TYPE-IDENTIFIER", TokenKind::KwTYPE_IDENTIFIER},
       {"UNION", TokenKind::KwUNION},
       {"UNIQUE", TokenKind::KwUNIQUE},
       {"UNIVERSAL", TokenKind::KwUNIVERSAL},
       {"UniversalString", TokenKind::KwUniversalString},
+      {"UNTAGGED", TokenKind::KwUNTAGGED},
+      {"UNWRAPPED", TokenKind::KwUNWRAPPED},
+      {"UPPERCASED", TokenKind::KwUPPERCASED},
+      {"USE-NIL", TokenKind::KwUSE_NIL},
+      {"USE-NUMBER", TokenKind::KwUSE_NUMBER},
       {"UTCTime", TokenKind::KwUTCTime},
       {"UTF8String", TokenKind::KwUTF8String},
       {"VideotexString", TokenKind::KwVideotexString},
       {"VisibleString", TokenKind::KwVisibleString},
       {"WITH", TokenKind::KwWITH},
+      {"XER", TokenKind::KwXER},
   };
   return kMap;
 }
@@ -333,6 +353,10 @@ Token Lexer::lex_punctuation() {
     pos_ += 2;
     return make(TokenKind::Range, begin, pos_);
   }
+  if (c == '.' ) {
+    get();
+    return make(TokenKind::Dot, begin, pos_);
+  }
   if (c == '[' && peek(1) == '[') {
     pos_ += 2;
     return make(TokenKind::VersionLBracket, begin, pos_);
@@ -366,6 +390,8 @@ Token Lexer::lex_punctuation() {
       return make(TokenKind::Caret, begin, pos_);
     case ':':
       return make(TokenKind::Colon, begin, pos_);
+    case '&':
+      return make(TokenKind::Ampersand, begin, pos_);
     case '@':
       return make(TokenKind::At, begin, pos_);
     case '!':

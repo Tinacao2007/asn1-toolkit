@@ -253,3 +253,20 @@ TEST(Lexer, ReportsUnexpectedCharacterWithLocation) {
   }
   EXPECT_TRUE(saw_invalid);
 }
+
+TEST(Lexer, AmpersandAndDot) {
+  asn1::Diagnostics diag;
+  auto result = lex_all("ERROR.&Type Foo.&id", diag);
+  ASSERT_TRUE(diag.ok());
+  const auto kinds = kinds_of(result.tokens);
+  ASSERT_EQ(kinds.size(), 9u);
+  EXPECT_EQ(kinds[0], asn1::TokenKind::TypeReference);
+  EXPECT_EQ(kinds[1], asn1::TokenKind::Dot);
+  EXPECT_EQ(kinds[2], asn1::TokenKind::Ampersand);
+  EXPECT_EQ(kinds[3], asn1::TokenKind::TypeReference);
+  EXPECT_EQ(kinds[4], asn1::TokenKind::TypeReference);
+  EXPECT_EQ(kinds[5], asn1::TokenKind::Dot);
+  EXPECT_EQ(kinds[6], asn1::TokenKind::Ampersand);
+  EXPECT_EQ(kinds[7], asn1::TokenKind::Identifier);
+  EXPECT_EQ(kinds[8], asn1::TokenKind::EndOfFile);
+}

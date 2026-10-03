@@ -52,6 +52,10 @@ const char* kind_name(TypeKind k) {
       return "RelativeOid";
     case TypeKind::Real:
       return "Real";
+    case TypeKind::ObjectClassField:
+      return "ObjectClassField";
+    case TypeKind::InstanceOf:
+      return "InstanceOf";
     case TypeKind::Referenced:
       return "Referenced";
   }
@@ -148,6 +152,66 @@ void print_constraint(std::ostream& out, const ConstraintDesc& c, int depth) {
   out << '\n';
 }
 
+void print_exer_flags(std::ostream& out, const ExerEncoding& exer, int depth) {
+  if (!exer.attribute && !exer.base64 && !exer.text && !exer.use_number && !exer.list &&
+      !exer.untagged && !exer.use_nil) {
+    return;
+  }
+  for (int i = 0; i < depth; ++i) {
+    out << "  ";
+  }
+  out << "exer";
+  if (exer.attribute) {
+    out << " attribute";
+  }
+  if (exer.base64) {
+    out << " base64";
+  }
+  if (exer.text) {
+    out << " text";
+  }
+  if (exer.use_number) {
+    out << " use-number";
+  }
+  if (exer.list) {
+    out << " list";
+  }
+  if (exer.untagged) {
+    out << " untagged";
+  }
+  if (exer.use_nil) {
+    out << " use-nil";
+  }
+  out << '\n';
+}
+
+void print_jer_flags(std::ostream& out, const JerEncoding& jer, int depth) {
+  if (!jer.array && !jer.base64 && !jer.object && !jer.unwrapped &&
+      jer.text_form == JerEncoding::TextForm::AsIs) {
+    return;
+  }
+  for (int i = 0; i < depth; ++i) {
+    out << "  ";
+  }
+  out << "jer";
+  if (jer.array) {
+    out << " array";
+  }
+  if (jer.base64) {
+    out << " base64";
+  }
+  if (jer.object) {
+    out << " object";
+  }
+  if (jer.unwrapped) {
+    out << " unwrapped";
+  }
+  if (jer.text_form != JerEncoding::TextForm::AsIs) {
+    out << " text";
+  }
+  out << '\n';
+}
+
 void print_field(std::ostream& out, const Field& f, int depth) {
   for (int i = 0; i < depth; ++i) {
     out << "  ";
@@ -155,6 +219,18 @@ void print_field(std::ostream& out, const Field& f, int depth) {
   out << "Field " << f.name << ' ' << presence_name(f.presence) << " type#" << f.type
       << ' ';
   print_tag(out, f.tag);
+  if (f.jer_name_form != Field::JerNameForm::AsIs) {
+    out << " jerName";
+  }
+  if (f.exer.attribute) {
+    out << " exerAttribute";
+  }
+  if (f.exer.untagged) {
+    out << " exerUntagged";
+  }
+  if (f.exer.use_nil) {
+    out << " exerUseNil";
+  }
   out << '\n';
 }
 
@@ -173,6 +249,8 @@ void print_type(std::ostream& out, const TypeArena& arena, TypeId id, int depth)
   out << ' ';
   print_tag(out, t.tag);
   out << '\n';
+  print_jer_flags(out, t.jer, depth + 1);
+  print_exer_flags(out, t.exer, depth + 1);
 
   switch (t.kind) {
     case TypeKind::Integer:
@@ -193,9 +271,21 @@ void print_type(std::ostream& out, const TypeArena& arena, TypeId id, int depth)
       break;
     case TypeKind::BitString:
       print_constraint(out, t.bit_string.size, depth + 1);
+      if (t.bit_string.containing != kInvalidType) {
+        for (int i = 0; i < depth + 1; ++i) {
+          out << "  ";
+        }
+        out << "CONTAINING type#" << t.bit_string.containing << '\n';
+      }
       break;
     case TypeKind::OctetString:
       print_constraint(out, t.octet_string.size, depth + 1);
+      if (t.octet_string.containing != kInvalidType) {
+        for (int i = 0; i < depth + 1; ++i) {
+          out << "  ";
+        }
+        out << "CONTAINING type#" << t.octet_string.containing << '\n';
+      }
       break;
     case TypeKind::String:
       print_constraint(out, t.string.size, depth + 1);
@@ -209,11 +299,28 @@ void print_type(std::ostream& out, const TypeArena& arena, TypeId id, int depth)
           out << "  ";
         }
         out << "...\n";
+        for (const auto& group : t.sequence.extension_groups) {
+          for (const auto& f : group) {
+            print_field(out, f, depth + 1);
+          }
+        }
+        for (const auto& f : t.sequence.trailing_root) {
+          print_field(out, f, depth + 1);
+        }
       }
       break;
     case TypeKind::Choice:
       for (const auto& f : t.choice.alternatives) {
         print_field(out, f, depth + 1);
+      }
+      if (t.choice.extensible) {
+        for (int i = 0; i < depth + 1; ++i) {
+          out << "  ";
+        }
+        out << "...\n";
+        for (const auto& f : t.choice.extensions) {
+          print_field(out, f, depth + 1);
+        }
       }
       break;
     case TypeKind::SequenceOf:
@@ -232,6 +339,14 @@ void print_type(std::ostream& out, const TypeArena& arena, TypeId id, int depth)
           out << "  ";
         }
         out << "...\n";
+        for (const auto& group : t.set.extension_groups) {
+          for (const auto& f : group) {
+            print_field(out, f, depth + 1);
+          }
+        }
+        for (const auto& f : t.set.trailing_root) {
+          print_field(out, f, depth + 1);
+        }
       }
       break;
     case TypeKind::SetOf:
@@ -265,6 +380,40 @@ void print_type(std::ostream& out, const TypeArena& arena, TypeId id, int depth)
     case TypeKind::RelativeOid:
       break;
     case TypeKind::Real:
+      for (int i = 0; i < depth + 1; ++i) {
+        out << "  ";
+      }
+      out << "ieeeForm=";
+      switch (t.real.ieee_form) {
+        case RealIeeeForm::Unconstrained:
+          out << "unconstrained";
+          break;
+        case RealIeeeForm::Binary32:
+          out << "binary32";
+          break;
+        case RealIeeeForm::Binary64:
+          out << "binary64";
+          break;
+      }
+      out << '\n';
+      break;
+    case TypeKind::ObjectClassField:
+      for (int i = 0; i < depth + 1; ++i) {
+        out << "  ";
+      }
+      out << t.object_class_field.class_name << ".&" << t.object_class_field.field_name;
+      if (t.object_class_field.open_type) {
+        out << " openType";
+      } else {
+        out << " fixed type#" << t.object_class_field.fixed_type;
+      }
+      out << '\n';
+      break;
+    case TypeKind::InstanceOf:
+      for (int i = 0; i < depth + 1; ++i) {
+        out << "  ";
+      }
+      out << "INSTANCE OF " << t.instance_of.class_name << '\n';
       break;
     case TypeKind::Referenced:
       for (int i = 0; i < depth + 1; ++i) {
@@ -293,6 +442,12 @@ void print(std::ostream& out, const Model& model) {
       case ModuleInfo::TagDefault::Automatic:
         out << "AUTOMATIC";
         break;
+    }
+    if (mod.jer_instructions) {
+      out << "  jerInstructions=true\n";
+    }
+    if (mod.xer_instructions) {
+      out << "  xerInstructions=true\n";
     }
     out << '\n';
     for (TypeId id : mod.types) {
