@@ -39,10 +39,12 @@ class Result {
   bool ok() const noexcept { return std::holds_alternative<T>(storage_); }
   explicit operator bool() const noexcept { return ok(); }
 
+  /// Precondition: ok(). Callers must check ok() first (codec paths never throw).
   T& value() & { return std::get<T>(storage_); }
   const T& value() const& { return std::get<T>(storage_); }
   T&& value() && { return std::get<T>(std::move(storage_)); }
 
+  /// Precondition: !ok().
   Error& error() & { return std::get<Error>(storage_); }
   const Error& error() const& { return std::get<Error>(storage_); }
 

@@ -10,8 +10,15 @@ std::uint64_t to_u64(std::int64_t v) {
 }
 
 /// Unsigned range size upper-lower+1; assumes upper >= lower.
+/// Returns 0 if the span does not fit in uint64 (caller must treat as error).
 std::uint64_t range_size(std::int64_t lower, std::int64_t upper) {
-  return to_u64(upper) - to_u64(lower) + 1u;
+  const std::uint64_t u_lo = to_u64(lower);
+  const std::uint64_t u_hi = to_u64(upper);
+  const std::uint64_t diff = u_hi - u_lo;  // well-defined for uint64
+  if (diff == UINT64_MAX) {
+    return 0;  // lower..upper spans the full int64 domain; +1 overflows
+  }
+  return diff + 1u;
 }
 
 std::size_t octet_count_for_nonneg(std::uint64_t value) {
@@ -73,32 +80,35 @@ std::size_t bits_for_range(std::uint64_t range) {
   return bits;
 }
 
-void encode_constrained_whole_number(BitWriter& out, Variant variant,
-                                     std::int64_t value, std::int64_t lower,
-                                     std::int64_t upper) {
+Result<void> encode_constrained_whole_number(BitWriter& out, Variant variant,
+                                             std::int64_t value, std::int64_t lower,
+                                             std::int64_t upper) {
   if (upper < lower) {
-    return;
+    return make_error(Error::Code::InvalidArgument, out.bit_size(),
+                      "constrained INTEGER upper < lower");
   }
-  if (value < lower) {
-    value = lower;
-  }
-  if (value > upper) {
-    value = upper;
+  if (value < lower || value > upper) {
+    return make_error(Error::Code::ConstraintViolation, out.bit_size(),
+                      "INTEGER value outside constrained range");
   }
   const std::uint64_t range = range_size(lower, upper);
+  if (range == 0) {
+    return make_error(Error::Code::Unsupported, out.bit_size(),
+                      "constrained INTEGER range does not fit in 64-bit encoding");
+  }
   const std::uint64_t offset = to_u64(value) - to_u64(lower);
 
   if (range == 1) {
-    return;
+    return Result<void>::success();
   }
   if (range <= 255) {
     out.put_bits(offset, bits_for_range(range));
-    return;
+    return Result<void>::success();
   }
   if (range == 256) {
     maybe_align(out, variant);
     out.put_bits(offset, 8);
-    return;
+    return Result<void>::success();
   }
   if (range <= 65536) {
     if (variant == Variant::Aligned) {
@@ -107,17 +117,22 @@ void encode_constrained_whole_number(BitWriter& out, Variant variant,
     } else {
       out.put_bits(offset, bits_for_range(range));
     }
-    return;
+    return Result<void>::success();
   }
 
   // range > 65536: length determinant of octet count of offset, then octets.
   const std::size_t max_octets = max_octets_for_range(range);
   const std::size_t used = octet_count_for_nonneg(offset);
   // Encode (used - 1) as constrained 0..(max_octets-1)
-  encode_constrained_whole_number(out, variant, static_cast<std::int64_t>(used - 1), 0,
-                                  static_cast<std::int64_t>(max_octets - 1));
+  if (auto er = encode_constrained_whole_number(out, variant,
+                                                static_cast<std::int64_t>(used - 1), 0,
+                                                static_cast<std::int64_t>(max_octets - 1));
+      !er) {
+    return er;
+  }
   maybe_align(out, variant);
   encode_nonneg_octets(out, offset, used);
+  return Result<void>::success();
 }
 
 Result<std::int64_t> decode_constrained_whole_number(BitReader& in, Variant variant,
@@ -128,6 +143,10 @@ Result<std::int64_t> decode_constrained_whole_number(BitReader& in, Variant vari
                       "empty constrained whole number range");
   }
   const std::uint64_t range = range_size(lower, upper);
+  if (range == 0) {
+    return make_error(Error::Code::Unsupported, in.bit_offset(),
+                      "constrained INTEGER range does not fit in 64-bit encoding");
+  }
   if (range == 1) {
     return lower;
   }
@@ -400,8 +419,8 @@ void encode_choice_index(BitWriter& out, Variant variant, std::size_t index,
   if (count == 0) {
     return;
   }
-  encode_constrained_whole_number(out, variant, static_cast<std::int64_t>(index), 0,
-                                  static_cast<std::int64_t>(count - 1));
+  (void)encode_constrained_whole_number(out, variant, static_cast<std::int64_t>(index), 0,
+                                         static_cast<std::int64_t>(count - 1));
 }
 
 Result<std::size_t> decode_choice_index(BitReader& in, Variant variant,

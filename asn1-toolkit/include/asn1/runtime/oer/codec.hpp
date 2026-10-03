@@ -1,5 +1,6 @@
 #pragma once
 
+#include <asn1/runtime/bit_string.hpp>
 #include <asn1/runtime/bigint.hpp>
 #include <asn1/runtime/byte_io.hpp>
 
@@ -60,10 +61,7 @@ Result<std::vector<std::uint8_t>> decode_octet_string(ByteReader& in,
 /// BIT STRING: `bit_length` is the ASN.1 length in bits.
 void encode_bit_string(ByteWriter& out, Span<const std::uint8_t> bits, std::size_t bit_length,
                        const SizeConstraint& size = {});
-struct BitStringValue {
-  std::vector<std::uint8_t> bits;
-  std::size_t bit_length = 0;
-};
+using BitStringValue = asn1::BitStringValue;
 Result<BitStringValue> decode_bit_string(ByteReader& in, const SizeConstraint& size = {});
 
 void encode_utf8_string(ByteWriter& out, const std::string& value,

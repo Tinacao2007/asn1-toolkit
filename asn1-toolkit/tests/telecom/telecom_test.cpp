@@ -160,6 +160,9 @@ TEST(TelecomValidation, EmitS1ap144AperSucceeds) {
   EXPECT_EQ(count_messages_containing(emit_diag, "unresolved type reference"), 0u);
   EXPECT_NE(header.find("encode_aper"), std::string::npos);
   EXPECT_NE(header.find("ProtocolIE_Field"), std::string::npos);
+  // Fixed class fields must not stay as opaque open-type octets.
+  EXPECT_EQ(header.find("std::vector<std::uint8_t> id;"), std::string::npos);
+  EXPECT_EQ(header.find("std::vector<std::uint8_t> criticality;"), std::string::npos);
 }
 
 // Named-slice fixture used for real codec round-trips (see asn1_telecom_roundtrip_tests).

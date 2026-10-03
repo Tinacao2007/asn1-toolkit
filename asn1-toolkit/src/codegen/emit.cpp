@@ -262,7 +262,7 @@ class Emitter {
       case ir::TypeKind::OctetString:
         return "std::vector<std::uint8_t>";
       case ir::TypeKind::BitString:
-        return "asn1::per::BitStringValue";
+        return "asn1::BitStringValue";
       case ir::TypeKind::String:
         return "std::string";
       case ir::TypeKind::SequenceOf: {
@@ -321,7 +321,8 @@ class Emitter {
         options_.codec == CodecKind::Oer || options_.codec == CodecKind::Coer;
     const bool emit_tlv =
         options_.codec == CodecKind::Ber || options_.codec == CodecKind::Der;
-    out << "#include <asn1/runtime/bigint.hpp>\n";
+    out << "#include <asn1/runtime/bigint.hpp>\n"
+        << "#include <asn1/runtime/bit_string.hpp>\n";
     if (emit_per) {
       out << "#include <asn1/runtime/bit_io.hpp>\n"
           << "#include <asn1/runtime/byte_io.hpp>\n"
@@ -367,6 +368,7 @@ class Emitter {
         << "#include <cstdint>\n"
         << "#include <optional>\n"
         << "#include <string>\n"
+        << "#include <type_traits>\n"
         << "#include <variant>\n"
         << "#include <vector>\n\n"
         << "namespace " << ns << "_detail {\n"
@@ -439,7 +441,7 @@ class Emitter {
         out << "using " << name << " = std::vector<std::uint8_t>;\n";
         break;
       case ir::TypeKind::BitString:
-        out << "using " << name << " = asn1::per::BitStringValue;\n";
+        out << "using " << name << " = asn1::BitStringValue;\n";
         break;
       case ir::TypeKind::String:
         out << "using " << name << " = std::string;\n";
@@ -596,14 +598,34 @@ class Emitter {
     return all;
   }
 
+  static bool field_has_presence_bit(const ir::Field& f) {
+    return f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
+  }
+
+  static bool field_wraps_optional(const ir::Field& f, bool force_optional) {
+    if (f.presence == ir::Presence::Default) {
+      return false;
+    }
+    return force_optional || f.presence == ir::Presence::Optional;
+  }
+
+  static void emit_ext_group_field_present(std::ostream& out, const ir::Field& f,
+                                             const std::string& expr) {
+    if (f.presence == ir::Presence::Default) {
+      out << "true";
+    } else if (f.presence == ir::Presence::Optional) {
+      out << expr << "." << cpp_ident(f.name) << ".has_value()";
+    } else {
+      out << "true";
+    }
+  }
+
   void emit_struct_fields(std::ostream& out, const std::vector<ir::Field>& fields,
                           bool force_optional) {
     for (const ir::Field& f : fields) {
       const std::string field_ty = type_cpp(f.type);
       const std::string field_name = cpp_ident(f.name);
-      const bool optional = force_optional || f.presence == ir::Presence::Optional ||
-                            f.presence == ir::Presence::Default;
-      if (optional) {
+      if (field_wraps_optional(f, force_optional)) {
         out << "  std::optional<" << field_ty << "> " << field_name << ";\n";
       } else {
         out << "  " << field_ty << " " << field_name << ";\n";
@@ -618,7 +640,7 @@ class Emitter {
     const char* C = ns_codec(aper);
     std::vector<const ir::Field*> optionals;
     for (const ir::Field& f : group) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         optionals.push_back(&f);
       }
     }
@@ -626,8 +648,13 @@ class Emitter {
       out << ind << "{\n";
       out << ind << "  std::uint8_t gopt[" << optionals.size() << "] = {};\n";
       for (std::size_t i = 0; i < optionals.size(); ++i) {
-        out << ind << "  gopt[" << i << "] = " << expr << "."
-            << cpp_ident(optionals[i]->name) << ".has_value() ? 1 : 0;\n";
+        const ir::Field& pf = *optionals[i];
+        out << ind << "  gopt[" << i << "] = ";
+        if (pf.presence == ir::Presence::Default) {
+          out << "1;\n";
+        } else {
+          out << expr << "." << cpp_ident(pf.name) << ".has_value() ? 1 : 0;\n";
+        }
       }
       out << ind << "  " << C
           << "::encode_sequence_preamble(w, false, false, asn1::Span<const std::uint8_t>(gopt, "
@@ -637,10 +664,13 @@ class Emitter {
     for (const ir::Field& f : group) {
       const std::string fname = cpp_ident(f.name);
       const ir::Type& ft = resolve(model_, f.type);
-      // Extension fields are stored as std::optional; encode when present.
-      out << ind << "if (" << expr << "." << fname << ") {\n";
-      emit_field_encode(out, ft, expr + "." + fname + ".value()", aper, ind + "  ");
-      out << ind << "}\n";
+      if (f.presence == ir::Presence::Optional) {
+        out << ind << "if (" << expr << "." << fname << ") {\n";
+        emit_field_encode(out, ft, expr + "." + fname + ".value()", aper, ind + "  ");
+        out << ind << "}\n";
+      } else {
+        emit_field_encode(out, ft, expr + "." + fname, aper, ind);
+      }
     }
   }
 
@@ -650,7 +680,7 @@ class Emitter {
     const char* C = ns_codec(aper);
     std::vector<const ir::Field*> optionals;
     for (const ir::Field& f : group) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         optionals.push_back(&f);
       }
     }
@@ -663,15 +693,17 @@ class Emitter {
       for (const ir::Field& f : group) {
         const std::string fname = cpp_ident(f.name);
         const ir::Type& ft = resolve(model_, f.type);
-        const bool optional =
-            f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
-        if (optional) {
+        if (field_has_presence_bit(f)) {
           out << ind << "  if (gbm.value().optionals.size() > " << opt_i
               << " && gbm.value().optionals[" << opt_i << "]) {\n"
               << ind << "    " << type_cpp(f.type) << " field{};\n";
           emit_field_decode(out, ft, "field", aper, ind + "    ");
-          out << ind << "    " << expr << "." << fname << " = std::move(field);\n"
-              << ind << "  }\n";
+          if (f.presence == ir::Presence::Optional) {
+            out << ind << "    " << expr << "." << fname << " = std::move(field);\n";
+          } else {
+            out << ind << "    " << expr << "." << fname << " = std::move(field);\n";
+          }
+          out << ind << "  }\n";
           ++opt_i;
         } else {
           out << ind << "  {\n"
@@ -700,9 +732,7 @@ class Emitter {
     for (const ir::Field& f : fields) {
       const std::string fname = cpp_ident(f.name);
       const ir::Type& ft = resolve(model_, f.type);
-      const bool optional =
-          f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
-      if (optional) {
+      if (f.presence == ir::Presence::Optional) {
         out << ind << "if (" << expr << "." << fname << ") {\n";
         emit_field_encode(out, ft, expr + "." + fname + ".value()", aper, ind + "  ");
         out << ind << "}\n";
@@ -718,12 +748,12 @@ class Emitter {
     const char* C = ns_codec(aper);
     std::vector<const ir::Field*> optionals;
     for (const ir::Field& f : seq.root) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         optionals.push_back(&f);
       }
     }
     for (const ir::Field& f : seq.trailing_root) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         optionals.push_back(&f);
       }
     }
@@ -732,8 +762,13 @@ class Emitter {
     out << ind << "  std::uint8_t opt[" << (optionals.empty() ? 1 : optionals.size())
         << "] = {};\n";
     for (std::size_t i = 0; i < optionals.size(); ++i) {
-      out << ind << "  opt[" << i << "] = " << expr << "." << cpp_ident(optionals[i]->name)
-          << ".has_value() ? 1 : 0;\n";
+      const ir::Field& pf = *optionals[i];
+      out << ind << "  opt[" << i << "] = ";
+      if (pf.presence == ir::Presence::Default) {
+        out << "1;\n";
+      } else {
+        out << expr << "." << cpp_ident(pf.name) << ".has_value() ? 1 : 0;\n";
+      }
     }
     out << ind << "  bool ext_present = false;\n";
     if (seq.extensible && n_ext > 0) {
@@ -745,7 +780,7 @@ class Emitter {
           if (i) {
             out << " || ";
           }
-          out << expr << "." << cpp_ident(group[i].name) << ".has_value()";
+          emit_ext_group_field_present(out, group[i], expr);
         }
         if (group.empty()) {
           out << "false";
@@ -771,7 +806,7 @@ class Emitter {
           if (i) {
             out << " || ";
           }
-          out << expr << "." << cpp_ident(group[i].name) << ".has_value()";
+          emit_ext_group_field_present(out, group[i], expr);
         }
         if (group.empty()) {
           out << "false";
@@ -806,9 +841,7 @@ class Emitter {
     for (const ir::Field& f : fields) {
       const std::string fname = cpp_ident(f.name);
       const ir::Type& ft = resolve(model_, f.type);
-      const bool optional =
-          f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
-      if (optional) {
+      if (f.presence == ir::Presence::Optional) {
         out << ind << "  if (pre.value().optionals.size() > " << opt_i
             << " && pre.value().optionals[" << opt_i << "]) {\n"
             << ind << "    " << type_cpp(f.type) << " field{};\n";
@@ -817,6 +850,12 @@ class Emitter {
             << ind << "  } else {\n"
             << ind << "    " << expr << "." << fname << " = std::nullopt;\n"
             << ind << "  }\n";
+        ++opt_i;
+      } else if (f.presence == ir::Presence::Default) {
+        out << ind << "  if (pre.value().optionals.size() > " << opt_i
+            << " && pre.value().optionals[" << opt_i << "]) {\n";
+        emit_field_decode(out, ft, expr + "." + fname, aper, ind + "    ");
+        out << ind << "  }\n";
         ++opt_i;
       } else {
         emit_field_decode(out, ft, expr + "." + fname, aper, ind + "  ");
@@ -830,12 +869,12 @@ class Emitter {
     const char* C = ns_codec(aper);
     std::size_t n_optionals = 0;
     for (const ir::Field& f : seq.root) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         ++n_optionals;
       }
     }
     for (const ir::Field& f : seq.trailing_root) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         ++n_optionals;
       }
     }
@@ -890,11 +929,12 @@ class Emitter {
         break;
       case ir::TypeKind::Integer:
         if (integer_is_bigint(t.integer)) {
-          out << ind << C << "::encode_integer(w, " << expr << ", "
-              << integer_constraint_expr(t.integer) << ");\n";
+          out << ind << "if (auto er = " << C << "::encode_integer(w, " << expr << ", "
+              << integer_constraint_expr(t.integer) << "); !er) return er.error();\n";
         } else {
-          out << ind << C << "::encode_integer(w, static_cast<std::int64_t>(" << expr << "), "
-              << integer_constraint_expr(t.integer) << ");\n";
+          out << ind << "if (auto er = " << C << "::encode_integer(w, static_cast<std::int64_t>("
+              << expr << "), " << integer_constraint_expr(t.integer)
+              << "); !er) return er.error();\n";
         }
         break;
       case ir::TypeKind::OctetString:
@@ -1730,7 +1770,7 @@ class Emitter {
         auto emit_enum_map = [&](const std::vector<ir::NamedNumber>& items) {
           for (const auto& nn : items) {
             out << ind << "  if (!jer_enum_ok && jer_name == \"" << nn.name << "\") { "
-                << expr << " = static_cast<decltype(" << expr << ")>("
+                << expr << " = static_cast<std::remove_cv_t<std::remove_reference_t<decltype(" << expr << ")>>>("
                 << (nn.value.as_i64 ? std::to_string(*nn.value.as_i64) : "0")
                 << "); jer_enum_ok = true; }\n";
           }
@@ -2844,7 +2884,7 @@ class Emitter {
                                        const std::string& expr, const std::string& ind) {
     std::vector<const ir::Field*> optionals;
     for (const ir::Field& f : group) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         optionals.push_back(&f);
       }
     }
@@ -2852,8 +2892,13 @@ class Emitter {
       out << ind << "{\n";
       out << ind << "  bool gopt[" << optionals.size() << "] = {};\n";
       for (std::size_t i = 0; i < optionals.size(); ++i) {
-        out << ind << "  gopt[" << i << "] = " << expr << "."
-            << cpp_ident(optionals[i]->name) << ".has_value();\n";
+        const ir::Field& pf = *optionals[i];
+        out << ind << "  gopt[" << i << "] = ";
+        if (pf.presence == ir::Presence::Default) {
+          out << "true;\n";
+        } else {
+          out << expr << "." << cpp_ident(pf.name) << ".has_value();\n";
+        }
       }
       out << ind << "  " << oer_ns() << "::encode_sequence_preamble(w, false, false, "
           << "asn1::Span<const bool>(gopt, " << optionals.size() << "));\n";
@@ -2862,9 +2907,13 @@ class Emitter {
     for (const ir::Field& f : group) {
       const std::string fname = cpp_ident(f.name);
       const ir::Type& ft = resolve(model_, f.type);
-      out << ind << "if (" << expr << "." << fname << ") {\n";
-      emit_oer_field_encode(out, ft, expr + "." + fname + ".value()", ind + "  ");
-      out << ind << "}\n";
+      if (f.presence == ir::Presence::Optional) {
+        out << ind << "if (" << expr << "." << fname << ") {\n";
+        emit_oer_field_encode(out, ft, expr + "." + fname + ".value()", ind + "  ");
+        out << ind << "}\n";
+      } else {
+        emit_oer_field_encode(out, ft, expr + "." + fname, ind);
+      }
     }
   }
 
@@ -2872,7 +2921,7 @@ class Emitter {
                                        const std::string& expr, const std::string& ind) {
     std::vector<const ir::Field*> optionals;
     for (const ir::Field& f : group) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         optionals.push_back(&f);
       }
     }
@@ -2885,15 +2934,17 @@ class Emitter {
       for (const ir::Field& f : group) {
         const std::string fname = cpp_ident(f.name);
         const ir::Type& ft = resolve(model_, f.type);
-        const bool optional =
-            f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
-        if (optional) {
+        if (field_has_presence_bit(f)) {
           out << ind << "  if (gbm.value().optionals.size() > " << opt_i
-              << " && gbm.value().optionals[" << opt_i << "]) {\n"
-              << ind << "    " << type_cpp(f.type) << " field{};\n";
-          emit_oer_field_decode(out, ft, "field", ind + "    ");
-          out << ind << "    " << expr << "." << fname << " = std::move(field);\n"
-              << ind << "  }\n";
+              << " && gbm.value().optionals[" << opt_i << "]) {\n";
+          if (f.presence == ir::Presence::Optional) {
+            out << ind << "    " << type_cpp(f.type) << " field{};\n";
+            emit_oer_field_decode(out, ft, "field", ind + "    ");
+            out << ind << "    " << expr << "." << fname << " = std::move(field);\n";
+          } else {
+            emit_oer_field_decode(out, ft, expr + "." + fname, ind + "    ");
+          }
+          out << ind << "  }\n";
           ++opt_i;
         } else {
           out << ind << "  {\n"
@@ -2921,12 +2972,12 @@ class Emitter {
                                 const std::string& expr, const std::string& ind) {
     std::vector<const ir::Field*> optionals;
     for (const ir::Field& f : seq.root) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         optionals.push_back(&f);
       }
     }
     for (const ir::Field& f : seq.trailing_root) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         optionals.push_back(&f);
       }
     }
@@ -2934,8 +2985,13 @@ class Emitter {
     out << ind << "{\n";
     out << ind << "  bool opt[" << (optionals.empty() ? 1 : optionals.size()) << "] = {};\n";
     for (std::size_t i = 0; i < optionals.size(); ++i) {
-      out << ind << "  opt[" << i << "] = " << expr << "." << cpp_ident(optionals[i]->name)
-          << ".has_value();\n";
+      const ir::Field& pf = *optionals[i];
+      out << ind << "  opt[" << i << "] = ";
+      if (pf.presence == ir::Presence::Default) {
+        out << "true;\n";
+      } else {
+        out << expr << "." << cpp_ident(pf.name) << ".has_value();\n";
+      }
     }
     out << ind << "  bool ext_present = false;\n";
     if (seq.extensible && n_ext > 0) {
@@ -2945,7 +3001,7 @@ class Emitter {
         const auto& group = seq.extension_groups[g];
         for (std::size_t i = 0; i < group.size(); ++i) {
           if (i) out << " || ";
-          out << expr << "." << cpp_ident(group[i].name) << ".has_value()";
+          emit_ext_group_field_present(out, group[i], expr);
         }
         if (group.empty()) out << "false";
         out << ");\n";
@@ -2959,9 +3015,7 @@ class Emitter {
     for (const ir::Field& f : seq.root) {
       const std::string fname = cpp_ident(f.name);
       const ir::Type& ft = resolve(model_, f.type);
-      const bool optional =
-          f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
-      if (optional) {
+      if (f.presence == ir::Presence::Optional) {
         out << ind << "if (" << expr << "." << fname << ") {\n";
         emit_oer_field_encode(out, ft, expr + "." + fname + ".value()", ind + "  ");
         out << ind << "}\n";
@@ -2972,9 +3026,7 @@ class Emitter {
     for (const ir::Field& f : seq.trailing_root) {
       const std::string fname = cpp_ident(f.name);
       const ir::Type& ft = resolve(model_, f.type);
-      const bool optional =
-          f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
-      if (optional) {
+      if (f.presence == ir::Presence::Optional) {
         out << ind << "if (" << expr << "." << fname << ") {\n";
         emit_oer_field_encode(out, ft, expr + "." + fname + ".value()", ind + "  ");
         out << ind << "}\n";
@@ -2991,7 +3043,7 @@ class Emitter {
         const auto& group = seq.extension_groups[g];
         for (std::size_t i = 0; i < group.size(); ++i) {
           if (i) out << " || ";
-          out << expr << "." << cpp_ident(group[i].name) << ".has_value()";
+          emit_ext_group_field_present(out, group[i], expr);
         }
         if (group.empty()) out << "false";
         out << ");\n";
@@ -3020,12 +3072,12 @@ class Emitter {
                                 const std::string& expr, const std::string& ind) {
     std::size_t n_optionals = 0;
     for (const ir::Field& f : seq.root) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         ++n_optionals;
       }
     }
     for (const ir::Field& f : seq.trailing_root) {
-      if (f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default) {
+      if (field_has_presence_bit(f)) {
         ++n_optionals;
       }
     }
@@ -3039,9 +3091,7 @@ class Emitter {
       for (const ir::Field& f : fields) {
         const std::string fname = cpp_ident(f.name);
         const ir::Type& ft = resolve(model_, f.type);
-        const bool optional =
-            f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
-        if (optional) {
+        if (f.presence == ir::Presence::Optional) {
           out << ind << "  if (pre.value().optionals.size() > " << opt_i
               << " && pre.value().optionals[" << opt_i << "]) {\n"
               << ind << "    " << type_cpp(f.type) << " field{};\n";
@@ -3050,6 +3100,12 @@ class Emitter {
               << ind << "  } else {\n"
               << ind << "    " << expr << "." << fname << " = std::nullopt;\n"
               << ind << "  }\n";
+          ++opt_i;
+        } else if (f.presence == ir::Presence::Default) {
+          out << ind << "  if (pre.value().optionals.size() > " << opt_i
+              << " && pre.value().optionals[" << opt_i << "]) {\n";
+          emit_oer_field_decode(out, ft, expr + "." + fname, ind + "    ");
+          out << ind << "  }\n";
           ++opt_i;
         } else {
           emit_oer_field_decode(out, ft, expr + "." + fname, ind + "  ");
@@ -3293,7 +3349,7 @@ class Emitter {
         out << ind << "{\n"
             << ind << "  auto tmp = " << oer_ns() << "::decode_enumerated(r);\n"
             << ind << "  if (!tmp) return tmp.error();\n"
-            << ind << "  " << expr << " = static_cast<decltype(" << expr << ")>(tmp.value());\n"
+            << ind << "  " << expr << " = static_cast<std::remove_cv_t<std::remove_reference_t<decltype(" << expr << ")>>>(tmp.value());\n"
             << ind << "}\n";
         break;
       case ir::TypeKind::ObjectIdentifier:
@@ -3570,33 +3626,32 @@ class Emitter {
     }
   }
 
+  void emit_tlv_sequence_field_encode(std::ostream& out, const ir::Field& f,
+                                      const std::string& expr, bool der,
+                                      const std::string& ind) {
+    const std::string fname = cpp_ident(f.name);
+    const ir::Type& ft = resolve(model_, f.type);
+    if (f.presence == ir::Presence::Optional) {
+      out << ind << "if (" << expr << "." << fname << ") {\n";
+      emit_tlv_field_encode(out, ft, &f, expr + "." + fname + ".value()", der, ind + "  ");
+      out << ind << "}\n";
+    } else {
+      emit_tlv_field_encode(out, ft, &f, expr + "." + fname, der, ind);
+    }
+  }
+
   void emit_tlv_sequence_components(std::ostream& out, const ir::SequenceDesc& seq,
                                     const std::string& expr, bool der,
                                     const std::string& ind) {
     for (const ir::Field& f : seq.root) {
-      const std::string fname = cpp_ident(f.name);
-      const ir::Type& ft = resolve(model_, f.type);
-      const bool optional =
-          f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
-      if (optional) {
-        out << ind << "if (" << expr << "." << fname << ") {\n";
-        emit_tlv_field_encode(out, ft, &f, expr + "." + fname + ".value()", der, ind + "  ");
-        out << ind << "}\n";
-      } else {
-        emit_tlv_field_encode(out, ft, &f, expr + "." + fname, der, ind);
-      }
+      emit_tlv_sequence_field_encode(out, f, expr, der, ind);
     }
     for (const ir::Field& f : seq.trailing_root) {
-      const std::string fname = cpp_ident(f.name);
-      const ir::Type& ft = resolve(model_, f.type);
-      const bool optional =
-          f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
-      if (optional) {
-        out << ind << "if (" << expr << "." << fname << ") {\n";
-        emit_tlv_field_encode(out, ft, &f, expr + "." + fname + ".value()", der, ind + "  ");
-        out << ind << "}\n";
-      } else {
-        emit_tlv_field_encode(out, ft, &f, expr + "." + fname, der, ind);
+      emit_tlv_sequence_field_encode(out, f, expr, der, ind);
+    }
+    for (const auto& group : seq.extension_groups) {
+      for (const ir::Field& f : group) {
+        emit_tlv_sequence_field_encode(out, f, expr, der, ind);
       }
     }
   }
@@ -3668,9 +3723,7 @@ class Emitter {
             for (const ir::Field& f : fields) {
               const std::string fname = cpp_ident(f.name);
               const ir::Type& ft = resolve(model_, f.type);
-              const bool optional = f.presence == ir::Presence::Optional ||
-                                    f.presence == ir::Presence::Default;
-              if (optional) {
+              if (f.presence == ir::Presence::Optional) {
                 out << ind << "  if (" << expr << "." << fname << ") {\n";
                 out << ind << "    asn1::ByteWriter ew;\n";
                 out << ind << "    {\n";
@@ -3857,9 +3910,7 @@ class Emitter {
         out << ind << "{\n"
             << ind << "  auto tmp = " << NS << "::decode_bit_string(r, " << tag << ");\n"
             << ind << "  if (!tmp) return tmp.error();\n"
-            << ind << "  " << expr << ".bits = std::move(tmp.value().bits);\n"
-            << ind << "  " << expr << ".bit_length = " << expr
-            << ".bits.size() * 8u - tmp.value().unused_bits;\n"
+            << ind << "  " << expr << " = std::move(tmp.value());\n"
             << ind << "}\n";
         break;
       case ir::TypeKind::String:
@@ -3873,7 +3924,7 @@ class Emitter {
         out << ind << "{\n"
             << ind << "  auto tmp = " << NS << "::decode_enumerated(r, " << tag << ");\n"
             << ind << "  if (!tmp) return tmp.error();\n"
-            << ind << "  " << expr << " = static_cast<decltype(" << expr << ")>(tmp.value());\n"
+            << ind << "  " << expr << " = static_cast<std::remove_cv_t<std::remove_reference_t<decltype(" << expr << ")>>>(tmp.value());\n"
             << ind << "}\n";
         break;
       case ir::TypeKind::ObjectIdentifier:
@@ -3919,6 +3970,13 @@ class Emitter {
         }
         for (const ir::Field& f : trailing) {
           emit_tlv_field_decode_stmt(out, f, expr, der, ind + "    ");
+        }
+        if (rt.kind == ir::TypeKind::Sequence) {
+          for (const auto& group : rt.sequence.extension_groups) {
+            for (const ir::Field& f : group) {
+              emit_tlv_field_decode_stmt(out, f, expr, der, ind + "    ");
+            }
+          }
         }
         out << ind << "  }\n";
         out << ind << "}\n";
@@ -4046,9 +4104,11 @@ class Emitter {
                                   bool der, const std::string& ind) {
     const std::string fname = cpp_ident(f.name);
     const ir::Type& ft = resolve(model_, f.type);
-    const bool optional =
-        f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
-    if (optional) {
+    if (f.presence == ir::Presence::Default) {
+      emit_tlv_field_decode_value(out, ft, &f, expr + "." + fname, der, ind);
+      return;
+    }
+    if (f.presence == ir::Presence::Optional) {
       const std::string expect =
           ber_tag_expr(f.tag, type_is_constructed(ft) || f.tag.is_explicit);
       out << ind << "if (r.remaining() == 0) {\n";

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <asn1/runtime/bit_string.hpp>
 #include <asn1/runtime/bigint.hpp>
 #include <asn1/runtime/xer/xml.hpp>
 #include <asn1/common/span.hpp>
@@ -11,10 +12,7 @@
 namespace asn1 {
 namespace xer {
 
-struct BitStringValue {
-  std::vector<std::uint8_t> bits;
-  std::size_t bit_length = 0;
-};
+using BitStringValue = asn1::BitStringValue;
 
 // ---- Named type encodings (BASIC-XER / X.680 XMLValue style) ----
 

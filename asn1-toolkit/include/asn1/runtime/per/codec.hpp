@@ -1,5 +1,6 @@
 #pragma once
 
+#include <asn1/runtime/bit_string.hpp>
 #include <asn1/runtime/per/primitives.hpp>
 
 #include <cstddef>
@@ -42,10 +43,10 @@ Result<bool> decode_boolean(BitReader& in, Variant variant);
 void encode_null(BitWriter& out, Variant variant);
 Result<void> decode_null(BitReader& in, Variant variant);
 
-void encode_integer(BitWriter& out, Variant variant, std::int64_t value,
-                    const IntegerConstraint& constraint = {});
-void encode_integer(BitWriter& out, Variant variant, const BigInteger& value,
-                    const IntegerConstraint& constraint = {});
+Result<void> encode_integer(BitWriter& out, Variant variant, std::int64_t value,
+                            const IntegerConstraint& constraint = {});
+Result<void> encode_integer(BitWriter& out, Variant variant, const BigInteger& value,
+                            const IntegerConstraint& constraint = {});
 Result<std::int64_t> decode_integer(BitReader& in, Variant variant,
                                     const IntegerConstraint& constraint = {});
 Result<BigInteger> decode_big_integer(BitReader& in, Variant variant,
@@ -61,10 +62,7 @@ Result<std::vector<std::uint8_t>> decode_octet_string(
 void encode_bit_string(BitWriter& out, Variant variant,
                        Span<const std::uint8_t> bits, std::size_t bit_length,
                        const SizeConstraint& size = {});
-struct BitStringValue {
-  std::vector<std::uint8_t> bits;
-  std::size_t bit_length = 0;
-};
+using BitStringValue = asn1::BitStringValue;
 Result<BitStringValue> decode_bit_string(BitReader& in, Variant variant,
                                          const SizeConstraint& size = {});
 
@@ -166,13 +164,13 @@ inline Result<void> decode_null(BitReader& in) {
   return per::decode_null(in, kVariant);
 }
 
-inline void encode_integer(BitWriter& out, std::int64_t value,
-                           const per::IntegerConstraint& c = {}) {
-  per::encode_integer(out, kVariant, value, c);
+inline Result<void> encode_integer(BitWriter& out, std::int64_t value,
+                                   const per::IntegerConstraint& c = {}) {
+  return per::encode_integer(out, kVariant, value, c);
 }
-inline void encode_integer(BitWriter& out, const BigInteger& value,
-                           const per::IntegerConstraint& c = {}) {
-  per::encode_integer(out, kVariant, value, c);
+inline Result<void> encode_integer(BitWriter& out, const BigInteger& value,
+                                   const per::IntegerConstraint& c = {}) {
+  return per::encode_integer(out, kVariant, value, c);
 }
 inline Result<std::int64_t> decode_integer(BitReader& in,
                                            const per::IntegerConstraint& c = {}) {
@@ -310,13 +308,13 @@ inline Result<void> decode_null(BitReader& in) {
   return per::decode_null(in, kVariant);
 }
 
-inline void encode_integer(BitWriter& out, std::int64_t value,
-                           const per::IntegerConstraint& c = {}) {
-  per::encode_integer(out, kVariant, value, c);
+inline Result<void> encode_integer(BitWriter& out, std::int64_t value,
+                                   const per::IntegerConstraint& c = {}) {
+  return per::encode_integer(out, kVariant, value, c);
 }
-inline void encode_integer(BitWriter& out, const BigInteger& value,
-                           const per::IntegerConstraint& c = {}) {
-  per::encode_integer(out, kVariant, value, c);
+inline Result<void> encode_integer(BitWriter& out, const BigInteger& value,
+                                   const per::IntegerConstraint& c = {}) {
+  return per::encode_integer(out, kVariant, value, c);
 }
 inline Result<std::int64_t> decode_integer(BitReader& in,
                                            const per::IntegerConstraint& c = {}) {

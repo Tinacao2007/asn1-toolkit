@@ -392,7 +392,7 @@ TEST(BerCodec, NullOctetBitUtf8RoundTrip) {
     asn1::ByteReader r(w.buffer());
     auto v = asn1::ber::decode_bit_string(r);
     ASSERT_TRUE(v.ok());
-    EXPECT_EQ(v.value().unused_bits, 4);
+    EXPECT_EQ(v.value().bit_length, 4u);
     expect_bytes(v.value().bits, bits);
   }
   {

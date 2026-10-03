@@ -319,15 +319,34 @@ bool needs_synthetic_nested_name(const ast::Type& type) {
          dynamic_cast<const ast::ChoiceType*>(&type) != nullptr;
 }
 
+std::string uniquify_type_name(LowerCtx& ctx, std::string name) {
+  if (name.empty()) {
+    return name;
+  }
+  const std::string key0 = ctx.mod.name() + "::" + name;
+  if (!ctx.named_ids.count(key0)) {
+    return name;
+  }
+  for (;;) {
+    std::string candidate = name + "_" + std::to_string(++ctx.synth_serial);
+    const std::string key = ctx.mod.name() + "::" + candidate;
+    if (!ctx.named_ids.count(key)) {
+      return candidate;
+    }
+  }
+}
+
 std::string nested_type_name(LowerCtx& ctx, const std::string& parent,
                              const std::string& field, const char* fallback_kind) {
+  std::string name;
   if (!parent.empty() && !field.empty()) {
-    return parent + "-" + field;
+    name = parent + "-" + field;
+  } else if (!parent.empty()) {
+    name = parent + "-" + fallback_kind;
+  } else {
+    name = synth_type_name(ctx, "", fallback_kind);
   }
-  if (!parent.empty()) {
-    return parent + "-" + fallback_kind;
-  }
-  return synth_type_name(ctx, "", fallback_kind);
+  return uniquify_type_name(ctx, std::move(name));
 }
 
 std::string child_lower_name(LowerCtx& ctx, const std::string& parent,
@@ -343,12 +362,13 @@ struct SubstEnv {
   std::unordered_map<std::string, const ast::ActualParameter*> by_name;
 };
 
-std::string actual_param_label(const ast::ActualParameter& a, const SubstEnv* subst) {
+std::string actual_param_label(const ast::ActualParameter& a, const SubstEnv* subst,
+                               std::size_t index) {
   if (a.type) {
     if (const auto* r = dynamic_cast<const ast::ReferencedType*>(a.type.get())) {
       return r->name();
     }
-    return "T";
+    return "T" + std::to_string(index);
   }
   if (a.object_set_name) {
     std::string os = *a.object_set_name;
@@ -369,18 +389,18 @@ std::string actual_param_label(const ast::ActualParameter& a, const SubstEnv* su
     return os;
   }
   if (a.value) {
-    return "V";
+    return "V" + std::to_string(index);
   }
-  return "X";
+  return "X" + std::to_string(index);
 }
 
 std::string mangle_instantiation(const std::string& template_name,
                                  const std::vector<ast::ActualParameter>& actuals,
                                  const SubstEnv* subst) {
   std::string m = template_name;
-  for (const auto& a : actuals) {
+  for (std::size_t i = 0; i < actuals.size(); ++i) {
     m += "-";
-    m += actual_param_label(a, subst);
+    m += actual_param_label(actuals[i], subst, i);
   }
   return m;
 }
@@ -407,6 +427,57 @@ const ast::ActualParameter* resolve_actual(const ast::ActualParameter& actual,
     }
   }
   return &actual;
+}
+
+std::optional<ir::ValueId> lower_simple_value(LowerCtx& ctx, const ast::Value& v) {
+  ir::Value out;
+  out.module = ctx.mod.name();
+  if (const auto* iv = dynamic_cast<const ast::IntegerValue*>(&v)) {
+    out.kind = ir::ValueKind::Integer;
+    out.integer = ir::BigInt::from_decimal(iv->text(), iv->negative());
+  } else if (const auto* bv = dynamic_cast<const ast::BooleanValue*>(&v)) {
+    out.kind = ir::ValueKind::Boolean;
+    out.boolean = bv->value();
+  } else if (const auto* sv = dynamic_cast<const ast::StringValue*>(&v)) {
+    out.kind = ir::ValueKind::String;
+    out.text = sv->text();
+  } else if (const auto* vr = dynamic_cast<const ast::ValueReference*>(&v)) {
+    out.kind = ir::ValueKind::Reference;
+    out.name = vr->name();
+  } else {
+    return std::nullopt;
+  }
+  return ctx.model.arena.add_value(std::move(out));
+}
+
+void resolve_object_class_field(ir::Type& t, const ir::Model& model) {
+  if (t.kind != ir::TypeKind::ObjectClassField) {
+    return;
+  }
+  for (const auto& oc : model.object_classes) {
+    if (oc.name != t.object_class_field.class_name) {
+      continue;
+    }
+    for (const auto& f : oc.fields) {
+      if (f.name != t.object_class_field.field_name) {
+        continue;
+      }
+      if (f.kind == ir::ClassFieldKind::TypeField) {
+        t.object_class_field.open_type = true;
+        t.object_class_field.fixed_type = ir::kInvalidType;
+      } else {
+        t.object_class_field.open_type = false;
+        t.object_class_field.fixed_type = f.fixed_type;
+      }
+      return;
+    }
+  }
+}
+
+void re_resolve_all_object_class_fields(ir::Model& model) {
+  for (std::size_t i = 0; i < model.arena.type_count(); ++i) {
+    resolve_object_class_field(model.arena.get(static_cast<ir::TypeId>(i)), model);
+  }
 }
 
 /// Walk a constraint tree for the first ContentsConstraint contained type.
@@ -715,9 +786,16 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
     if (!ref->actuals().empty() && sym && sym->kind == SymbolKind::Type && !sym->is_import) {
       const auto* ta = dynamic_cast<const ast::TypeAssignment*>(sym->ast);
       if (ta && !ta->parameters().empty()) {
-        SubstEnv local;
         const auto& formals = ta->parameters();
-        for (std::size_t i = 0; i < formals.size() && i < ref->actuals().size(); ++i) {
+        if (ref->actuals().size() != formals.size()) {
+          ctx.diagnostics.error(ref->range(),
+                                "parameterized type '" + name + "' expects " +
+                                    std::to_string(formals.size()) + " actual parameter(s), got " +
+                                    std::to_string(ref->actuals().size()));
+          return ctx.model.arena.add(ir::Type{});
+        }
+        SubstEnv local;
+        for (std::size_t i = 0; i < formals.size(); ++i) {
           local.by_name[formals[i].name] = resolve_actual(ref->actuals()[i], subst);
         }
         if (subst) {
@@ -915,6 +993,9 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       field.type = lower_type(
           ctx, comp.type(),
           child_lower_name(ctx, assigned_name, comp.name(), comp.type(), "Seq"), subst);
+      if (comp.default_value()) {
+        field.default_value = lower_simple_value(ctx, *comp.default_value());
+      }
       apply_field_jer_name_from_ast(field, comp.type());
       apply_field_exer_from_ast(field, comp.type());
       return field;
@@ -1025,6 +1106,9 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       field.type = lower_type(
           ctx, comp.type(),
           child_lower_name(ctx, assigned_name, comp.name(), comp.type(), "Set"), subst);
+      if (comp.default_value()) {
+        field.default_value = lower_simple_value(ctx, *comp.default_value());
+      }
       apply_field_jer_name_from_ast(field, comp.type());
       apply_field_exer_from_ast(field, comp.type());
       return field;
@@ -1123,25 +1207,7 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
     out.object_class_field.class_name = ocf->class_name();
     out.object_class_field.field_name = ocf->field_name();
     out.object_class_field.open_type = true;
-    // Resolve against registered object classes.
-    for (const auto& oc : ctx.model.object_classes) {
-      if (oc.name != ocf->class_name()) {
-        continue;
-      }
-      for (const auto& f : oc.fields) {
-        if (f.name != ocf->field_name()) {
-          continue;
-        }
-        if (f.kind == ir::ClassFieldKind::TypeField) {
-          out.object_class_field.open_type = true;
-        } else {
-          out.object_class_field.open_type = false;
-          out.object_class_field.fixed_type = f.fixed_type;
-        }
-        break;
-      }
-      break;
-    }
+    resolve_object_class_field(out, ctx.model);
   } else if (const auto* inst = dynamic_cast<const ast::InstanceOfType*>(&type)) {
     out.kind = ir::TypeKind::InstanceOf;
     out.instance_of.class_name = inst->class_name();
@@ -1160,7 +1226,15 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
 
   apply_jer_instructions(out, type.encoding_instructions());
   apply_exer_instructions(out, type.encoding_instructions());
-  return ctx.model.arena.add(std::move(out));
+  const ir::TypeId id = ctx.model.arena.add(std::move(out));
+  if (!assigned_name.empty()) {
+    const ir::Type& built = ctx.model.arena.get(id);
+    if (built.kind == ir::TypeKind::Sequence || built.kind == ir::TypeKind::Set ||
+        built.kind == ir::TypeKind::Choice) {
+      ctx.named_ids[ctx.mod.name() + "::" + assigned_name] = id;
+    }
+  }
+  return id;
 }
 
 void check_type_refs(const ast::Type& type, const std::string& module, SymbolTable& symbols,
@@ -1693,6 +1767,10 @@ void Analyzer::lower_pass() {
 
     model_.modules.push_back(std::move(info));
   }
+
+  // Object classes from later modules (e.g. S1AP-Containers) may register after
+  // earlier modules already instantiated ProtocolIE-Field; re-bind fixed fields.
+  re_resolve_all_object_class_fields(model_);
 }
 
 void Analyzer::tag_pass() {

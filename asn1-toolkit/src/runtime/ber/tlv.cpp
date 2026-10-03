@@ -1,4 +1,5 @@
 #include <asn1/runtime/ber/tlv.hpp>
+#include <asn1/runtime/limits.hpp>
 
 #include <climits>
 #include <cstdint>
@@ -109,6 +110,10 @@ Result<Length> decode_length(ByteReader& in) {
   }
   if ((first & 0x80u) == 0) {
     len.value = first;
+    if (len.value > kMaxCodecBytes) {
+      return make_error(Error::Code::LengthOverflow, in.offset() - 1,
+                        "TLV length exceeds codec limit");
+    }
     return len;
   }
   const std::uint8_t nbytes = static_cast<std::uint8_t>(first & 0x7Fu);
@@ -125,6 +130,10 @@ Result<Length> decode_length(ByteReader& in) {
     value = (value << 8) | b_r.value();
   }
   len.value = value;
+  if (len.value > kMaxCodecBytes) {
+    return make_error(Error::Code::LengthOverflow, in.offset() - 1,
+                      "TLV length exceeds codec limit");
+  }
   return len;
 }
 

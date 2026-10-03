@@ -1,5 +1,6 @@
 #pragma once
 
+#include <asn1/runtime/bit_string.hpp>
 #include <asn1/runtime/ber/tlv.hpp>
 #include <asn1/runtime/bigint.hpp>
 
@@ -32,10 +33,7 @@ Result<std::vector<std::uint8_t>> decode_octet_string_content(ByteReader& in,
 /// Bit string as bytes with `unused_bits` in the last octet (0..7).
 void encode_bit_string_content(ByteWriter& out, Span<const std::uint8_t> bits,
                                std::uint8_t unused_bits);
-struct BitStringValue {
-  std::vector<std::uint8_t> bits;
-  std::uint8_t unused_bits = 0;
-};
+using BitStringValue = asn1::BitStringValue;
 Result<BitStringValue> decode_bit_string_content(ByteReader& in, std::size_t length);
 
 void encode_utf8_string_content(ByteWriter& out, const std::string& value);

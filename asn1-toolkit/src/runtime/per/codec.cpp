@@ -127,9 +127,9 @@ void encode_size(BitWriter& out, Variant variant, std::size_t n,
     if (size.is_fixed()) {
       return;
     }
-    encode_constrained_whole_number(out, variant, static_cast<std::int64_t>(n),
-                                    static_cast<std::int64_t>(*size.lower),
-                                    static_cast<std::int64_t>(*size.upper));
+    (void)encode_constrained_whole_number(out, variant, static_cast<std::int64_t>(n),
+                                          static_cast<std::int64_t>(*size.lower),
+                                          static_cast<std::int64_t>(*size.upper));
     return;
   }
   // Unbound / semi: length determinant of n (semi with lower uses n as absolute length
@@ -199,47 +199,47 @@ Result<void> decode_null(BitReader& /*in*/, Variant /*variant*/) {
   return Result<void>::success();
 }
 
-void encode_integer(BitWriter& out, Variant variant, std::int64_t value,
-                    const IntegerConstraint& constraint) {
+Result<void> encode_integer(BitWriter& out, Variant variant, std::int64_t value,
+                            const IntegerConstraint& constraint) {
   if (constraint.extensible) {
     const bool root = in_root_integer(value, constraint);
     out.put_bit(!root);
     if (!root) {
       encode_unconstrained_whole_number(out, variant, value);
-      return;
+      return Result<void>::success();
     }
   }
 
   if (constraint.lower && constraint.upper) {
-    encode_constrained_whole_number(out, variant, value, *constraint.lower,
-                                    *constraint.upper);
-    return;
+    return encode_constrained_whole_number(out, variant, value, *constraint.lower,
+                                           *constraint.upper);
   }
   if (constraint.lower) {
     encode_semi_constrained_whole_number(out, variant, value, *constraint.lower);
-    return;
+    return Result<void>::success();
   }
   encode_unconstrained_whole_number(out, variant, value);
+  return Result<void>::success();
 }
 
-void encode_integer(BitWriter& out, Variant variant, const BigInteger& value,
-                    const IntegerConstraint& constraint) {
+Result<void> encode_integer(BitWriter& out, Variant variant, const BigInteger& value,
+                            const IntegerConstraint& constraint) {
   // Constrained host paths stay on int64; BigInteger uses the unconstrained form
   // (or extension addition) unless the value fits the int64 root range.
   if (constraint.lower || constraint.upper || constraint.extensible) {
     auto v = value.as_i64();
     if (v) {
-      encode_integer(out, variant, *v, constraint);
-      return;
+      return encode_integer(out, variant, *v, constraint);
     }
     if (constraint.extensible) {
       out.put_bit(true);
       encode_unconstrained_whole_number(out, variant, value);
-      return;
+      return Result<void>::success();
     }
     // Unconstrained with leftover bounds that don't fit int64 → length+octets.
   }
   encode_unconstrained_whole_number(out, variant, value);
+  return Result<void>::success();
 }
 
 Result<std::int64_t> decode_integer(BitReader& in, Variant variant,
@@ -307,10 +307,10 @@ void encode_octet_string(BitWriter& out, Variant variant,
 
   if (size.is_fully_constrained()) {
     if (!size.is_fixed()) {
-      encode_constrained_whole_number(out, variant,
-                                      static_cast<std::int64_t>(value.size()),
-                                      static_cast<std::int64_t>(*size.lower),
-                                      static_cast<std::int64_t>(*size.upper));
+      (void)encode_constrained_whole_number(out, variant,
+                                            static_cast<std::int64_t>(value.size()),
+                                            static_cast<std::int64_t>(*size.lower),
+                                            static_cast<std::int64_t>(*size.upper));
       maybe_align(out, variant);
     } else if (*size.lower > 2) {
       maybe_align(out, variant);
@@ -379,10 +379,10 @@ void encode_bit_string(BitWriter& out, Variant variant,
 
   if (size.is_fully_constrained()) {
     if (!size.is_fixed()) {
-      encode_constrained_whole_number(out, variant,
-                                      static_cast<std::int64_t>(bit_length),
-                                      static_cast<std::int64_t>(*size.lower),
-                                      static_cast<std::int64_t>(*size.upper));
+      (void)encode_constrained_whole_number(out, variant,
+                                            static_cast<std::int64_t>(bit_length),
+                                            static_cast<std::int64_t>(*size.lower),
+                                            static_cast<std::int64_t>(*size.upper));
       maybe_align(out, variant);
     } else if (*size.lower > 16) {
       maybe_align(out, variant);

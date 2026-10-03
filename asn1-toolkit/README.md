@@ -4,11 +4,13 @@ C++17 ASN.1 compiler and codec runtime.
 
 ## Status
 
-**Phase 40** -- Telecom full-module emit.
+**Phase 41** -- Review hardening.
 
-- Synthetic IR names for nested anonymous SEQUENCE/SET/CHOICE
-- Parameterized ProtocolIE-Field / ProtocolExtensionField instantiation
-- Full RRC Rel-8, LPP Rel-14, S1AP Rel-14 analyze + codec emit gates
+- Object-class field re-resolve (typed IE id/criticality; `&Value` stays open-type)
+- DEFAULT as plain fields; shared `BitStringValue`; BER/DER extension groups
+- PER constrained INTEGER rejects out-of-range (no clamp); codec length caps
+- Full RRC/LPP/S1AP emit gates (header smoke); Person + `rrc_slice` compile round-trips
+- Note: table-constraint typed IE open types and full-module compile CI remain follow-ons
 
 ## Requirements
 

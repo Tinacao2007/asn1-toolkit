@@ -481,6 +481,43 @@ END
   EXPECT_EQ(ext.name, "Msg-ext");
 }
 
+TEST(Semantic, ObjectClassFixedFieldsResolveAfterAllModules) {
+  auto r = analyze_string(R"(
+M DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+  PROTO-IES ::= CLASS {
+    &id INTEGER UNIQUE,
+    &criticality ENUMERATED { ignore(0), reject(1) },
+    &Value
+  }
+  IE-Field { PROTO-IES : Set } ::= SEQUENCE {
+    id          PROTO-IES.&id          ({Set}),
+    criticality PROTO-IES.&criticality ({Set}{@id}),
+    value       PROTO-IES.&Value       ({Set}{@id})
+  }
+  MyIEs PROTO-IES ::= { ... }
+  Box ::= IE-Field {{MyIEs}}
+END
+)");
+  ASSERT_TRUE(r.diag.ok()) << asn1::ir::to_string(r.model);
+  // Top-level `Box ::= IE-Field {{MyIEs}}` keeps the assignment name on the
+  // instantiation body (mangled IE-Field-MyIEs is used when assigned_name is empty).
+  const asn1::ir::Type* field = find_named(r.model, "Box");
+  ASSERT_NE(field, nullptr) << asn1::ir::to_string(r.model);
+  ASSERT_EQ(field->sequence.root.size(), 3u);
+  const asn1::ir::Type& id_t = r.model.arena.get(field->sequence.root[0].type);
+  ASSERT_EQ(id_t.kind, asn1::ir::TypeKind::ObjectClassField);
+  EXPECT_FALSE(id_t.object_class_field.open_type);
+  EXPECT_NE(id_t.object_class_field.fixed_type, asn1::ir::kInvalidType);
+  const asn1::ir::Type& crit_t = r.model.arena.get(field->sequence.root[1].type);
+  ASSERT_EQ(crit_t.kind, asn1::ir::TypeKind::ObjectClassField);
+  EXPECT_FALSE(crit_t.object_class_field.open_type);
+  EXPECT_NE(crit_t.object_class_field.fixed_type, asn1::ir::kInvalidType);
+  const asn1::ir::Type& val_t = r.model.arena.get(field->sequence.root[2].type);
+  ASSERT_EQ(val_t.kind, asn1::ir::TypeKind::ObjectClassField);
+  EXPECT_TRUE(val_t.object_class_field.open_type);
+}
+
 TEST(Semantic, NestedParameterizedObjectSetInstantiation) {
   auto r = analyze_string(R"(
 M DEFINITIONS AUTOMATIC TAGS ::=

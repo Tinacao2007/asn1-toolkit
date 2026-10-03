@@ -56,11 +56,13 @@ Result<void> check_integer_minimal(Span<const std::uint8_t> bytes, std::size_t o
 
 Result<void> check_bit_string_unused_zero(const ber::BitStringValue& v,
                                           std::size_t offset) {
-  if (v.unused_bits == 0 || v.bits.empty()) {
+  const std::size_t unused =
+      v.bits.empty() ? 0u : (v.bits.size() * 8u - v.bit_length);
+  if (unused == 0 || v.bits.empty()) {
     return Result<void>::success();
   }
   const std::uint8_t mask =
-      static_cast<std::uint8_t>((1u << v.unused_bits) - 1u);
+      static_cast<std::uint8_t>((1u << unused) - 1u);
   if ((v.bits.back() & mask) != 0) {
     return make_error(Error::Code::NonCanonical, offset,
                       "DER BIT STRING unused bits must be zero");

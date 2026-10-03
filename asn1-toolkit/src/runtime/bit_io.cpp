@@ -1,5 +1,6 @@
 #include <asn1/runtime/bit_io.hpp>
 #include <asn1/runtime/byte_io.hpp>
+#include <asn1/runtime/limits.hpp>
 
 namespace asn1 {
 
@@ -142,6 +143,10 @@ Result<std::uint8_t> BitReader::get_octet() {
 }
 
 Result<std::vector<std::uint8_t>> BitReader::get_octets(std::size_t n) {
+  if (n > kMaxCodecBytes) {
+    return make_error(Error::Code::LengthOverflow, bit_offset(),
+                      "octet string length exceeds codec limit");
+  }
   std::vector<std::uint8_t> out;
   out.reserve(n);
   for (std::size_t i = 0; i < n; ++i) {

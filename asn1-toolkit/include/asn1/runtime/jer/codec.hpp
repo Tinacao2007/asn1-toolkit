@@ -1,5 +1,6 @@
 #pragma once
 
+#include <asn1/runtime/bit_string.hpp>
 #include <asn1/runtime/jer/json.hpp>
 #include <asn1/common/span.hpp>
 
@@ -10,10 +11,7 @@
 namespace asn1 {
 namespace jer {
 
-struct BitStringValue {
-  std::vector<std::uint8_t> bits;
-  std::size_t bit_length = 0;
-};
+using BitStringValue = asn1::BitStringValue;
 
 // ---- Primitive types (BASIC-JER / X.697) ----
 

@@ -30,9 +30,9 @@ std::size_t bits_for_range(std::uint64_t range);
 
 // ---- Whole numbers (X.691 clauses 11.5--11.8 / 10.6) ----
 
-void encode_constrained_whole_number(BitWriter& out, Variant variant,
-                                     std::int64_t value, std::int64_t lower,
-                                     std::int64_t upper);
+Result<void> encode_constrained_whole_number(BitWriter& out, Variant variant,
+                                             std::int64_t value, std::int64_t lower,
+                                             std::int64_t upper);
 Result<std::int64_t> decode_constrained_whole_number(BitReader& in, Variant variant,
                                                      std::int64_t lower,
                                                      std::int64_t upper);

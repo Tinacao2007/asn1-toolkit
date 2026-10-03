@@ -6,11 +6,14 @@ New code lives only in `asn1-toolkit/`. Sibling trees such as `pasn1/`, asn1c,
 and BER/UPER generators sit in one compiler (`parser.h` next to
 `ber-gen-enc.h` and `uper-gen-enc.h`).
 
-This document is the design. **Phase 40** enables full-module telecom emit:
-nested anonymous SEQUENCE/SET/CHOICE get path-based synthetic IR names, and
-parameterized IOC containers (ProtocolIE-Field) instantiate in the template’s
-defining module with object-set formal rebinding. Phase 39 closed Person
-multi-codec validation and telecom emit-gap gates.
+This document is the design. **Phase 41** hardens review findings: object-class
+fixed fields re-resolve after all modules, DEFAULT is a plain field (not
+`optional`), PER rejects out-of-range constrained INTEGER, shared
+`BitStringValue`, BER/DER emit extension additions, and decode length caps.
+Phase 40 enabled full-module telecom *header* emit via synthetic nested names
+and parameterized IE-field instantiation. **Table-constraint specialization of
+`&Value` open types** and compile/link of full RRC/LPP/S1AP generated TUs are
+still incomplete (emit success ≠ typed 3GPP codec parity).
 
 ## Pipeline
 
@@ -325,7 +328,7 @@ GoogleTest, one binary per area, registered with CTest.
 10. APER (done)
 11. Code generator (done)
 12. Advanced ASN.1 constructs (done)
-13. Information Object Classes and table constraints (done)
+13. Information Object Classes (partial: class fields + open-type `&Value`; table-constraint typing TBD)
 14. Real-world telecom ASN.1 validation (done)
 15. OER (done)
 16. COER (done)
@@ -353,6 +356,7 @@ GoogleTest, one binary per area, registered with CTest.
 38. Telecom UPER codec round-trips (done)
 39. Validation — multi-codec Person + telecom emit gates (done)
 40. Full RRC/LPP/S1AP emit — nested names + parameterized IE fields (done)
+41. Review hardening — OCF re-resolve, DEFAULT, PER constraints, BitString, caps (done)
 
 ## Telecom validation (Phase 14 / 38 / 39 / 40)
 

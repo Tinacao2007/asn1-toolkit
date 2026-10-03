@@ -145,3 +145,19 @@ add_executable(asn1_telecom_roundtrip_tests
 target_include_directories(asn1_telecom_roundtrip_tests PRIVATE "${ASN1_RRC_SLICE_OUT_DIR}")
 target_link_libraries(asn1_telecom_roundtrip_tests PRIVATE asn1::per GTest::gtest_main)
 gtest_discover_tests(asn1_telecom_roundtrip_tests)
+
+# Phase 41: compile-gate OER emit of rrc_slice (exercises shared BitStringValue).
+set(ASN1_RRC_SLICE_OER_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_rrc_slice_oer")
+add_custom_command(
+  OUTPUT "${ASN1_RRC_SLICE_OER_DIR}/generated.hpp" "${ASN1_RRC_SLICE_OER_DIR}/generated.cpp"
+  COMMAND asn1cxx --emit-dir "${ASN1_RRC_SLICE_OER_DIR}" --codec oer --namespace asn1_rrc_oer
+          "${CMAKE_SOURCE_DIR}/tests/fixtures/telecom/rrc_slice/rrc_slice.asn"
+  DEPENDS asn1cxx "${CMAKE_SOURCE_DIR}/tests/fixtures/telecom/rrc_slice/rrc_slice.asn"
+  COMMENT "Generating OER C++ for telecom rrc_slice.asn"
+  VERBATIM
+)
+add_library(asn1_rrc_slice_oer_compile STATIC
+  "${ASN1_RRC_SLICE_OER_DIR}/generated.cpp"
+)
+target_include_directories(asn1_rrc_slice_oer_compile PRIVATE "${ASN1_RRC_SLICE_OER_DIR}")
+target_link_libraries(asn1_rrc_slice_oer_compile PRIVATE asn1::oer)

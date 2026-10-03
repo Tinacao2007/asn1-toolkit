@@ -159,9 +159,9 @@ Result<BitStringValue> decode_bit_string_content(ByteReader& in, std::size_t len
     return data_r.error();
   }
   BitStringValue v;
-  v.unused_bits = unused;
   auto view = data_r.value();
   v.bits.assign(view.begin(), view.end());
+  v.bit_length = v.bits.size() * 8u - unused;
   return v;
 }
 
@@ -1123,8 +1123,7 @@ Result<ExternalValue> decode_external(ByteReader& in, Tag expected) {
       }
       out.encoding = ExternalValue::Encoding::Arbitrary;
       out.encoding_value = std::move(bs.value().bits);
-      out.arbitrary_bit_length =
-          out.encoding_value.size() * 8 - bs.value().unused_bits;
+      out.arbitrary_bit_length = bs.value().bit_length;
       continue;
     }
     return make_error(Error::Code::InvalidArgument, r.offset(),
