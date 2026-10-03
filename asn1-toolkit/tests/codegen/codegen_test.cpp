@@ -500,3 +500,32 @@ END
   EXPECT_NE(header.find("asn1::oer::decode_open_type"), std::string::npos);
   EXPECT_NE(header.find("std::optional<bool> b"), std::string::npos);
 }
+
+TEST(Codegen, EmitsNestedAnonymousChoiceWithSyntheticNames) {
+  asn1::Diagnostics diag;
+  asn1::SourceFile file;
+  auto model = analyze(R"(
+M DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+  Msg ::= CHOICE {
+    c1 CHOICE {
+      a INTEGER,
+      b BOOLEAN
+    },
+    ext SEQUENCE {}
+  }
+END
+)",
+                       diag, file);
+  ASSERT_TRUE(diag.ok());
+
+  asn1::codegen::CppGenerator gen;
+  asn1::codegen::EmitOptions opt;
+  opt.codec = asn1::codegen::CodecKind::Uper;
+  const std::string header = gen.emit_header_string(model, opt, diag);
+  ASSERT_TRUE(diag.ok()) << (diag.items().empty() ? "" : diag.items().front().message);
+  EXPECT_EQ(header.find("anonymous SEQUENCE/SET/CHOICE"), std::string::npos);
+  EXPECT_NE(header.find("struct Msg_c1"), std::string::npos);
+  EXPECT_NE(header.find("struct Msg_ext"), std::string::npos);
+  EXPECT_NE(header.find("encode_uper"), std::string::npos);
+}

@@ -6,11 +6,11 @@ New code lives only in `asn1-toolkit/`. Sibling trees such as `pasn1/`, asn1c,
 and BER/UPER generators sit in one compiler (`parser.h` next to
 `ber-gen-enc.h` and `uper-gen-enc.h`).
 
-This document is the design. **Phase 39** closes the validation gap: Person
-round-trips across UPER/APER/OER/COER/BER/DER/JER, and telecom gates that
-analyze full 3GPP modules plus emit/round-trip a named RRC slice. Full RRC/LPP/S1AP
-codegen still blocked on anonymous nested CHOICE/SEQUENCE (emit reports the
-gap). Phase 38 added `rrc_slice` UPER round-trips. Phase 37 added `--codec coer`.
+This document is the design. **Phase 40** enables full-module telecom emit:
+nested anonymous SEQUENCE/SET/CHOICE get path-based synthetic IR names, and
+parameterized IOC containers (ProtocolIE-Field) instantiate in the template’s
+defining module with object-set formal rebinding. Phase 39 closed Person
+multi-codec validation and telecom emit-gap gates.
 
 ## Pipeline
 
@@ -352,14 +352,15 @@ GoogleTest, one binary per area, registered with CTest.
 37. COER `--codec coer` codegen (done)
 38. Telecom UPER codec round-trips (done)
 39. Validation — multi-codec Person + telecom emit gates (done)
+40. Full RRC/LPP/S1AP emit — nested names + parameterized IE fields (done)
 
-## Telecom validation (Phase 14 / 38 / 39)
+## Telecom validation (Phase 14 / 38 / 39 / 40)
 
 | Gate | Fixture | Checks |
 |------|---------|--------|
-| RRC Rel-8 | `tests/fixtures/telecom/rrc_8_6_0/` | parse + analyze + emit reports anonymous nesting |
-| LPP Rel-14 | `tests/fixtures/telecom/lpp_14_3_0/` | parse + analyze + emit reports anonymous nesting |
-| S1AP Rel-14 | `tests/fixtures/telecom/s1ap_14_4_0/` | parse + analyze + emit reports unresolved ProtocolIE fields |
+| RRC Rel-8 | `tests/fixtures/telecom/rrc_8_6_0/` | parse + analyze + UPER emit |
+| LPP Rel-14 | `tests/fixtures/telecom/lpp_14_3_0/` | parse + analyze + UPER emit |
+| S1AP Rel-14 | `tests/fixtures/telecom/s1ap_14_4_0/` | parse + analyze + APER emit (ProtocolIE-Field) |
 | RRC slice | `tests/fixtures/telecom/rrc_slice/` | UPER/OER emit + UPER round-trip vs known hex |
 | Person | `examples/person.asn` | UPER/APER/OER/COER/BER/DER/JER compile round-trips |
 

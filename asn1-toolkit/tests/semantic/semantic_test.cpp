@@ -453,6 +453,66 @@ END
   EXPECT_EQ(item.kind, asn1::ir::TypeKind::Integer);
 }
 
+TEST(Semantic, NestedAnonymousChoiceGetsSyntheticName) {
+  auto r = analyze_string(R"(
+M DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+  Msg ::= CHOICE {
+    c1 CHOICE {
+      a INTEGER,
+      b BOOLEAN
+    },
+    ext SEQUENCE {}
+  }
+END
+)");
+  ASSERT_TRUE(r.diag.ok()) << asn1::ir::to_string(r.model);
+  const asn1::ir::Type* msg = find_named(r.model, "Msg");
+  ASSERT_NE(msg, nullptr);
+  ASSERT_EQ(msg->kind, asn1::ir::TypeKind::Choice);
+  ASSERT_EQ(msg->choice.alternatives.size(), 2u);
+
+  const asn1::ir::Type& c1 = r.model.arena.get(msg->choice.alternatives[0].type);
+  EXPECT_EQ(c1.kind, asn1::ir::TypeKind::Choice);
+  EXPECT_EQ(c1.name, "Msg-c1");
+
+  const asn1::ir::Type& ext = r.model.arena.get(msg->choice.alternatives[1].type);
+  EXPECT_EQ(ext.kind, asn1::ir::TypeKind::Sequence);
+  EXPECT_EQ(ext.name, "Msg-ext");
+}
+
+TEST(Semantic, NestedParameterizedObjectSetInstantiation) {
+  auto r = analyze_string(R"(
+M DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+  PROTO-IES ::= CLASS {
+    &id INTEGER UNIQUE,
+    &criticality ENUMERATED { ignore(0), reject(1) },
+    &Value
+  }
+  IE-Field { PROTO-IES : Set } ::= SEQUENCE {
+    id          PROTO-IES.&id          ({Set}),
+    criticality PROTO-IES.&criticality ({Set}{@id}),
+    value       PROTO-IES.&Value       ({Set}{@id})
+  }
+  IE-Container { PROTO-IES : Set } ::= SEQUENCE (SIZE (0..65535)) OF
+    IE-Field {{Set}}
+  MyIEs PROTO-IES ::= { ... }
+  Pdu ::= SEQUENCE {
+    ies IE-Container {{MyIEs}}
+  }
+END
+)");
+  ASSERT_TRUE(r.diag.ok()) << asn1::ir::to_string(r.model);
+  const asn1::ir::Type* field = find_named(r.model, "IE-Field-MyIEs");
+  const asn1::ir::Type* container = find_named(r.model, "IE-Container-MyIEs");
+  ASSERT_NE(field, nullptr) << asn1::ir::to_string(r.model);
+  ASSERT_NE(container, nullptr) << asn1::ir::to_string(r.model);
+  EXPECT_EQ(field->kind, asn1::ir::TypeKind::Sequence);
+  ASSERT_EQ(field->sequence.root.size(), 3u);
+  EXPECT_EQ(container->kind, asn1::ir::TypeKind::SequenceOf);
+}
+
 TEST(Semantic, DefinedSyntaxObject) {
   auto r = analyze_string(R"(
 M DEFINITIONS AUTOMATIC TAGS ::=

@@ -312,9 +312,102 @@ std::string synth_type_name(LowerCtx& ctx, const std::string& assigned, const ch
   return std::string("_") + kind + std::to_string(++ctx.synth_serial);
 }
 
+/// Nested anonymous SEQUENCE/SET/CHOICE need stable IR names for codegen.
+bool needs_synthetic_nested_name(const ast::Type& type) {
+  return dynamic_cast<const ast::SequenceType*>(&type) != nullptr ||
+         dynamic_cast<const ast::SetType*>(&type) != nullptr ||
+         dynamic_cast<const ast::ChoiceType*>(&type) != nullptr;
+}
+
+std::string nested_type_name(LowerCtx& ctx, const std::string& parent,
+                             const std::string& field, const char* fallback_kind) {
+  if (!parent.empty() && !field.empty()) {
+    return parent + "-" + field;
+  }
+  if (!parent.empty()) {
+    return parent + "-" + fallback_kind;
+  }
+  return synth_type_name(ctx, "", fallback_kind);
+}
+
+std::string child_lower_name(LowerCtx& ctx, const std::string& parent,
+                             const std::string& field, const ast::Type& child_type,
+                             const char* fallback_kind) {
+  if (!needs_synthetic_nested_name(child_type)) {
+    return "";
+  }
+  return nested_type_name(ctx, parent, field, fallback_kind);
+}
+
 struct SubstEnv {
   std::unordered_map<std::string, const ast::ActualParameter*> by_name;
 };
+
+std::string actual_param_label(const ast::ActualParameter& a, const SubstEnv* subst) {
+  if (a.type) {
+    if (const auto* r = dynamic_cast<const ast::ReferencedType*>(a.type.get())) {
+      return r->name();
+    }
+    return "T";
+  }
+  if (a.object_set_name) {
+    std::string os = *a.object_set_name;
+    if (subst) {
+      auto it = subst->by_name.find(os);
+      if (it != subst->by_name.end() && it->second) {
+        if (it->second->object_set_name) {
+          return *it->second->object_set_name;
+        }
+        if (it->second->type) {
+          if (const auto* r =
+                  dynamic_cast<const ast::ReferencedType*>(it->second->type.get())) {
+            return r->name();
+          }
+        }
+      }
+    }
+    return os;
+  }
+  if (a.value) {
+    return "V";
+  }
+  return "X";
+}
+
+std::string mangle_instantiation(const std::string& template_name,
+                                 const std::vector<ast::ActualParameter>& actuals,
+                                 const SubstEnv* subst) {
+  std::string m = template_name;
+  for (const auto& a : actuals) {
+    m += "-";
+    m += actual_param_label(a, subst);
+  }
+  return m;
+}
+
+const ast::ActualParameter* resolve_actual(const ast::ActualParameter& actual,
+                                           const SubstEnv* subst) {
+  if (!subst) {
+    return &actual;
+  }
+  if (actual.object_set_name) {
+    auto it = subst->by_name.find(*actual.object_set_name);
+    if (it != subst->by_name.end() && it->second) {
+      return it->second;
+    }
+  }
+  if (actual.type) {
+    if (const auto* r = dynamic_cast<const ast::ReferencedType*>(actual.type.get())) {
+      if (r->actuals().empty()) {
+        auto it = subst->by_name.find(r->name());
+        if (it != subst->by_name.end() && it->second) {
+          return it->second;
+        }
+      }
+    }
+  }
+  return &actual;
+}
 
 /// Walk a constraint tree for the first ContentsConstraint contained type.
 const ast::Type* find_containing_type(const ast::Constraint* c) {
@@ -616,14 +709,16 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       sym = ctx.symbols.find(owner, name);
     }
 
-    // Parameterized instantiation.
+    // Parameterized instantiation (X.683). Lower in the template's defining
+    // module so nested refs (e.g. ProtocolIE-Field inside ProtocolIE-Container)
+    // resolve; rebind object-set formals through the outer SubstEnv.
     if (!ref->actuals().empty() && sym && sym->kind == SymbolKind::Type && !sym->is_import) {
       const auto* ta = dynamic_cast<const ast::TypeAssignment*>(sym->ast);
       if (ta && !ta->parameters().empty()) {
         SubstEnv local;
         const auto& formals = ta->parameters();
         for (std::size_t i = 0; i < formals.size() && i < ref->actuals().size(); ++i) {
-          local.by_name[formals[i].name] = &ref->actuals()[i];
+          local.by_name[formals[i].name] = resolve_actual(ref->actuals()[i], subst);
         }
         if (subst) {
           for (const auto& kv : subst->by_name) {
@@ -632,7 +727,42 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
             }
           }
         }
-        return lower_type(ctx, ta->type(), assigned_name, &local);
+        const std::string mangled = mangle_instantiation(name, ref->actuals(), subst);
+        const std::string inst_key = owner + "::" + mangled;
+        if (auto it = ctx.named_ids.find(inst_key); it != ctx.named_ids.end()) {
+          return it->second;
+        }
+        const std::string body_name = assigned_name.empty() ? mangled : assigned_name;
+
+        ir::TypeId id = ir::kInvalidType;
+        if (owner != ctx.mod.name()) {
+          const Symbol* mod_sym = ctx.symbols.find(owner, owner);
+          const ast::Module* other =
+              mod_sym ? dynamic_cast<const ast::Module*>(mod_sym->ast) : nullptr;
+          if (!other) {
+            ctx.diagnostics.error(ref->range(),
+                                  "cannot instantiate parameterized type '" + name +
+                                      "' from module '" + owner + "'");
+            return ctx.model.arena.add(ir::Type{});
+          }
+          LowerCtx other_ctx{ctx.model, ctx.symbols, ctx.diagnostics, *other,
+                             ctx.resolving, ctx.named_ids, ctx.synth_serial};
+          id = lower_type(other_ctx, ta->type(), body_name, &local);
+          ctx.resolving = std::move(other_ctx.resolving);
+          ctx.named_ids = std::move(other_ctx.named_ids);
+          ctx.synth_serial = other_ctx.synth_serial;
+        } else {
+          id = lower_type(ctx, ta->type(), body_name, &local);
+        }
+        if (id != ir::kInvalidType) {
+          ir::Type& built = ctx.model.arena.get(id);
+          if (built.name.empty()) {
+            built.name = body_name;
+          }
+          built.module = owner;
+          ctx.named_ids[inst_key] = id;
+        }
+        return id;
       }
     }
 
@@ -782,7 +912,9 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       field.presence = map_presence(comp.presence());
       field.tag = component_tag(comp.type(), ctx.mod.tag_default(), auto_index);
       ++auto_index;
-      field.type = lower_type(ctx, comp.type(), "", subst);
+      field.type = lower_type(
+          ctx, comp.type(),
+          child_lower_name(ctx, assigned_name, comp.name(), comp.type(), "Seq"), subst);
       apply_field_jer_name_from_ast(field, comp.type());
       apply_field_exer_from_ast(field, comp.type());
       return field;
@@ -857,7 +989,10 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
           field.presence = ir::Presence::Mandatory;
           field.tag = component_tag(comp->type(), ctx.mod.tag_default(), auto_index);
           ++auto_index;
-          field.type = lower_type(ctx, comp->type(), "", subst);
+          field.type = lower_type(
+              ctx, comp->type(),
+              child_lower_name(ctx, assigned_name, comp->name(), comp->type(), "Choice"),
+              subst);
           apply_field_jer_name_from_ast(field, comp->type());
           apply_field_exer_from_ast(field, comp->type());
           if (in_extensions) {
@@ -871,7 +1006,9 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
     }
   } else if (const auto* of = dynamic_cast<const ast::SequenceOfType*>(&type)) {
     out.kind = ir::TypeKind::SequenceOf;
-    out.sequence_of.element = lower_type(ctx, of->element(), "", subst);
+    out.sequence_of.element = lower_type(
+        ctx, of->element(),
+        child_lower_name(ctx, assigned_name, "Item", of->element(), "Item"), subst);
     out.sequence_of.size =
         constraints::normalize_size(of->constraint(), ctx.diagnostics);
   } else if (const auto* set = dynamic_cast<const ast::SetType*>(&type)) {
@@ -885,7 +1022,9 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       field.presence = map_presence(comp.presence());
       field.tag = component_tag(comp.type(), ctx.mod.tag_default(), auto_index);
       ++auto_index;
-      field.type = lower_type(ctx, comp.type(), "", subst);
+      field.type = lower_type(
+          ctx, comp.type(),
+          child_lower_name(ctx, assigned_name, comp.name(), comp.type(), "Set"), subst);
       apply_field_jer_name_from_ast(field, comp.type());
       apply_field_exer_from_ast(field, comp.type());
       return field;
@@ -934,7 +1073,9 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
     }
   } else if (const auto* setof = dynamic_cast<const ast::SetOfType*>(&type)) {
     out.kind = ir::TypeKind::SetOf;
-    out.set_of.element = lower_type(ctx, setof->element(), "", subst);
+    out.set_of.element = lower_type(
+        ctx, setof->element(),
+        child_lower_name(ctx, assigned_name, "Item", setof->element(), "Item"), subst);
     out.set_of.size =
         constraints::normalize_size(setof->constraint(), ctx.diagnostics);
   } else if (const auto* en = dynamic_cast<const ast::EnumeratedType*>(&type)) {

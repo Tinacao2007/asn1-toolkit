@@ -4,11 +4,11 @@ C++17 ASN.1 compiler and codec runtime.
 
 ## Status
 
-**Phase 39** -- Validation.
+**Phase 40** -- Telecom full-module emit.
 
-- Person multi-codec round-trips: UPER, APER, OER, COER, BER, DER, JER
-- Telecom: full modules parse+analyze+emit-gap checks; `rrc_slice` UPER/OER emit + UPER round-trips
-- CLI: `--namespace` for multi-codec generated headers
+- Synthetic IR names for nested anonymous SEQUENCE/SET/CHOICE
+- Parameterized ProtocolIE-Field / ProtocolExtensionField instantiation
+- Full RRC Rel-8, LPP Rel-14, S1AP Rel-14 analyze + codec emit gates
 
 ## Requirements
 
