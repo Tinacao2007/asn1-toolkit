@@ -777,3 +777,37 @@ END
   EXPECT_EQ(target->kind, asn1::ir::TypeKind::Sequence);
 }
 
+TEST(Semantic, TableConstraintSpecialization) {
+  auto r = analyze_string(R"(
+M DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+  PROTO-IES ::= CLASS {
+    &id INTEGER UNIQUE,
+    &criticality ENUMERATED { ignore(0), reject(1) },
+    &Value
+  }
+  IE-Field { PROTO-IES : Set } ::= SEQUENCE {
+    id          PROTO-IES.&id          ({Set}),
+    criticality PROTO-IES.&criticality ({Set}{@id}),
+    value       PROTO-IES.&Value       ({Set}{@id})
+  }
+  item1 PROTO-IES ::= { &id 101, &criticality ignore, &Value INTEGER }
+  item2 PROTO-IES ::= { &id 102, &criticality reject, &Value BOOLEAN }
+  MyIEs PROTO-IES ::= { item1 | item2 }
+  Box ::= IE-Field {{MyIEs}}
+END
+)");
+  ASSERT_TRUE(r.diag.ok()) << (r.diag.items().empty() ? "" : r.diag.items().front().message);
+  const asn1::ir::Type* field = find_named(r.model, "Box");
+  ASSERT_NE(field, nullptr);
+  ASSERT_EQ(field->sequence.root.size(), 3u);
+  const auto& val_field = field->sequence.root[2];
+  ASSERT_TRUE(val_field.table_constraint.has_value());
+  EXPECT_EQ(val_field.table_constraint->object_set_name, "MyIEs");
+  EXPECT_EQ(val_field.table_constraint->governor_field_name, "id");
+  ASSERT_EQ(val_field.table_constraint->entries.size(), 2u);
+  EXPECT_EQ(val_field.table_constraint->entries[0].id_value.as_i64.value_or(0), 101);
+  EXPECT_EQ(val_field.table_constraint->entries[1].id_value.as_i64.value_or(0), 102);
+}
+
+

@@ -224,7 +224,7 @@ Result<std::size_t> decode_size(BitReader& in, Variant variant,
 /**
  *  Function    : encode_boolean
  *  Description : Performs encode boolean (definition).
- *  Parameters  : out — BitWriter& out; / — Variant /*variant*/; value — bool value
+ *  Parameters  : out — BitWriter& out; variant — Variant variant; value — bool value
  *  Returns     : void
  */
 void encode_boolean(BitWriter& out, Variant /*variant*/, bool value) {
@@ -233,8 +233,8 @@ void encode_boolean(BitWriter& out, Variant /*variant*/, bool value) {
 
 /**
  *  Function    : decode_boolean
- *  Description : Returns a boolean result from in, /.
- *  Parameters  : in — BitReader& in; / — Variant /*variant*/
+ *  Description : Returns a boolean result from in, variant.
+ *  Parameters  : in — BitReader& in; variant — Variant variant
  *  Returns     : Result<bool>
  */
 Result<bool> decode_boolean(BitReader& in, Variant /*variant*/) {
@@ -244,7 +244,7 @@ Result<bool> decode_boolean(BitReader& in, Variant /*variant*/) {
 /**
  *  Function    : encode_null
  *  Description : Performs encode null (definition).
- *  Parameters  : / — BitWriter& /*out*/; / — Variant /*variant*/
+ *  Parameters  : out — BitWriter& out; variant — Variant variant
  *  Returns     : void
  */
 void encode_null(BitWriter& /*out*/, Variant /*variant*/) {}
@@ -252,7 +252,7 @@ void encode_null(BitWriter& /*out*/, Variant /*variant*/) {}
 /**
  *  Function    : decode_null
  *  Description : Returns success or an error from decode null.
- *  Parameters  : / — BitReader& /*in*/; / — Variant /*variant*/
+ *  Parameters  : in — BitReader& in; variant — Variant variant
  *  Returns     : Result<void>
  */
 Result<void> decode_null(BitReader& /*in*/, Variant /*variant*/) {

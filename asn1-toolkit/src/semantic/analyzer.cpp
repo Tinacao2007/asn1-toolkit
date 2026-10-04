@@ -37,6 +37,17 @@
 namespace asn1 {
 namespace {
 
+const ast::ComponentRelationConstraint* extract_component_relation_constraint(
+    const ast::Constraint* c) {
+  if (!c) {
+    return nullptr;
+  }
+  if (const auto* crc = dynamic_cast<const ast::ComponentRelationConstraint*>(c)) {
+    return crc;
+  }
+  return nullptr;
+}
+
 /// Extract a closed integer interval from a simple value / range constraint.
 /**
  *  Function    : extract_i64_bounds
@@ -1245,6 +1256,27 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       }
       apply_field_jer_name_from_ast(field, comp.type());
       apply_field_exer_from_ast(field, comp.type());
+      if (const auto* crc = extract_component_relation_constraint(comp.type().constraint())) {
+        std::string set_name = crc->object_set_name();
+        if (subst) {
+          auto sit = subst->by_name.find(set_name);
+          if (sit != subst->by_name.end() && sit->second) {
+            if (sit->second->object_set_name) {
+              set_name = *sit->second->object_set_name;
+            } else if (sit->second->type) {
+              if (const auto* r = dynamic_cast<const ast::ReferencedType*>(sit->second->type.get())) {
+                set_name = r->name();
+              }
+            }
+          }
+        }
+        if (!crc->at_components().empty()) {
+          ir::TableConstraintInfo tc;
+          tc.object_set_name = set_name;
+          tc.governor_field_name = crc->at_components()[0];
+          field.table_constraint = std::move(tc);
+        }
+      }
       return field;
     };
     std::function<void(const ast::ComponentItem&)> process =
@@ -1358,6 +1390,27 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       }
       apply_field_jer_name_from_ast(field, comp.type());
       apply_field_exer_from_ast(field, comp.type());
+      if (const auto* crc = extract_component_relation_constraint(comp.type().constraint())) {
+        std::string set_name = crc->object_set_name();
+        if (subst) {
+          auto sit = subst->by_name.find(set_name);
+          if (sit != subst->by_name.end() && sit->second) {
+            if (sit->second->object_set_name) {
+              set_name = *sit->second->object_set_name;
+            } else if (sit->second->type) {
+              if (const auto* r = dynamic_cast<const ast::ReferencedType*>(sit->second->type.get())) {
+                set_name = r->name();
+              }
+            }
+          }
+        }
+        if (!crc->at_components().empty()) {
+          ir::TableConstraintInfo tc;
+          tc.object_set_name = set_name;
+          tc.governor_field_name = crc->at_components()[0];
+          field.table_constraint = std::move(tc);
+        }
+      }
       return field;
     };
     std::function<void(const ast::ComponentItem&)> process =
@@ -1951,9 +2004,31 @@ void Analyzer::lower_pass() {
         info.name = oset->name();
         info.class_name = oset->class_name();
         info.extensible = oset->defn().extensible();
+        std::size_t inline_obj_idx = 0;
         for (const auto& e : oset->defn().elements()) {
           if (e.object_ref) {
             info.object_refs.push_back(*e.object_ref);
+          } else if (e.inline_object) {
+            ir::ObjectInfo inline_obj;
+            inline_obj.module = mod.name();
+            inline_obj.name = oset->name() + "_item_" + std::to_string(inline_obj_idx++);
+            inline_obj.class_name = oset->class_name();
+            for (const auto& s : e.inline_object->settings()) {
+              ir::ObjectFieldSetting fs;
+              fs.field_name = s.field_name;
+              if (s.type_setting) {
+                fs.type_setting = lower_type(ctx, *s.type_setting, "");
+              }
+              if (s.value_setting) {
+                auto vid = lower_simple_value(ctx, *s.value_setting);
+                if (vid) {
+                  fs.value_setting = *vid;
+                }
+              }
+              inline_obj.settings.push_back(std::move(fs));
+            }
+            info.object_refs.push_back(inline_obj.name);
+            model_.objects.push_back(std::move(inline_obj));
           }
         }
         model_.object_sets.push_back(std::move(info));
@@ -2128,6 +2203,143 @@ void Analyzer::lower_pass() {
   re_resolve_all_object_class_fields(model_);
 }
 
+void resolve_table_constraints(ir::Model& model, const SymbolTable& symbols) {
+  std::unordered_map<std::string, const ir::ObjectSetInfo*> os_by_name;
+  for (const auto& os : model.object_sets) {
+    os_by_name[os.name] = &os;
+  }
+
+  std::unordered_map<std::string, const ir::ObjectInfo*> obj_by_name;
+  for (const auto& obj : model.objects) {
+    obj_by_name[obj.name] = &obj;
+  }
+
+  auto resolve_integer_constant = [&](const std::string& name) -> std::optional<ir::BigInt> {
+    for (const auto& pair : symbols.entries()) {
+      if (pair.second.kind == SymbolKind::Value && pair.second.name == name) {
+        if (const auto* va = dynamic_cast<const ast::ValueAssignment*>(pair.second.ast)) {
+          if (const auto* iv = dynamic_cast<const ast::IntegerValue*>(&va->value())) {
+            return ir::BigInt::from_decimal(iv->text(), iv->negative());
+          }
+        }
+      }
+    }
+    return std::nullopt;
+  };
+
+  auto resolve_field_constraint = [&](ir::Field& f, const std::string& /*parent_module*/) {
+    if (!f.table_constraint || f.table_constraint->object_set_name.empty()) {
+      return;
+    }
+    const auto os_it = os_by_name.find(f.table_constraint->object_set_name);
+    if (os_it == os_by_name.end() || !os_it->second) {
+      return;
+    }
+    const ir::ObjectSetInfo& os = *os_it->second;
+    const std::string& gov_name = f.table_constraint->governor_field_name;
+
+    for (const auto& obj_ref : os.object_refs) {
+      const auto obj_it = obj_by_name.find(obj_ref);
+      if (obj_it == obj_by_name.end() || !obj_it->second) {
+        continue;
+      }
+      const ir::ObjectInfo& obj = *obj_it->second;
+
+      std::string id_symbol;
+      ir::BigInt id_val;
+      bool has_id_val = false;
+      ir::TypeId target_type = ir::kInvalidType;
+      std::string type_name;
+
+      for (const auto& s : obj.settings) {
+        std::string lower_sname = s.field_name;
+        for (char& c : lower_sname) {
+          c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        std::string lower_gov = gov_name;
+        for (char& c : lower_gov) {
+          c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+
+        if (lower_sname == lower_gov || lower_sname == "&" + lower_gov) {
+          if (s.value_setting != ir::kInvalidValue) {
+            const auto& val = model.arena.get_value(s.value_setting);
+            if (val.kind == ir::ValueKind::Integer) {
+              id_val = val.integer;
+              has_id_val = true;
+            } else if (val.kind == ir::ValueKind::Reference) {
+              id_symbol = val.name;
+              auto resolved = resolve_integer_constant(val.name);
+              if (resolved) {
+                id_val = *resolved;
+                has_id_val = true;
+              }
+            }
+          }
+        }
+
+        if (s.type_setting != ir::kInvalidType) {
+          if (lower_sname.find("type") != std::string::npos ||
+              lower_sname.find("val") != std::string::npos ||
+              target_type == ir::kInvalidType) {
+            target_type = s.type_setting;
+          }
+        }
+      }
+
+      if (target_type != ir::kInvalidType) {
+        ir::TypeId cur = target_type;
+        while (cur != ir::kInvalidType) {
+          const auto& t = model.arena.get(cur);
+          if (t.kind == ir::TypeKind::Referenced && t.referenced.resolved != ir::kInvalidType) {
+            cur = t.referenced.resolved;
+          } else {
+            type_name = t.name;
+            break;
+          }
+        }
+
+        ir::TableConstraintEntry entry;
+        entry.id_symbol = std::move(id_symbol);
+        entry.id_value = std::move(id_val);
+        entry.has_id_value = has_id_val;
+        entry.type = cur != ir::kInvalidType ? cur : target_type;
+        entry.type_name = std::move(type_name);
+        f.table_constraint->entries.push_back(std::move(entry));
+      }
+    }
+  };
+
+  for (std::size_t i = 0; i < model.arena.type_count(); ++i) {
+    ir::Type& t = model.arena.get(static_cast<ir::TypeId>(i));
+    if (t.kind == ir::TypeKind::Sequence) {
+      for (auto& f : t.sequence.root) {
+        resolve_field_constraint(f, t.module);
+      }
+      for (auto& g : t.sequence.extension_groups) {
+        for (auto& f : g) {
+          resolve_field_constraint(f, t.module);
+        }
+      }
+      for (auto& f : t.sequence.trailing_root) {
+        resolve_field_constraint(f, t.module);
+      }
+    } else if (t.kind == ir::TypeKind::Set) {
+      for (auto& f : t.set.root) {
+        resolve_field_constraint(f, t.module);
+      }
+      for (auto& g : t.set.extension_groups) {
+        for (auto& f : g) {
+          resolve_field_constraint(f, t.module);
+        }
+      }
+      for (auto& f : t.set.trailing_root) {
+        resolve_field_constraint(f, t.module);
+      }
+    }
+  }
+}
+
 /**
  *  Function    : tag_pass
  *  Description : Performs tag pass (definition).
@@ -2209,6 +2421,14 @@ void Analyzer::tag_pass() {
       rewrite(t.set_of.element);
     }
   }
+
+  for (auto& obj : model_.objects) {
+    for (auto& s : obj.settings) {
+      rewrite(s.type_setting);
+    }
+  }
+
+  resolve_table_constraints(model_, symbols_);
 }
 
 }  // namespace asn1

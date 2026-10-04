@@ -655,6 +655,10 @@ std::unique_ptr<ast::Constraint> Parser::parse_table_or_component_constraint() {
     if (!inline_set) {
       return nullptr;
     }
+    if (set_name.empty() && inline_set->elements().size() == 1 &&
+        inline_set->elements()[0].object_ref) {
+      set_name = *inline_set->elements()[0].object_ref;
+    }
   } else {
     return nullptr;
   }

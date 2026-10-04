@@ -450,7 +450,7 @@ std::size_t encode_length_determinant(BitWriter& out, Variant /*variant*/,
 /**
  *  Function    : decode_length_determinant
  *  Description : Returns success or an error from decode length determinant.
- *  Parameters  : in — BitReader& in; / — Variant /*variant*/
+ *  Parameters  : in — BitReader& in; variant — Variant variant
  *  Returns     : Result<std::size_t>
  */
 Result<std::size_t> decode_length_determinant(BitReader& in, Variant /*variant*/) {

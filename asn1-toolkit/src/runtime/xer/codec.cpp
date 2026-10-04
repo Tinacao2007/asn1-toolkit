@@ -131,7 +131,7 @@ Element encode_null(const std::string& name) {
 /**
  *  Function    : decode_null
  *  Description : Returns success or an error from decode null.
- *  Parameters  : / — const Element& /*el*/
+ *  Parameters  : el — const Element& el
  *  Returns     : Result<void>
  */
 Result<void> decode_null(const Element& /*el*/) {

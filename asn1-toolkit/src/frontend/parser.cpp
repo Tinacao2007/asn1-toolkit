@@ -162,7 +162,7 @@ void Parser::error_at(const Token& at, std::string message) {
 /**
  *  Function    : is_unsupported_construct
  *  Description : Returns whether unsupported construct holds for the given inputs.
- *  Parameters  : / — TokenKind /*kind*/
+ *  Parameters  : kind — TokenKind kind
  *  Returns     : bool Parser::
  */
 bool Parser::is_unsupported_construct(TokenKind /*kind*/) const {

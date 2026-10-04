@@ -363,7 +363,9 @@ END
     opt.codec = asn1::codegen::CodecKind::Uper;
     const std::string header = gen.emit_header_string(model, opt, diag);
     ASSERT_TRUE(diag.ok());
-    EXPECT_NE(header.find("using R = double;"), std::string::npos);
+    EXPECT_NE(header.find("struct R"), std::string::npos);
+    EXPECT_NE(header.find("double value"), std::string::npos);
+    EXPECT_EQ(header.find("using R = double;"), std::string::npos);
     EXPECT_NE(header.find("asn1::uper::encode_real"), std::string::npos);
     EXPECT_NE(header.find("asn1::uper::decode_real"), std::string::npos);
     EXPECT_EQ(header.find("REAL encoding not implemented"), std::string::npos);
@@ -613,4 +615,76 @@ END
     EXPECT_NE(header.find("value.priority = 5;"), std::string::npos);
   }
 }
+
+TEST(Codegen, EmitsTableConstraintSpecializationAndAutoDispatch) {
+  asn1::Diagnostics diag;
+  asn1::SourceFile file;
+  auto model = analyze(R"(
+TableMod DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+  ProtocolIE-ID ::= INTEGER (0..65535)
+
+  id-MME-UE-S1AP-ID ProtocolIE-ID ::= 0
+  id-eNB-UE-S1AP-ID ProtocolIE-ID ::= 1
+
+  MME-UE-S1AP-ID ::= INTEGER (0..4294967295)
+  ENB-UE-S1AP-ID ::= INTEGER (0..16777215)
+
+  S1AP-PROTOCOL-IES ::= CLASS {
+    &id          ProtocolIE-ID UNIQUE,
+    &Value
+  } WITH SYNTAX {
+    ID &id
+    TYPE &Value
+  }
+
+  HandoverRequiredIEs S1AP-PROTOCOL-IES ::= {
+    { ID id-MME-UE-S1AP-ID TYPE MME-UE-S1AP-ID } |
+    { ID id-eNB-UE-S1AP-ID TYPE ENB-UE-S1AP-ID }
+  }
+
+  ProtocolIE-Field {S1AP-PROTOCOL-IES : IEsSetParam} ::= SEQUENCE {
+    id    S1AP-PROTOCOL-IES.&id    ({IEsSetParam}),
+    value S1AP-PROTOCOL-IES.&Value ({IEsSetParam}{@id})
+  }
+
+  HandoverIE ::= ProtocolIE-Field {{HandoverRequiredIEs}}
+END
+)",
+                       diag, file);
+  ASSERT_TRUE(diag.ok());
+
+  asn1::codegen::CppGenerator gen;
+  asn1::codegen::EmitOptions opt;
+  opt.codec = asn1::codegen::CodecKind::Aper;
+  const std::string header = gen.emit_header_string(model, opt, diag);
+  ASSERT_TRUE(diag.ok());
+
+  // Same host integer must stay two C++ types, or encode/decode overloads collide.
+  EXPECT_NE(header.find("struct MME_UE_S1AP_ID"), std::string::npos);
+  EXPECT_NE(header.find("struct ENB_UE_S1AP_ID"), std::string::npos);
+  EXPECT_EQ(header.find("using MME_UE_S1AP_ID"), std::string::npos);
+  EXPECT_EQ(header.find("using ENB_UE_S1AP_ID"), std::string::npos);
+  EXPECT_NE(header.find("encode_aper(asn1::BitWriter& w, const MME_UE_S1AP_ID& value)"),
+            std::string::npos);
+  EXPECT_NE(header.find("encode_aper(asn1::BitWriter& w, const ENB_UE_S1AP_ID& value)"),
+            std::string::npos);
+
+  // Check specialized struct definition
+  EXPECT_NE(header.find("struct Decoded_value"), std::string::npos);
+  EXPECT_NE(header.find("struct id_MME_UE_S1AP_ID_ { MME_UE_S1AP_ID value; };"), std::string::npos);
+  EXPECT_NE(header.find("struct id_eNB_UE_S1AP_ID_ { ENB_UE_S1AP_ID value; };"), std::string::npos);
+  EXPECT_NE(header.find("std::optional<Decoded_value> decoded_value;"), std::string::npos);
+
+  // Check automatic decode dispatch
+  EXPECT_NE(header.find("switch (value.id)"), std::string::npos);
+  EXPECT_NE(header.find("case 0:"), std::string::npos);
+  EXPECT_NE(header.find("case 1:"), std::string::npos);
+  EXPECT_NE(header.find("value.decoded_value = std::move(dec);"), std::string::npos);
+
+  // Check automatic encode dispatch
+  EXPECT_NE(header.find("value.decoded_value.has_value()"), std::string::npos);
+  EXPECT_NE(header.find("std::visit([&](const auto& alt) -> asn1::Result<void>"), std::string::npos);
+}
+
 

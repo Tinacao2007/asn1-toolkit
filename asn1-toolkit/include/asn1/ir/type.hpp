@@ -317,6 +317,20 @@ struct InstanceOfDesc {
   std::string class_name;  // e.g. TYPE-IDENTIFIER
 };
 
+struct TableConstraintEntry {
+  std::string id_symbol;              // e.g. "id-MME-UE-S1AP-ID"
+  BigInt id_value;                    // integer value if known
+  bool has_id_value = false;
+  TypeId type = kInvalidType;         // specialized type id
+  std::string type_name;              // specialized type name
+};
+
+struct TableConstraintInfo {
+  std::string object_set_name;        // e.g. "HandoverRequiredIEs"
+  std::string governor_field_name;    // e.g. "id"
+  std::vector<TableConstraintEntry> entries;
+};
+
 struct Field {
   std::string name;
   TypeId type = kInvalidType;
@@ -328,6 +342,7 @@ struct Field {
   JerNameForm jer_name_form = JerNameForm::AsIs;
   std::string jer_name_literal;
   ExerEncoding exer;
+  std::optional<TableConstraintInfo> table_constraint;
 };
 
 struct SequenceDesc {

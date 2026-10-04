@@ -309,26 +309,56 @@ class Emitter {
       if (t.kind == ir::TypeKind::Sequence) {
         for (const auto& f : t.sequence.root) {
           dep(f.type);
+          if (f.table_constraint) {
+            for (const auto& e : f.table_constraint->entries) {
+              dep(e.type);
+            }
+          }
         }
         for (const auto& g : t.sequence.extension_groups) {
           for (const auto& f : g) {
             dep(f.type);
+            if (f.table_constraint) {
+              for (const auto& e : f.table_constraint->entries) {
+                dep(e.type);
+              }
+            }
           }
         }
         for (const auto& f : t.sequence.trailing_root) {
           dep(f.type);
+          if (f.table_constraint) {
+            for (const auto& e : f.table_constraint->entries) {
+              dep(e.type);
+            }
+          }
         }
       } else if (t.kind == ir::TypeKind::Set) {
         for (const auto& f : t.set.root) {
           dep(f.type);
+          if (f.table_constraint) {
+            for (const auto& e : f.table_constraint->entries) {
+              dep(e.type);
+            }
+          }
         }
         for (const auto& g : t.set.extension_groups) {
           for (const auto& f : g) {
             dep(f.type);
+            if (f.table_constraint) {
+              for (const auto& e : f.table_constraint->entries) {
+                dep(e.type);
+              }
+            }
           }
         }
         for (const auto& f : t.set.trailing_root) {
           dep(f.type);
+          if (f.table_constraint) {
+            for (const auto& e : f.table_constraint->entries) {
+              dep(e.type);
+            }
+          }
         }
       } else if (t.kind == ir::TypeKind::Choice) {
         for (const auto& f : t.choice.alternatives) {
@@ -382,7 +412,7 @@ class Emitter {
   /**
    *  Function    : inline_type_cpp
    *  Description : Builds and returns a string for inline type cpp.
-   *  Parameters  : t — const ir::Type& t; / — bool /*for_optional*/
+   *  Parameters  : t — const ir::Type& t; for_optional — bool for_optional
    *  Returns     : std::string
    */
   std::string inline_type_cpp(const ir::Type& t, bool /*for_optional*/) {
@@ -510,6 +540,7 @@ class Emitter {
         << "#include <optional>\n"
         << "#include <string>\n"
         << "#include <type_traits>\n"
+        << "#include <utility>\n"
         << "#include <variant>\n"
         << "#include <vector>\n\n"
         << "namespace " << ns << "_detail {\n"
@@ -564,34 +595,142 @@ class Emitter {
         << "#endif  // " << guard << "\n";
   }
 
+  static std::string table_entry_alt_name(const ir::TableConstraintEntry& entry, std::size_t idx) {
+    std::string base;
+    if (!entry.id_symbol.empty()) {
+      base = cpp_ident(entry.id_symbol);
+    } else if (!entry.type_name.empty()) {
+      base = cpp_ident(entry.type_name);
+    } else if (entry.has_id_value) {
+      base = "id_" + std::to_string(entry.id_value.as_i64.value_or(static_cast<std::int64_t>(idx)));
+    } else {
+      base = "Alt_" + std::to_string(idx);
+    }
+    return base + "_";
+  }
+
+  static std::vector<std::string> compute_table_entry_alt_names(
+      const std::vector<ir::TableConstraintEntry>& entries) {
+    std::vector<std::string> names;
+    std::unordered_map<std::string, int> seen;
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+      std::string base = table_entry_alt_name(entries[i], i);
+      int count = ++seen[base];
+      if (count > 1) {
+        if (!base.empty() && base.back() == '_') base.pop_back();
+        base += "_" + std::to_string(count) + "_";
+      }
+      names.push_back(std::move(base));
+    }
+    return names;
+  }
+
+  void emit_table_constraint_structs(std::ostream& out, const std::vector<ir::Field>& fields) {
+    for (const auto& f : fields) {
+      if (!f.table_constraint || f.table_constraint->entries.empty()) {
+        continue;
+      }
+      const std::string fname = cpp_ident(f.name);
+      const auto alt_names = compute_table_entry_alt_names(f.table_constraint->entries);
+      out << "\n  // Table constraint specialization for " << fname << "\n";
+      out << "  struct Decoded_" << fname << " {\n";
+      for (std::size_t ei = 0; ei < f.table_constraint->entries.size(); ++ei) {
+        const auto& entry = f.table_constraint->entries[ei];
+        out << "    struct " << alt_names[ei] << " { " << type_cpp(entry.type) << " value; };\n";
+      }
+      out << "    std::variant<\n";
+      out << "      std::monostate";
+      for (std::size_t ei = 0; ei < f.table_constraint->entries.size(); ++ei) {
+        out << ",\n      " << alt_names[ei];
+      }
+      out << "\n    > choice;\n";
+      out << "  };\n";
+      out << "  std::optional<Decoded_" << fname << "> decoded_" << fname << ";\n";
+    }
+  }
+
   /**
    *  Function    : emit_type_decl
    *  Description : Performs emit type decl (definition).
    *  Parameters  : out — std::ostream& out; id — ir::TypeId id
    *  Returns     : void
    */
+  // A `using` alias is not a distinct C++ type, so two ASN.1 names that share a
+  // host (both INTEGER -> uint32_t, both OCTET STRING -> vector, ...) produce
+  // identical encode/decode signatures. Emit a unique struct instead.
+  enum class AliasShape { Scalar, Class };
+
+  AliasShape alias_shape(const ir::Type& t) const {
+    const ir::Type& r =
+        (t.kind == ir::TypeKind::Referenced && t.referenced.resolved != ir::kInvalidType)
+            ? resolve(model_, t.referenced.resolved)
+            : t;
+    switch (r.kind) {
+      case ir::TypeKind::Boolean:
+      case ir::TypeKind::Real:
+      case ir::TypeKind::Enumerated:
+        return AliasShape::Scalar;
+      case ir::TypeKind::Integer:
+        return integer_is_bigint(r.integer) ? AliasShape::Class : AliasShape::Scalar;
+      case ir::TypeKind::ObjectClassField:
+        if (r.object_class_field.open_type) {
+          return AliasShape::Class;
+        }
+        return alias_shape(resolve(model_, r.object_class_field.fixed_type));
+      default:
+        return AliasShape::Class;
+    }
+  }
+
+  void emit_distinct_alias(std::ostream& out, const std::string& name, const std::string& host,
+                           AliasShape shape) {
+    if (shape == AliasShape::Scalar) {
+      out << "struct " << name << " {\n"
+          << "  " << host << " value{};\n"
+          << "  " << name << "() = default;\n"
+          << "  " << name << "(" << host << " v) : value(v) {}\n"
+          << "  operator " << host << "() const { return value; }\n"
+          << "};\n";
+      return;
+    }
+    out << "struct " << name << " : " << host << " {\n"
+        << "  " << name << "() = default;\n"
+        << "  " << name << "(const " << host << "& v) : " << host << "(v) {}\n"
+        << "  " << name << "(" << host << "&& v) : " << host << "(std::move(v)) {}\n"
+        << "  " << name << "& operator=(const " << host << "& v) {\n"
+        << "    static_cast<" << host << "&>(*this) = v;\n"
+        << "    return *this;\n"
+        << "  }\n"
+        << "  " << name << "& operator=(" << host << "&& v) {\n"
+        << "    static_cast<" << host << "&>(*this) = std::move(v);\n"
+        << "    return *this;\n"
+        << "  }\n"
+        << "};\n";
+  }
+
   void emit_type_decl(std::ostream& out, ir::TypeId id) {
     const ir::Type& t = model_.arena.get(id);
     const std::string name = named_type_cpp(t);
     switch (t.kind) {
       case ir::TypeKind::Boolean:
-        out << "using " << name << " = bool;\n";
+        emit_distinct_alias(out, name, "bool", AliasShape::Scalar);
         break;
       case ir::TypeKind::Null:
-        out << "using " << name << " = " << cpp_ident(options_.namespace_name)
-            << "_detail::Null;\n";
+        emit_distinct_alias(out, name,
+                            cpp_ident(options_.namespace_name) + "_detail::Null",
+                            AliasShape::Class);
         break;
       case ir::TypeKind::Integer:
-        out << "using " << name << " = " << integer_host_type(t.integer) << ";\n";
+        emit_distinct_alias(out, name, integer_host_type(t.integer), alias_shape(t));
         break;
       case ir::TypeKind::OctetString:
-        out << "using " << name << " = std::vector<std::uint8_t>;\n";
+        emit_distinct_alias(out, name, "std::vector<std::uint8_t>", AliasShape::Class);
         break;
       case ir::TypeKind::BitString:
-        out << "using " << name << " = asn1::BitStringValue;\n";
+        emit_distinct_alias(out, name, "asn1::BitStringValue", AliasShape::Class);
         break;
       case ir::TypeKind::String:
-        out << "using " << name << " = std::string;\n";
+        emit_distinct_alias(out, name, "std::string", AliasShape::Class);
         break;
       case ir::TypeKind::SequenceOf:
         out << "struct " << name << " {\n"
@@ -624,17 +763,25 @@ class Emitter {
       }
       case ir::TypeKind::ObjectIdentifier:
       case ir::TypeKind::RelativeOid:
-        out << "using " << name << " = std::vector<std::uint64_t>;\n";
+        emit_distinct_alias(out, name, "std::vector<std::uint64_t>", AliasShape::Class);
         break;
       case ir::TypeKind::ObjectClassField:
         if (t.object_class_field.open_type) {
-          out << "using " << name << " = std::vector<std::uint8_t>;  // open type\n";
+          emit_distinct_alias(out, name, "std::vector<std::uint8_t>", AliasShape::Class);
         } else {
-          out << "using " << name << " = " << type_cpp(t.object_class_field.fixed_type) << ";\n";
+          const ir::Type& fixed = resolve(model_, t.object_class_field.fixed_type);
+          const std::string host = type_cpp(t.object_class_field.fixed_type);
+          // Inherit a named class so this name stays distinct from the governor
+          // type. Enumerations cannot be base classes; hold them by value.
+          AliasShape shape = alias_shape(fixed);
+          if (is_named(fixed) && fixed.kind != ir::TypeKind::Enumerated) {
+            shape = AliasShape::Class;
+          }
+          emit_distinct_alias(out, name, host, shape);
         }
         break;
       case ir::TypeKind::Real:
-        out << "using " << name << " = double;\n";
+        emit_distinct_alias(out, name, "double", AliasShape::Scalar);
         break;
       case ir::TypeKind::InstanceOf:
         out << "struct " << name << " {\n"
@@ -649,6 +796,11 @@ class Emitter {
           emit_struct_fields(out, group, true);
         }
         emit_struct_fields(out, t.set.trailing_root, false);
+        emit_table_constraint_structs(out, t.set.root);
+        for (const auto& group : t.set.extension_groups) {
+          emit_table_constraint_structs(out, group);
+        }
+        emit_table_constraint_structs(out, t.set.trailing_root);
         out << "};\n";
         break;
       }
@@ -659,6 +811,11 @@ class Emitter {
           emit_struct_fields(out, group, true);
         }
         emit_struct_fields(out, t.sequence.trailing_root, false);
+        emit_table_constraint_structs(out, t.sequence.root);
+        for (const auto& group : t.sequence.extension_groups) {
+          emit_table_constraint_structs(out, group);
+        }
+        emit_table_constraint_structs(out, t.sequence.trailing_root);
         out << "};\n";
         break;
       }
@@ -1004,6 +1161,43 @@ class Emitter {
     }
     const std::size_t n_ext = seq.extension_groups.size();
     out << ind << "{\n";
+    auto emit_tc_encode = [&](const std::vector<ir::Field>& fields) {
+      for (const auto& f : fields) {
+        if (!f.table_constraint || f.table_constraint->entries.empty()) {
+          continue;
+        }
+        const std::string fname = cpp_ident(f.name);
+        const std::string gov = cpp_ident(f.table_constraint->governor_field_name);
+        const auto alt_names = compute_table_entry_alt_names(f.table_constraint->entries);
+        out << ind << "  if (" << expr << "." << fname << ".empty() && "
+            << expr << ".decoded_" << fname << ".has_value()) {\n";
+        out << ind << "    auto tc_res = std::visit([&](const auto& alt) -> asn1::Result<void> {\n";
+        out << ind << "      using AltT = std::decay_t<decltype(alt)>;\n";
+        for (std::size_t ei = 0; ei < f.table_constraint->entries.size(); ++ei) {
+          const auto& entry = f.table_constraint->entries[ei];
+          out << ind << "      if constexpr (std::is_same_v<AltT, typename std::decay_t<decltype("
+              << expr << ")>::Decoded_" << fname << "::" << alt_names[ei] << ">) {\n";
+          out << ind << "        asn1::BitWriter sub_w;\n";
+          out << ind << "        asn1::BitWriter& w = sub_w;\n";
+          emit_encode_body(out, resolve(model_, entry.type), "alt.value", aper, ind + "        ");
+          out << ind << "        const_cast<std::decay_t<decltype(" << expr << ")>&>(" << expr << ")." << fname
+              << " = sub_w.take();\n";
+          if (entry.has_id_value) {
+            out << ind << "        const_cast<std::decay_t<decltype(" << expr << ")>&>(" << expr << ")." << gov
+                << " = static_cast<decltype(" << expr << "." << gov << ")>("
+                << entry.id_value.as_i64.value_or(0) << ");\n";
+          }
+          out << ind << "        return asn1::Result<void>::success();\n";
+          out << ind << "      }\n";
+        }
+        out << ind << "      return asn1::Result<void>::success();\n";
+        out << ind << "    }, " << expr << ".decoded_" << fname << "->choice);\n";
+        out << ind << "    if (!tc_res) return tc_res.error();\n";
+        out << ind << "  }\n";
+      }
+    };
+    emit_tc_encode(seq.root);
+    emit_tc_encode(seq.trailing_root);
     out << ind << "  std::uint8_t opt[" << (optionals.empty() ? 1 : optionals.size())
         << "] = {};\n";
     for (std::size_t i = 0; i < optionals.size(); ++i) {
@@ -1175,6 +1369,43 @@ class Emitter {
       }
       out << ind << "  }\n";
     }
+    auto emit_tc_decode = [&](const std::vector<ir::Field>& fields) {
+      for (const auto& f : fields) {
+        if (!f.table_constraint || f.table_constraint->entries.empty()) {
+          continue;
+        }
+        const std::string fname = cpp_ident(f.name);
+        const std::string gov = cpp_ident(f.table_constraint->governor_field_name);
+        const auto alt_names = compute_table_entry_alt_names(f.table_constraint->entries);
+        out << ind << "  if (!" << expr << "." << fname << ".empty()) {\n";
+        out << ind << "    switch (" << expr << "." << gov << ") {\n";
+        for (std::size_t ei = 0; ei < f.table_constraint->entries.size(); ++ei) {
+          const auto& entry = f.table_constraint->entries[ei];
+          if (!entry.has_id_value) continue;
+          out << ind << "      case " << entry.id_value.as_i64.value_or(0) << ": {\n";
+          out << ind << "        " << type_cpp(entry.type) << " payload{};\n";
+          out << ind << "        asn1::BitReader sub_r(" << expr << "." << fname << ");\n";
+          out << ind << "        asn1::BitReader& r = sub_r;\n";
+          out << ind << "        auto decode_res = ([&]() -> asn1::Result<void> {\n";
+          emit_decode_body(out, resolve(model_, entry.type), "payload", aper, ind + "          ");
+          out << ind << "          return asn1::Result<void>::success();\n";
+          out << ind << "        })();\n";
+          out << ind << "        if (decode_res) {\n";
+          out << ind << "          typename std::decay_t<decltype(" << expr << ")>::Decoded_" << fname << " dec{};\n";
+          out << ind << "          dec.choice = typename std::decay_t<decltype(" << expr << ")>::Decoded_" << fname
+              << "::" << alt_names[ei] << "{std::move(payload)};\n";
+          out << ind << "          " << expr << ".decoded_" << fname << " = std::move(dec);\n";
+          out << ind << "        }\n";
+          out << ind << "        break;\n";
+          out << ind << "      }\n";
+        }
+        out << ind << "      default: break;\n";
+        out << ind << "    }\n";
+        out << ind << "  }\n";
+      }
+    };
+    emit_tc_decode(seq.root);
+    emit_tc_decode(seq.trailing_root);
     out << ind << "}\n";
   }
 
