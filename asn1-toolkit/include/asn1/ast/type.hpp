@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/include/asn1/ast/type.hpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   AST nodes for ASN.1 type constructors and sequence/choice components.
+**
+** Specification: ITU-T X.680 — ASN.1 abstract syntax (parse tree
+**                 produced/consumed here).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #pragma once
 
 #include <asn1/ast/encoding.hpp>
@@ -39,11 +61,35 @@ class Value : public Node {
 
 class IntegerValue final : public Value {
  public:
+  /**
+   *  Function    : negative_
+   *  Description : Returns a boolean result from range, text, negative_(negative.
+   *  Parameters  : range — SourceRange range; text — std::string text; negative_(negative — bool negative) : Value(std::move(range)), text_(std::move(text)), negative_(negative
+   *  Returns     : IntegerValue(SourceRange range, std::string text, bool negative) : Value(std::move(range)), text_(std::move(text)),
+   */
   IntegerValue(SourceRange range, std::string text, bool negative)
       : Value(std::move(range)), text_(std::move(text)), negative_(negative) {}
 
+  /**
+   *  Function    : text
+   *  Description : Builds and returns a string for text.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& text() const noexcept { return text_; }
+  /**
+   *  Function    : negative
+   *  Description : Returns a boolean result from none.
+   *  Parameters  : none
+   *  Returns     : bool
+   */
   bool negative() const noexcept { return negative_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -53,10 +99,28 @@ class IntegerValue final : public Value {
 
 class BooleanValue final : public Value {
  public:
+  /**
+   *  Function    : value_
+   *  Description : Returns a boolean result from range, value_(value.
+   *  Parameters  : range — SourceRange range; value_(value — bool value) : Value(std::move(range)), value_(value
+   *  Returns     : BooleanValue(SourceRange range, bool value) : Value(std::move(range)),
+   */
   BooleanValue(SourceRange range, bool value)
       : Value(std::move(range)), value_(value) {}
 
+  /**
+   *  Function    : value
+   *  Description : Returns a boolean result from none.
+   *  Parameters  : none
+   *  Returns     : bool
+   */
   bool value() const noexcept { return value_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -68,7 +132,19 @@ class StringValue final : public Value {
   StringValue(SourceRange range, std::string text)
       : Value(std::move(range)), text_(std::move(text)) {}
 
+  /**
+   *  Function    : text
+   *  Description : Builds and returns a string for text.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& text() const noexcept { return text_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -83,7 +159,19 @@ class BitOrOctetValue final : public Value {
       : Value(std::move(range)), kind_(kind), text_(std::move(text)) {}
 
   BitOrOctetKind kind() const noexcept { return kind_; }
+  /**
+   *  Function    : text
+   *  Description : Builds and returns a string for text.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& text() const noexcept { return text_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -96,7 +184,19 @@ class ValueReference final : public Value {
   ValueReference(SourceRange range, std::string name)
       : Value(std::move(range)), name_(std::move(name)) {}
 
+  /**
+   *  Function    : name
+   *  Description : Builds and returns a string for name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& name() const noexcept { return name_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -108,8 +208,26 @@ class NamedValue final : public Value {
   NamedValue(SourceRange range, std::string name, NodePtr<Value> value)
       : Value(std::move(range)), name_(std::move(name)), value_(std::move(value)) {}
 
+  /**
+   *  Function    : name
+   *  Description : Builds and returns a string for name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& name() const noexcept { return name_; }
+  /**
+   *  Function    : value
+   *  Description : Computes value from (none).
+   *  Parameters  : none
+   *  Returns     : const Value&
+   */
   const Value& value() const { return *value_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -122,7 +240,19 @@ class NamedValueList final : public Value {
   NamedValueList(SourceRange range, std::vector<NodePtr<NamedValue>> values)
       : Value(std::move(range)), values_(std::move(values)) {}
 
+  /**
+   *  Function    : values
+   *  Description : Computes values from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NodePtr<NamedValue>>&
+   */
   const std::vector<NodePtr<NamedValue>>& values() const noexcept { return values_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -145,8 +275,26 @@ class ValueRangeConstraint final : public Constraint {
         lower_(std::move(lower)),
         upper_(std::move(upper)) {}
 
+  /**
+   *  Function    : get
+   *  Description : Computes get from (lower_.get().
+   *  Parameters  : lower_.get( — ) const noexcept { return lower_.get(
+   *  Returns     : const Value* lower() const noexcept { return lower_.
+   */
   const Value* lower() const noexcept { return lower_.get(); }
+  /**
+   *  Function    : get
+   *  Description : Computes get from (upper_.get().
+   *  Parameters  : upper_.get( — ) const noexcept { return upper_.get(
+   *  Returns     : const Value* upper() const noexcept { return upper_.
+   */
   const Value* upper() const noexcept { return upper_.get(); }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -159,7 +307,19 @@ class SingleValueConstraint final : public Constraint {
   SingleValueConstraint(SourceRange range, NodePtr<Value> value)
       : Constraint(std::move(range)), value_(std::move(value)) {}
 
+  /**
+   *  Function    : value
+   *  Description : Computes value from (none).
+   *  Parameters  : none
+   *  Returns     : const Value&
+   */
   const Value& value() const { return *value_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -171,7 +331,19 @@ class SizeConstraint final : public Constraint {
   SizeConstraint(SourceRange range, NodePtr<Constraint> inner)
       : Constraint(std::move(range)), inner_(std::move(inner)) {}
 
+  /**
+   *  Function    : inner
+   *  Description : Computes inner from (none).
+   *  Parameters  : none
+   *  Returns     : const Constraint&
+   */
   const Constraint& inner() const { return *inner_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -183,9 +355,21 @@ class UnionConstraint final : public Constraint {
   UnionConstraint(SourceRange range, std::vector<NodePtr<Constraint>> alts)
       : Constraint(std::move(range)), alternatives_(std::move(alts)) {}
 
+  /**
+   *  Function    : alternatives
+   *  Description : Computes alternatives from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NodePtr<Constraint>>&
+   */
   const std::vector<NodePtr<Constraint>>& alternatives() const noexcept {
     return alternatives_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -194,10 +378,28 @@ class UnionConstraint final : public Constraint {
 
 class IntersectionConstraint final : public Constraint {
  public:
+  /**
+   *  Function    : move
+   *  Description : Computes move from (range, parts_(std::move(parts)).
+   *  Parameters  : range — SourceRange range; parts_(std::move(parts) — std::vector<NodePtr<Constraint>> parts) : Constraint(std::move(range)), parts_(std::move(parts)
+   *  Returns     : IntersectionConstraint(SourceRange range, std::vector<NodePtr<Constraint>> parts) : Constraint(std::move(range)), parts_(std::
+   */
   IntersectionConstraint(SourceRange range, std::vector<NodePtr<Constraint>> parts)
       : Constraint(std::move(range)), parts_(std::move(parts)) {}
 
+  /**
+   *  Function    : parts
+   *  Description : Computes parts from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NodePtr<Constraint>>&
+   */
   const std::vector<NodePtr<Constraint>>& parts() const noexcept { return parts_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -209,7 +411,19 @@ class ExtensibleConstraint final : public Constraint {
   ExtensibleConstraint(SourceRange range, NodePtr<Constraint> root)
       : Constraint(std::move(range)), root_(std::move(root)) {}
 
+  /**
+   *  Function    : get
+   *  Description : Computes get from (root_.get().
+   *  Parameters  : root_.get( — ) const noexcept { return root_.get(
+   *  Returns     : const Constraint* root() const noexcept { return root_.
+   */
   const Constraint* root() const noexcept { return root_.get(); }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -227,18 +441,72 @@ class Type : public Node {
         tag_(std::move(tag)),
         constraint_(std::move(constraint)) {}
 
+  /**
+   *  Function    : tag
+   *  Description : Computes tag from (none).
+   *  Parameters  : none
+   *  Returns     : const std::optional<Tag>&
+   */
   const std::optional<Tag>& tag() const noexcept { return tag_; }
+  /**
+   *  Function    : get
+   *  Description : Computes get from (constraint_.get().
+   *  Parameters  : constraint_.get( — ) const noexcept { return constraint_.get(
+   *  Returns     : const Constraint* constraint() const noexcept { return constraint_.
+   */
   const Constraint* constraint() const noexcept { return constraint_.get(); }
+  /**
+   *  Function    : encoding_instructions
+   *  Description : Computes encoding instructions from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<EncodingInstruction>&
+   */
   const std::vector<EncodingInstruction>& encoding_instructions() const noexcept {
     return encoding_instructions_;
   }
 
+  /**
+   *  Function    : move
+   *  Description : Performs move (definition).
+   *  Parameters  : tag_ — std::optional<Tag> tag) { tag_
+   *  Returns     : void set_tag(std::optional<Tag> tag) { tag_ = std::
+   */
   void set_tag(std::optional<Tag> tag) { tag_ = std::move(tag); }
+  /**
+   *  Function    : move
+   *  Description : Performs move (definition).
+   *  Parameters  : constraint_ — NodePtr<Constraint> c) { constraint_
+   *  Returns     : void set_constraint(NodePtr<Constraint> c) { constraint_ = std::
+   */
   void set_constraint(NodePtr<Constraint> c) { constraint_ = std::move(c); }
+  /**
+   *  Function    : set_encoding_instructions
+   *  Description : Performs set encoding instructions (definition).
+   *  Parameters  : eis — std::vector<EncodingInstruction> eis
+   *  Returns     : void
+   */
   void set_encoding_instructions(std::vector<EncodingInstruction> eis) {
+    /**
+     *  Function    : move
+     *  Description : Computes move from (eis).
+     *  Parameters  : eis — eis
+     *  Returns     : encoding_instructions_ = std::
+     */
     encoding_instructions_ = std::move(eis);
   }
+  /**
+   *  Function    : add_encoding_instruction
+   *  Description : Performs add encoding instruction (definition).
+   *  Parameters  : ei — EncodingInstruction ei
+   *  Returns     : void
+   */
   void add_encoding_instruction(EncodingInstruction ei) {
+    /**
+     *  Function    : move
+     *  Description : Computes move from (std::move(ei)).
+     *  Parameters  : std::move(ei) — std::move(ei)
+     *  Returns     : encoding_instructions_.push_back(std::
+     */
     encoding_instructions_.push_back(std::move(ei));
   }
 
@@ -258,6 +526,12 @@ struct NamedNumber {
 class BooleanType final : public Type {
  public:
   using Type::Type;
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
@@ -268,7 +542,19 @@ class IntegerType final : public Type {
       : Type(std::move(range), std::move(tag), std::move(constraint)),
         named_numbers_(std::move(named)) {}
 
+  /**
+   *  Function    : named_numbers
+   *  Description : Computes named numbers from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NamedNumber>&
+   */
   const std::vector<NamedNumber>& named_numbers() const noexcept { return named_numbers_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -282,7 +568,19 @@ class BitStringType final : public Type {
       : Type(std::move(range), std::move(tag), std::move(constraint)),
         named_bits_(std::move(named_bits)) {}
 
+  /**
+   *  Function    : named_bits
+   *  Description : Computes named bits from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NamedNumber>&
+   */
   const std::vector<NamedNumber>& named_bits() const noexcept { return named_bits_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -292,12 +590,24 @@ class BitStringType final : public Type {
 class OctetStringType final : public Type {
  public:
   using Type::Type;
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
 class NullType final : public Type {
  public:
   using Type::Type;
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
@@ -324,6 +634,12 @@ class StringType final : public Type {
       : Type(std::move(range), std::move(tag), std::move(constraint)), kind_(kind) {}
 
   StringKind kind() const noexcept { return kind_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -347,10 +663,34 @@ class Component final : public ComponentItem {
         presence_(presence),
         default_value_(std::move(default_value)) {}
 
+  /**
+   *  Function    : name
+   *  Description : Builds and returns a string for name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& name() const noexcept { return name_; }
+  /**
+   *  Function    : type
+   *  Description : Computes type from (none).
+   *  Parameters  : none
+   *  Returns     : const Type&
+   */
   const Type& type() const { return *type_; }
   Presence presence() const noexcept { return presence_; }
+  /**
+   *  Function    : get
+   *  Description : Computes get from (default_value_.get().
+   *  Parameters  : default_value_.get( — ) const noexcept { return default_value_.get(
+   *  Returns     : const Value* default_value() const noexcept { return default_value_.
+   */
   const Value* default_value() const noexcept { return default_value_.get(); }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -363,6 +703,12 @@ class Component final : public ComponentItem {
 class ExtensionMarker final : public ComponentItem {
  public:
   using ComponentItem::ComponentItem;
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
@@ -372,7 +718,19 @@ class VersionAdditionGroup final : public ComponentItem {
   VersionAdditionGroup(SourceRange range, std::vector<NodePtr<ComponentItem>> items)
       : ComponentItem(std::move(range)), items_(std::move(items)) {}
 
+  /**
+   *  Function    : items
+   *  Description : Computes items from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NodePtr<ComponentItem>>&
+   */
   const std::vector<NodePtr<ComponentItem>>& items() const noexcept { return items_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -386,7 +744,19 @@ class SequenceType final : public Type {
       : Type(std::move(range), std::move(tag), std::move(constraint)),
         items_(std::move(items)) {}
 
+  /**
+   *  Function    : items
+   *  Description : Computes items from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NodePtr<ComponentItem>>&
+   */
   const std::vector<NodePtr<ComponentItem>>& items() const noexcept { return items_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -400,9 +770,21 @@ class ChoiceType final : public Type {
       : Type(std::move(range), std::move(tag), std::move(constraint)),
         alternatives_(std::move(alternatives)) {}
 
+  /**
+   *  Function    : alternatives
+   *  Description : Computes alternatives from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NodePtr<ComponentItem>>&
+   */
   const std::vector<NodePtr<ComponentItem>>& alternatives() const noexcept {
     return alternatives_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -416,7 +798,19 @@ class SequenceOfType final : public Type {
       : Type(std::move(range), std::move(tag), std::move(constraint)),
         element_(std::move(element)) {}
 
+  /**
+   *  Function    : element
+   *  Description : Computes element from (none).
+   *  Parameters  : none
+   *  Returns     : const Type&
+   */
   const Type& element() const { return *element_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -430,7 +824,19 @@ class SetType final : public Type {
       : Type(std::move(range), std::move(tag), std::move(constraint)),
         items_(std::move(items)) {}
 
+  /**
+   *  Function    : items
+   *  Description : Computes items from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NodePtr<ComponentItem>>&
+   */
   const std::vector<NodePtr<ComponentItem>>& items() const noexcept { return items_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -444,7 +850,19 @@ class SetOfType final : public Type {
       : Type(std::move(range), std::move(tag), std::move(constraint)),
         element_(std::move(element)) {}
 
+  /**
+   *  Function    : element
+   *  Description : Computes element from (none).
+   *  Parameters  : none
+   *  Returns     : const Type&
+   */
   const Type& element() const { return *element_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -461,9 +879,33 @@ class EnumeratedType final : public Type {
         extensible_(extensible),
         extensions_(std::move(extensions)) {}
 
+  /**
+   *  Function    : root
+   *  Description : Computes root from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NamedNumber>&
+   */
   const std::vector<NamedNumber>& root() const noexcept { return root_; }
+  /**
+   *  Function    : extensible
+   *  Description : Returns a boolean result from none.
+   *  Parameters  : none
+   *  Returns     : bool
+   */
   bool extensible() const noexcept { return extensible_; }
+  /**
+   *  Function    : extensions
+   *  Description : Computes extensions from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NamedNumber>&
+   */
   const std::vector<NamedNumber>& extensions() const noexcept { return extensions_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -475,18 +917,36 @@ class EnumeratedType final : public Type {
 class ObjectIdentifierType final : public Type {
  public:
   using Type::Type;
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
 class RelativeOidType final : public Type {
  public:
   using Type::Type;
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
 class RealType final : public Type {
  public:
   using Type::Type;
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
@@ -494,6 +954,12 @@ class RealType final : public Type {
 class ExternalType final : public Type {
  public:
   using Type::Type;
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
@@ -501,6 +967,12 @@ class ExternalType final : public Type {
 class EmbeddedPdvType final : public Type {
  public:
   using Type::Type;
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
@@ -508,6 +980,12 @@ class EmbeddedPdvType final : public Type {
 class CharacterStringType final : public Type {
  public:
   using Type::Type;
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 };
 
@@ -519,7 +997,19 @@ class InstanceOfType final : public Type {
       : Type(std::move(range), std::move(tag), std::move(constraint)),
         class_name_(std::move(class_name)) {}
 
+  /**
+   *  Function    : class_name
+   *  Description : Builds and returns a string for class name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& class_name() const noexcept { return class_name_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -536,7 +1026,19 @@ class ObjectIdentifierValue final : public Value {
   ObjectIdentifierValue(SourceRange range, std::vector<Arc> arcs)
       : Value(std::move(range)), arcs_(std::move(arcs)) {}
 
+  /**
+   *  Function    : arcs
+   *  Description : Computes arcs from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<Arc>&
+   */
   const std::vector<Arc>& arcs() const noexcept { return arcs_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -562,10 +1064,40 @@ class ReferencedType final : public Type {
         name_(std::move(name)),
         actuals_(std::move(actuals)) {}
 
+  /**
+   *  Function    : module
+   *  Description : Builds and returns a string for module.
+   *  Parameters  : none
+   *  Returns     : const std::optional<std::string>&
+   */
   const std::optional<std::string>& module() const noexcept { return module_; }
+  /**
+   *  Function    : name
+   *  Description : Builds and returns a string for name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& name() const noexcept { return name_; }
+  /**
+   *  Function    : actuals
+   *  Description : Computes actuals from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<ActualParameter>&
+   */
   const std::vector<ActualParameter>& actuals() const noexcept { return actuals_; }
+  /**
+   *  Function    : move
+   *  Description : Performs move (definition).
+   *  Parameters  : actuals_ — std::vector<ActualParameter> actuals) { actuals_
+   *  Returns     : void set_actuals(std::vector<ActualParameter> actuals) { actuals_ = std::
+   */
   void set_actuals(std::vector<ActualParameter> actuals) { actuals_ = std::move(actuals); }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -583,8 +1115,26 @@ class ContentsConstraint final : public Constraint {
         contained_(std::move(contained)),
         encoded_by_(std::move(encoded_by)) {}
 
+  /**
+   *  Function    : get
+   *  Description : Computes get from (contained_.get().
+   *  Parameters  : contained_.get( — ) const noexcept { return contained_.get(
+   *  Returns     : const Type* contained() const noexcept { return contained_.
+   */
   const Type* contained() const noexcept { return contained_.get(); }
+  /**
+   *  Function    : get
+   *  Description : Computes get from (encoded_by_.get().
+   *  Parameters  : encoded_by_.get( — ) const noexcept { return encoded_by_.get(
+   *  Returns     : const Value* encoded_by() const noexcept { return encoded_by_.
+   */
   const Value* encoded_by() const noexcept { return encoded_by_.get(); }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -609,9 +1159,21 @@ class WithComponentsConstraint final : public Constraint {
   WithComponentsConstraint(SourceRange range, std::vector<NamedComponentConstraint> components)
       : Constraint(std::move(range)), components_(std::move(components)) {}
 
+  /**
+   *  Function    : components
+   *  Description : Computes components from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NamedComponentConstraint>&
+   */
   const std::vector<NamedComponentConstraint>& components() const noexcept {
     return components_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:

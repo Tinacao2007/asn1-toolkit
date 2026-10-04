@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/per/primitives.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   PER primitive encode/decode (integers, strings, etc.).
+**
+** Specification: ITU-T X.691 — ASN.1 encoding rules: Packed Encoding
+**                 Rules (PER); UPER/APER variants.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/per/primitives.hpp>
 #include <asn1/runtime/byte_io.hpp>
 
@@ -5,12 +27,24 @@ namespace asn1 {
 namespace per {
 namespace {
 
+/**
+ *  Function    : to_u64
+ *  Description : Computes to u64 from (v).
+ *  Parameters  : v — std::int64_t v
+ *  Returns     : std::uint64_t
+ */
 std::uint64_t to_u64(std::int64_t v) {
   return static_cast<std::uint64_t>(v);
 }
 
 /// Unsigned range size upper-lower+1; assumes upper >= lower.
 /// Returns 0 if the span does not fit in uint64 (caller must treat as error).
+/**
+ *  Function    : range_size
+ *  Description : Computes range size from (lower, upper).
+ *  Parameters  : lower — std::int64_t lower; upper — std::int64_t upper
+ *  Returns     : std::uint64_t
+ */
 std::uint64_t range_size(std::int64_t lower, std::int64_t upper) {
   const std::uint64_t u_lo = to_u64(lower);
   const std::uint64_t u_hi = to_u64(upper);
@@ -21,6 +55,12 @@ std::uint64_t range_size(std::int64_t lower, std::int64_t upper) {
   return diff + 1u;
 }
 
+/**
+ *  Function    : octet_count_for_nonneg
+ *  Description : Computes octet count for nonneg from (value).
+ *  Parameters  : value — std::uint64_t value
+ *  Returns     : std::size_t
+ */
 std::size_t octet_count_for_nonneg(std::uint64_t value) {
   if (value == 0) {
     return 1;
@@ -34,6 +74,12 @@ std::size_t octet_count_for_nonneg(std::uint64_t value) {
   return (bits + 7) / 8;
 }
 
+/**
+ *  Function    : encode_nonneg_octets
+ *  Description : Performs encode nonneg octets (definition).
+ *  Parameters  : out — BitWriter& out; value — std::uint64_t value; nbytes — std::size_t nbytes
+ *  Returns     : void
+ */
 void encode_nonneg_octets(BitWriter& out, std::uint64_t value, std::size_t nbytes) {
   for (std::size_t i = 0; i < nbytes; ++i) {
     const std::size_t shift = 8 * (nbytes - 1 - i);
@@ -41,6 +87,12 @@ void encode_nonneg_octets(BitWriter& out, std::uint64_t value, std::size_t nbyte
   }
 }
 
+/**
+ *  Function    : decode_nonneg_octets
+ *  Description : Returns success or an error from decode nonneg octets.
+ *  Parameters  : in — BitReader& in; nbytes — std::size_t nbytes
+ *  Returns     : Result<std::uint64_t>
+ */
 Result<std::uint64_t> decode_nonneg_octets(BitReader& in, std::size_t nbytes) {
   if (nbytes > 8) {
     return make_error(Error::Code::Unsupported, in.bit_offset(),
@@ -57,6 +109,12 @@ Result<std::uint64_t> decode_nonneg_octets(BitReader& in, std::size_t nbytes) {
   return value;
 }
 
+/**
+ *  Function    : max_octets_for_range
+ *  Description : Computes max octets for range from (range).
+ *  Parameters  : range — std::uint64_t range
+ *  Returns     : std::size_t
+ */
 std::size_t max_octets_for_range(std::uint64_t range) {
   // octets needed to hold values 0..range-1
   if (range <= 1) {
@@ -67,6 +125,12 @@ std::size_t max_octets_for_range(std::uint64_t range) {
 
 }  // namespace
 
+/**
+ *  Function    : bits_for_range
+ *  Description : Computes bits for range from (range).
+ *  Parameters  : range — std::uint64_t range
+ *  Returns     : std::size_t
+ */
 std::size_t bits_for_range(std::uint64_t range) {
   if (range <= 1) {
     return 0;
@@ -255,6 +319,12 @@ void encode_unconstrained_whole_number(BitWriter& out, Variant variant,
   out.put_octets(bytes);
 }
 
+/**
+ *  Function    : decode_unconstrained_big_integer
+ *  Description : Returns success or an error from decode unconstrained big integer.
+ *  Parameters  : in — BitReader& in; variant — Variant variant
+ *  Returns     : Result<BigInteger>
+ */
 Result<BigInteger> decode_unconstrained_big_integer(BitReader& in, Variant variant) {
   if (auto a = maybe_align(in, variant); !a) {
     return a.error();
@@ -324,6 +394,12 @@ void encode_normally_small_length(BitWriter& out, Variant variant,
   encode_length_determinant(out, variant, length);
 }
 
+/**
+ *  Function    : decode_normally_small_length
+ *  Description : Returns success or an error from decode normally small length.
+ *  Parameters  : in — BitReader& in; variant — Variant variant
+ *  Returns     : Result<std::size_t>
+ */
 Result<std::size_t> decode_normally_small_length(BitReader& in, Variant variant) {
   auto b0 = in.get_bit();
   if (!b0) {
@@ -371,6 +447,12 @@ std::size_t encode_length_determinant(BitWriter& out, Variant /*variant*/,
   return chunk;
 }
 
+/**
+ *  Function    : decode_length_determinant
+ *  Description : Returns success or an error from decode length determinant.
+ *  Parameters  : in — BitReader& in; / — Variant /*variant*/
+ *  Returns     : Result<std::size_t>
+ */
 Result<std::size_t> decode_length_determinant(BitReader& in, Variant /*variant*/) {
   auto first = in.get_octet();
   if (!first) {
@@ -425,12 +507,24 @@ Result<std::size_t> decode_choice_index(BitReader& in, Variant variant,
   return static_cast<std::size_t>(v.value());
 }
 
+/**
+ *  Function    : encode_bitmap
+ *  Description : Performs encode bitmap (definition).
+ *  Parameters  : out — BitWriter& out; bits — Span<const std::uint8_t> bits
+ *  Returns     : void
+ */
 void encode_bitmap(BitWriter& out, Span<const std::uint8_t> bits) {
   for (std::size_t i = 0; i < bits.size(); ++i) {
     out.put_bit(bits[i] != 0);
   }
 }
 
+/**
+ *  Function    : decode_bitmap
+ *  Description : Returns success or an error from decode bitmap.
+ *  Parameters  : in — BitReader& in; nbits — std::size_t nbits
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_bitmap(BitReader& in, std::size_t nbits) {
   std::vector<std::uint8_t> bits;
   bits.reserve(nbits);
@@ -462,6 +556,12 @@ void encode_open_type(BitWriter& out, Variant variant,
   }
 }
 
+/**
+ *  Function    : decode_open_type
+ *  Description : Returns success or an error from decode open type.
+ *  Parameters  : in — BitReader& in; variant — Variant variant
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_open_type(BitReader& in, Variant variant) {
   if (auto a = maybe_align(in, variant); !a) {
     return a.error();

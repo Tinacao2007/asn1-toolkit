@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/frontend/parser.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Recursive-descent parser for ASN.1 modules, types, values, constraints.
+**
+** Specification: ITU-T X.680 — ASN.1 abstract syntax (lexical and
+**                 syntactic notation).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/frontend/parser.hpp>
 
 #include <string>
@@ -6,6 +28,12 @@
 namespace asn1 {
 namespace {
 
+/**
+ *  Function    : merge_range
+ *  Description : Computes merge range from (a, b).
+ *  Parameters  : a — const SourceRange& a; b — const SourceRange& b
+ *  Returns     : SourceRange
+ */
 SourceRange merge_range(const SourceRange& a, const SourceRange& b) {
   SourceRange r;
   r.begin = a.begin;
@@ -13,6 +41,12 @@ SourceRange merge_range(const SourceRange& a, const SourceRange& b) {
   return r;
 }
 
+/**
+ *  Function    : is_encoding_instruction_keyword
+ *  Description : Returns whether encoding instruction keyword holds for the given inputs.
+ *  Parameters  : kind — TokenKind kind
+ *  Returns     : bool
+ */
 bool is_encoding_instruction_keyword(TokenKind kind) {
   switch (kind) {
     case TokenKind::KwARRAY:
@@ -34,6 +68,12 @@ bool is_encoding_instruction_keyword(TokenKind kind) {
 
 }  // namespace
 
+/**
+ *  Function    : next
+ *  Description : Computes next from (lexer, current_(lexer_.next()).
+ *  Parameters  : lexer — Lexer& lexer; current_(lexer_.next() — Diagnostics& diagnostics) : lexer_(lexer), diagnostics_(diagnostics), current_(lexer_.next()
+ *  Returns     : Parser::Parser(Lexer& lexer, Diagnostics& diagnostics) : lexer_(lexer), diagnostics_(diagnostics), current_(lexer_.
+ */
 Parser::Parser(Lexer& lexer, Diagnostics& diagnostics)
     : lexer_(lexer), diagnostics_(diagnostics), current_(lexer_.next()) {
   // X.681 useful object classes — builtin WITH SYNTAX for defined-syntax objects.
@@ -56,6 +96,12 @@ Parser::Parser(Lexer& lexer, Diagnostics& diagnostics)
   });
 }
 
+/**
+ *  Function    : advance
+ *  Description : Computes advance from (none).
+ *  Parameters  : none
+ *  Returns     : Token Parser::
+ */
 Token Parser::advance() {
   Token prev = current_;
   if (current_.kind != TokenKind::EndOfFile) {
@@ -64,8 +110,20 @@ Token Parser::advance() {
   return prev;
 }
 
+/**
+ *  Function    : check
+ *  Description : Returns a boolean result from kind.
+ *  Parameters  : kind — TokenKind kind
+ *  Returns     : bool Parser::
+ */
 bool Parser::check(TokenKind kind) const { return current_.kind == kind; }
 
+/**
+ *  Function    : match
+ *  Description : Returns a boolean result from kind.
+ *  Parameters  : kind — TokenKind kind
+ *  Returns     : bool Parser::
+ */
 bool Parser::match(TokenKind kind) {
   if (!check(kind)) {
     return false;
@@ -74,6 +132,12 @@ bool Parser::match(TokenKind kind) {
   return true;
 }
 
+/**
+ *  Function    : expect
+ *  Description : Returns a boolean result from kind, what.
+ *  Parameters  : kind — TokenKind kind; what — const char* what
+ *  Returns     : bool Parser::
+ */
 bool Parser::expect(TokenKind kind, const char* what) {
   if (match(kind)) {
     return true;
@@ -85,18 +149,42 @@ bool Parser::expect(TokenKind kind, const char* what) {
   return false;
 }
 
+/**
+ *  Function    : error_at
+ *  Description : Performs error at (definition).
+ *  Parameters  : at — const Token& at; message — std::string message
+ *  Returns     : void Parser::
+ */
 void Parser::error_at(const Token& at, std::string message) {
   diagnostics_.error(at.range, std::move(message));
 }
 
+/**
+ *  Function    : is_unsupported_construct
+ *  Description : Returns whether unsupported construct holds for the given inputs.
+ *  Parameters  : / — TokenKind /*kind*/
+ *  Returns     : bool Parser::
+ */
 bool Parser::is_unsupported_construct(TokenKind /*kind*/) const {
   return false;
 }
 
+/**
+ *  Function    : is_useful_object_class_token
+ *  Description : Returns whether useful object class token holds for the given inputs.
+ *  Parameters  : kind — TokenKind kind
+ *  Returns     : bool Parser::
+ */
 bool Parser::is_useful_object_class_token(TokenKind kind) const {
   return kind == TokenKind::KwTYPE_IDENTIFIER || kind == TokenKind::KwABSTRACT_SYNTAX;
 }
 
+/**
+ *  Function    : useful_object_class_name
+ *  Description : Builds and returns a string for useful object class name.
+ *  Parameters  : kind — TokenKind kind
+ *  Returns     : std::string Parser::
+ */
 std::string Parser::useful_object_class_name(TokenKind kind) const {
   if (kind == TokenKind::KwTYPE_IDENTIFIER) {
     return "TYPE-IDENTIFIER";
@@ -107,11 +195,23 @@ std::string Parser::useful_object_class_name(TokenKind kind) const {
   return {};
 }
 
+/**
+ *  Function    : report_unsupported
+ *  Description : Performs report unsupported (definition).
+ *  Parameters  : tok — const Token& tok
+ *  Returns     : void Parser::
+ */
 void Parser::report_unsupported(const Token& tok) {
   error_at(tok, std::string("ASN.1 construct '") + std::string(tok.text) +
                     "' is not supported yet");
 }
 
+/**
+ *  Function    : synchronize_assignment
+ *  Description : Performs synchronize assignment (definition).
+ *  Parameters  : none
+ *  Returns     : void Parser::
+ */
 void Parser::synchronize_assignment() {
   while (current_.kind != TokenKind::EndOfFile && current_.kind != TokenKind::KwEND) {
     if (current_.kind == TokenKind::TypeReference ||
@@ -126,6 +226,12 @@ void Parser::synchronize_assignment() {
   }
 }
 
+/**
+ *  Function    : parse_module
+ *  Description : Computes parse module from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Module> Parser::
+ */
 std::unique_ptr<ast::Module> Parser::parse_module() {
   if (!check(TokenKind::TypeReference)) {
     error_at(current_, "expected module name (typereference)");
@@ -135,6 +241,12 @@ std::unique_ptr<ast::Module> Parser::parse_module() {
   return parse_module_body(name_tok);
 }
 
+/**
+ *  Function    : parse_modules
+ *  Description : Computes parse modules from (none).
+ *  Parameters  : none
+ *  Returns     : std::vector<std::unique_ptr<ast::Module>> Parser::
+ */
 std::vector<std::unique_ptr<ast::Module>> Parser::parse_modules() {
   std::vector<std::unique_ptr<ast::Module>> modules;
   while (check(TokenKind::TypeReference) && !check(TokenKind::EndOfFile)) {
@@ -147,6 +259,12 @@ std::vector<std::unique_ptr<ast::Module>> Parser::parse_modules() {
   return modules;
 }
 
+/**
+ *  Function    : parse_module_body
+ *  Description : Computes parse module body from (name_tok).
+ *  Parameters  : name_tok — Token name_tok
+ *  Returns     : std::unique_ptr<ast::Module> Parser::
+ */
 std::unique_ptr<ast::Module> Parser::parse_module_body(Token name_tok) {
   // Optional object identifier value after module name is skipped as unsupported form
   // if '{' appears before DEFINITIONS - Phase 3: report and skip balanced braces.
@@ -220,6 +338,12 @@ std::unique_ptr<ast::Module> Parser::parse_module_body(Token name_tok) {
   }
 
   std::vector<std::unique_ptr<ast::Assignment>> assignments;
+  /**
+   *  Function    : check
+   *  Description : Computes check from (!check(TokenKind::EndOfFile)).
+   *  Parameters  : !check(TokenKind::EndOfFile) — !check(TokenKind::KwEND) && !check(TokenKind::KwENCODING_CONTROL) && !check(TokenKind::EndOfFile)
+   *  Returns     : while (!check(TokenKind::KwEND) && !check(TokenKind::KwENCODING_CONTROL) && !
+   */
   while (!check(TokenKind::KwEND) && !check(TokenKind::KwENCODING_CONTROL) &&
          !check(TokenKind::EndOfFile)) {
     auto assignment = parse_assignment();
@@ -227,6 +351,12 @@ std::unique_ptr<ast::Module> Parser::parse_module_body(Token name_tok) {
       assignments.push_back(std::move(assignment));
     } else {
       if (check(TokenKind::KwEND) || check(TokenKind::KwENCODING_CONTROL) ||
+          /**
+           *  Function    : check
+           *  Description : Performs check (definition).
+           *  Parameters  : none
+           *  Returns     : void
+           */
           check(TokenKind::EndOfFile)) {
         break;
       }
@@ -266,6 +396,12 @@ std::unique_ptr<ast::Module> Parser::parse_module_body(Token name_tok) {
   return module;
 }
 
+/**
+ *  Function    : parse_exports
+ *  Description : Performs parse exports (definition).
+ *  Parameters  : exports — std::vector<std::string>& exports; exports_all — bool& exports_all
+ *  Returns     : void Parser::
+ */
 void Parser::parse_exports(std::vector<std::string>& exports, bool& exports_all) {
   advance();  // EXPORTS
   if (match(TokenKind::KwALL)) {
@@ -289,11 +425,23 @@ void Parser::parse_exports(std::vector<std::string>& exports, bool& exports_all)
   expect(TokenKind::Semicolon, "';'");
 }
 
+/**
+ *  Function    : parse_imports
+ *  Description : Performs parse imports (definition).
+ *  Parameters  : imports — std::vector<ast::ImportFrom>& imports
+ *  Returns     : void Parser::
+ */
 void Parser::parse_imports(std::vector<ast::ImportFrom>& imports) {
   advance();  // IMPORTS
   if (match(TokenKind::Semicolon)) {
     return;
   }
+  /**
+   *  Function    : check
+   *  Description : Computes check from (!check(TokenKind::KwEND)).
+   *  Parameters  : !check(TokenKind::KwEND) — !check(TokenKind::Semicolon) && !check(TokenKind::EndOfFile) && !check(TokenKind::KwEND)
+   *  Returns     : while (!check(TokenKind::Semicolon) && !check(TokenKind::EndOfFile) && !
+   */
   while (!check(TokenKind::Semicolon) && !check(TokenKind::EndOfFile) &&
          !check(TokenKind::KwEND)) {
     ast::ImportFrom imp;
@@ -347,6 +495,12 @@ void Parser::parse_imports(std::vector<ast::ImportFrom>& imports) {
   expect(TokenKind::Semicolon, "';'");
 }
 
+/**
+ *  Function    : parse_assignment
+ *  Description : Computes parse assignment from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Assignment> Parser::
+ */
 std::unique_ptr<ast::Assignment> Parser::parse_assignment() {
   if (check(TokenKind::TypeReference)) {
     Token name = advance();
@@ -473,6 +627,12 @@ std::unique_ptr<ast::Assignment> Parser::parse_assignment() {
   return nullptr;
 }
 
+/**
+ *  Function    : parse_type_assignment
+ *  Description : Computes parse type assignment from (name_tok).
+ *  Parameters  : name_tok — Token name_tok
+ *  Returns     : std::unique_ptr<ast::TypeAssignment> Parser::
+ */
 std::unique_ptr<ast::TypeAssignment> Parser::parse_type_assignment(Token name_tok) {
   if (!expect(TokenKind::Assign, "'::='")) {
     return nullptr;
@@ -486,6 +646,12 @@ std::unique_ptr<ast::TypeAssignment> Parser::parse_type_assignment(Token name_to
                                                std::move(type));
 }
 
+/**
+ *  Function    : parse_value_assignment
+ *  Description : Computes parse value assignment from (name_tok).
+ *  Parameters  : name_tok — Token name_tok
+ *  Returns     : std::unique_ptr<ast::ValueAssignment> Parser::
+ */
 std::unique_ptr<ast::ValueAssignment> Parser::parse_value_assignment(Token name_tok) {
   auto type = parse_type();
   if (!type) {
@@ -503,6 +669,12 @@ std::unique_ptr<ast::ValueAssignment> Parser::parse_value_assignment(Token name_
                                                 std::move(type), std::move(value));
 }
 
+/**
+ *  Function    : parse_type
+ *  Description : Computes parse type from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Type> Parser::
+ */
 std::unique_ptr<ast::Type> Parser::parse_type() {
   std::vector<ast::EncodingInstruction> eis;
   std::optional<ast::Tag> tag;
@@ -619,6 +791,12 @@ std::unique_ptr<ast::Type> Parser::parse_type() {
   return type;
 }
 
+/**
+ *  Function    : parse_name_transform
+ *  Description : Computes parse name transform from (literal_out).
+ *  Parameters  : literal_out — std::string* literal_out
+ *  Returns     : std::optional<ast::NameTransform> Parser::
+ */
 std::optional<ast::NameTransform> Parser::parse_name_transform(std::string* literal_out) {
   if (match(TokenKind::KwCAPITALIZED)) {
     return ast::NameTransform::Capitalized;
@@ -644,6 +822,12 @@ std::optional<ast::NameTransform> Parser::parse_name_transform(std::string* lite
   return std::nullopt;
 }
 
+/**
+ *  Function    : parse_one_encoding_instruction
+ *  Description : Computes parse one encoding instruction from (none).
+ *  Parameters  : none
+ *  Returns     : std::optional<ast::EncodingInstruction> Parser::
+ */
 std::optional<ast::EncodingInstruction> Parser::parse_one_encoding_instruction() {
   if (!check(TokenKind::LBracket)) {
     return std::nullopt;
@@ -722,6 +906,12 @@ std::optional<ast::EncodingInstruction> Parser::parse_one_encoding_instruction()
   return ei;
 }
 
+/**
+ *  Function    : parse_encoding_instructions
+ *  Description : Computes parse encoding instructions from (none).
+ *  Parameters  : none
+ *  Returns     : std::vector<ast::EncodingInstruction> Parser::
+ */
 std::vector<ast::EncodingInstruction> Parser::parse_encoding_instructions() {
   std::vector<ast::EncodingInstruction> out;
   while (check(TokenKind::LBracket)) {
@@ -734,6 +924,12 @@ std::vector<ast::EncodingInstruction> Parser::parse_encoding_instructions() {
   return out;
 }
 
+/**
+ *  Function    : parse_encoding_control
+ *  Description : Computes parse encoding control from (none).
+ *  Parameters  : none
+ *  Returns     : std::vector<ast::EncodingControlClause> Parser::
+ */
 std::vector<ast::EncodingControlClause> Parser::parse_encoding_control() {
   std::vector<ast::EncodingControlClause> clauses;
   advance();  // ENCODING-CONTROL
@@ -788,6 +984,12 @@ std::vector<ast::EncodingControlClause> Parser::parse_encoding_control() {
   return clauses;
 }
 
+/**
+ *  Function    : parse_optional_tag
+ *  Description : Computes parse optional tag from (none).
+ *  Parameters  : none
+ *  Returns     : std::optional<ast::Tag> Parser::
+ */
 std::optional<ast::Tag> Parser::parse_optional_tag() {
   if (!check(TokenKind::LBracket)) {
     return std::nullopt;
@@ -827,6 +1029,12 @@ std::optional<ast::Tag> Parser::parse_optional_tag() {
   return tag;
 }
 
+/**
+ *  Function    : parse_untagged_type
+ *  Description : Computes parse untagged type from (tag).
+ *  Parameters  : tag — std::optional<ast::Tag> tag
+ *  Returns     : std::unique_ptr<ast::Type> Parser::
+ */
 std::unique_ptr<ast::Type> Parser::parse_untagged_type(std::optional<ast::Tag> tag) {
   Token start = current_;
 
@@ -997,6 +1205,12 @@ std::unique_ptr<ast::Type> Parser::parse_untagged_type(std::optional<ast::Tag> t
              check(TokenKind::KwVideotexString) || check(TokenKind::KwGraphicString) ||
              check(TokenKind::KwGeneralString) || check(TokenKind::KwBMPString) ||
              check(TokenKind::KwUniversalString) || check(TokenKind::KwUTCTime) ||
+             /**
+              *  Function    : check
+              *  Description : Performs check (definition).
+              *  Parameters  : none
+              *  Returns     : void
+              */
              check(TokenKind::KwGeneralizedTime)) {
     ast::StringKind kind = ast::StringKind::UTF8String;
     switch (current_.kind) {
@@ -1113,6 +1327,12 @@ std::unique_ptr<ast::Type> Parser::parse_untagged_type(std::optional<ast::Tag> t
   return type;
 }
 
+/**
+ *  Function    : parse_optional_constraint
+ *  Description : Computes parse optional constraint from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Constraint> Parser::
+ */
 std::unique_ptr<ast::Constraint> Parser::parse_optional_constraint() {
   if (!check(TokenKind::LParen)) {
     return nullptr;
@@ -1160,6 +1380,12 @@ std::unique_ptr<ast::Constraint> Parser::parse_optional_constraint() {
   return inner;
 }
 
+/**
+ *  Function    : parse_contents_constraint
+ *  Description : Computes parse contents constraint from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Constraint> Parser::
+ */
 std::unique_ptr<ast::Constraint> Parser::parse_contents_constraint() {
   Token start = current_;
   std::unique_ptr<ast::Type> contained;
@@ -1194,6 +1420,12 @@ std::unique_ptr<ast::Constraint> Parser::parse_contents_constraint() {
                                                    std::move(encoded_by));
 }
 
+/**
+ *  Function    : parse_subtype_constraint
+ *  Description : Computes parse subtype constraint from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Constraint> Parser::
+ */
 std::unique_ptr<ast::Constraint> Parser::parse_subtype_constraint() {
   // Union of intersections: elem (| elem)* [, ...]
   std::vector<std::unique_ptr<ast::Constraint>> alts;
@@ -1226,6 +1458,12 @@ std::unique_ptr<ast::Constraint> Parser::parse_subtype_constraint() {
   return root;
 }
 
+/**
+ *  Function    : parse_constraint_intersection
+ *  Description : Computes parse constraint intersection from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Constraint> Parser::
+ */
 std::unique_ptr<ast::Constraint> Parser::parse_constraint_intersection() {
   // atom (^ atom)*   also accept keyword INTERSECTION
   auto first = parse_constraint_atom();
@@ -1248,6 +1486,12 @@ std::unique_ptr<ast::Constraint> Parser::parse_constraint_intersection() {
   return std::make_unique<ast::IntersectionConstraint>(std::move(range), std::move(parts));
 }
 
+/**
+ *  Function    : parse_constraint_atom
+ *  Description : Computes parse constraint atom from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Constraint> Parser::
+ */
 std::unique_ptr<ast::Constraint> Parser::parse_constraint_atom() {
   if (check(TokenKind::KwSIZE)) {
     Token size_tok = advance();
@@ -1277,6 +1521,12 @@ std::unique_ptr<ast::Constraint> Parser::parse_constraint_atom() {
   return parse_constraint_element();
 }
 
+/**
+ *  Function    : parse_with_components_constraint
+ *  Description : Computes parse with components constraint from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Constraint> Parser::
+ */
 std::unique_ptr<ast::Constraint> Parser::parse_with_components_constraint() {
   Token start = current_;
   if (!expect(TokenKind::KwWITH, "WITH")) {
@@ -1330,6 +1580,12 @@ std::unique_ptr<ast::Constraint> Parser::parse_with_components_constraint() {
                                                          std::move(components));
 }
 
+/**
+ *  Function    : parse_constraint_element
+ *  Description : Computes parse constraint element from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Constraint> Parser::
+ */
 std::unique_ptr<ast::Constraint> Parser::parse_constraint_element() {
   if (check(TokenKind::Ellipsis)) {
     Token e = advance();
@@ -1421,6 +1677,12 @@ void Parser::parse_enumeration_list(std::vector<ast::NamedNumber>& root, bool& e
   } while (match(TokenKind::Comma));
 }
 
+/**
+ *  Function    : parse_object_identifier_value
+ *  Description : Computes parse object identifier value from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Value> Parser::
+ */
 std::unique_ptr<ast::Value> Parser::parse_object_identifier_value() {
   Token start = advance();  // {
   std::vector<ast::ObjectIdentifierValue::Arc> arcs;
@@ -1461,6 +1723,12 @@ std::unique_ptr<ast::Value> Parser::parse_object_identifier_value() {
                                                       std::move(arcs));
 }
 
+/**
+ *  Function    : parse_named_number_list
+ *  Description : Computes parse named number list from (none).
+ *  Parameters  : none
+ *  Returns     : std::vector<ast::NamedNumber> Parser::
+ */
 std::vector<ast::NamedNumber> Parser::parse_named_number_list() {
   std::vector<ast::NamedNumber> list;
   expect(TokenKind::LBrace, "'{'");
@@ -1516,6 +1784,12 @@ std::vector<std::unique_ptr<ast::ComponentItem>> Parser::parse_component_type_li
   return items;
 }
 
+/**
+ *  Function    : parse_component_item
+ *  Description : Computes parse component item from (choice).
+ *  Parameters  : choice — bool choice
+ *  Returns     : std::unique_ptr<ast::ComponentItem> Parser::
+ */
 std::unique_ptr<ast::ComponentItem> Parser::parse_component_item(bool choice) {
   if (check(TokenKind::Ellipsis)) {
     Token e = advance();
@@ -1559,6 +1833,12 @@ std::unique_ptr<ast::ComponentItem> Parser::parse_component_item(bool choice) {
                                           std::move(default_value));
 }
 
+/**
+ *  Function    : parse_version_addition_group
+ *  Description : Computes parse version addition group from (choice).
+ *  Parameters  : choice — bool choice
+ *  Returns     : std::unique_ptr<ast::ComponentItem> Parser::
+ */
 std::unique_ptr<ast::ComponentItem> Parser::parse_version_addition_group(bool choice) {
   Token start = current_;
   if (!expect(TokenKind::VersionLBracket, "'[['")) {
@@ -1588,6 +1868,12 @@ std::unique_ptr<ast::ComponentItem> Parser::parse_version_addition_group(bool ch
                                                      std::move(items));
 }
 
+/**
+ *  Function    : parse_integer_value
+ *  Description : Computes parse integer value from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Value> Parser::
+ */
 std::unique_ptr<ast::Value> Parser::parse_integer_value() {
   Token start = current_;
   bool negative = match(TokenKind::Minus);
@@ -1601,6 +1887,12 @@ std::unique_ptr<ast::Value> Parser::parse_integer_value() {
                                              negative);
 }
 
+/**
+ *  Function    : parse_value
+ *  Description : Computes parse value from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Value> Parser::
+ */
 std::unique_ptr<ast::Value> Parser::parse_value() {
   if (check(TokenKind::KwTRUE) || check(TokenKind::KwFALSE)) {
     Token tok = advance();
@@ -1755,6 +2047,12 @@ std::unique_ptr<ast::Value> Parser::parse_value() {
   return nullptr;
 }
 
+/**
+ *  Function    : is_governor_type_token
+ *  Description : Returns whether governor type token holds for the given inputs.
+ *  Parameters  : kind — TokenKind kind
+ *  Returns     : bool Parser::
+ */
 bool Parser::is_governor_type_token(TokenKind kind) const {
   switch (kind) {
     case TokenKind::TypeReference:
@@ -1794,11 +2092,23 @@ bool Parser::is_governor_type_token(TokenKind kind) const {
   }
 }
 
+/**
+ *  Function    : is_type_start_token
+ *  Description : Returns whether type start token holds for the given inputs.
+ *  Parameters  : kind — TokenKind kind
+ *  Returns     : bool Parser::
+ */
 bool Parser::is_type_start_token(TokenKind kind) const {
   return is_governor_type_token(kind) || kind == TokenKind::LBracket ||
          kind == TokenKind::KwINSTANCE;
 }
 
+/**
+ *  Function    : consume_governor_name
+ *  Description : Builds and returns a string for consume governor name.
+ *  Parameters  : none
+ *  Returns     : std::string Parser::
+ */
 std::string Parser::consume_governor_name() {
   if (check(TokenKind::KwBIT)) {
     advance();
@@ -1820,6 +2130,12 @@ std::string Parser::consume_governor_name() {
   return name;
 }
 
+/**
+ *  Function    : parse_formal_parameter_list
+ *  Description : Computes parse formal parameter list from (none).
+ *  Parameters  : none
+ *  Returns     : std::vector<ast::FormalParameter> Parser::
+ */
 std::vector<ast::FormalParameter> Parser::parse_formal_parameter_list() {
   std::vector<ast::FormalParameter> formals;
   if (!expect(TokenKind::LBrace, "'{'")) {
@@ -1868,6 +2184,12 @@ std::vector<ast::FormalParameter> Parser::parse_formal_parameter_list() {
   return formals;
 }
 
+/**
+ *  Function    : parse_actual_parameter_list
+ *  Description : Computes parse actual parameter list from (none).
+ *  Parameters  : none
+ *  Returns     : std::vector<ast::ActualParameter> Parser::
+ */
 std::vector<ast::ActualParameter> Parser::parse_actual_parameter_list() {
   std::vector<ast::ActualParameter> actuals;
   if (!expect(TokenKind::LBrace, "'{'")) {
@@ -1892,6 +2214,12 @@ std::vector<ast::ActualParameter> Parser::parse_actual_parameter_list() {
       } else if (check(TokenKind::Number) || check(TokenKind::Minus) ||
                  check(TokenKind::KwTRUE) || check(TokenKind::KwFALSE) ||
                  check(TokenKind::CharacterString) || check(TokenKind::BinaryString) ||
+                 /**
+                  *  Function    : check
+                  *  Description : Computes check from (none).
+                  *  Parameters  : none
+                  *  Returns     : check(TokenKind::HexString) ||
+                  */
                  check(TokenKind::HexString) || check(TokenKind::Identifier)) {
         ap.value = parse_value();
         if (!ap.value) {

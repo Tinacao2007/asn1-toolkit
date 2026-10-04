@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/constraints/normalize.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Constraint normalization algorithms.
+**
+** Specification: ITU-T X.680 — subtyping and constraint notation (X.682
+**                 constraint application).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/constraints/normalize.hpp>
 
 #include <algorithm>
@@ -13,6 +35,12 @@ using ir::BigInt;
 using ir::ConstraintDesc;
 using ir::IntegerInterval;
 
+/**
+ *  Function    : from_ast_value
+ *  Description : Computes from ast value from (v, resolver).
+ *  Parameters  : v — const ast::Value* v; resolver — const ValueResolver& resolver
+ *  Returns     : std::optional<BigInt>
+ */
 std::optional<BigInt> from_ast_value(const ast::Value* v, const ValueResolver& resolver) {
   if (const auto* iv = dynamic_cast<const ast::IntegerValue*>(v)) {
     return BigInt::from_decimal(iv->text(), iv->negative());
@@ -36,6 +64,12 @@ ConstraintDesc from_intervals(std::vector<IntegerInterval> intervals, bool exten
   return out;
 }
 
+/**
+ *  Function    : sort_and_merge
+ *  Description : Performs sort and merge (definition).
+ *  Parameters  : intervals — std::vector<IntegerInterval>& intervals
+ *  Returns     : void
+ */
 void sort_and_merge(std::vector<IntegerInterval>& intervals) {
   if (intervals.empty()) {
     return;
@@ -76,6 +110,12 @@ void sort_and_merge(std::vector<IntegerInterval>& intervals) {
   intervals = std::move(merged);
 }
 
+/**
+ *  Function    : normalize_union
+ *  Description : Computes normalize union from (parts).
+ *  Parameters  : parts — std::vector<ConstraintDesc> parts
+ *  Returns     : ConstraintDesc
+ */
 ConstraintDesc normalize_union(std::vector<ConstraintDesc> parts) {
   ConstraintDesc out;
   out.statically_foldable = true;
@@ -168,6 +208,12 @@ ConstraintDesc normalize_intersection(std::vector<ConstraintDesc> parts,
 
 ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag, const ValueResolver& resolver);
 
+/**
+ *  Function    : normalize_ast
+ *  Description : Computes normalize ast from (c, diag, resolver).
+ *  Parameters  : c — const ast::Constraint* c; diag — Diagnostics& diag; resolver — const ValueResolver& resolver
+ *  Returns     : ConstraintDesc
+ */
 ConstraintDesc normalize_ast(const ast::Constraint* c, Diagnostics& diag, const ValueResolver& resolver) {
   ConstraintDesc out;
   if (!c) {
@@ -276,6 +322,12 @@ ir::ConstraintDesc normalize_size(const ast::Constraint* constraint, Diagnostics
   return c;
 }
 
+/**
+ *  Function    : suggest_host_integer
+ *  Description : Performs suggest host integer (definition).
+ *  Parameters  : desc — ir::IntegerDesc& desc
+ *  Returns     : void
+ */
 void suggest_host_integer(ir::IntegerDesc& desc) {
   desc.host_bits.reset();
   if (desc.constraint.extensible) {

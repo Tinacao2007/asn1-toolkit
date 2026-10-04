@@ -1,3 +1,26 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/include/asn1/ast/encoding.hpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   AST for encoding instructions (XER/EXTENDED-XER and related).
+**
+** Specification: ITU-T X.680 — abstract syntax;
+**                 ITU-T X.693 — encoding instruction syntax (XER /
+**                 EXTENDED-XER references).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #pragma once
 
 #include <asn1/support/source_location.hpp>

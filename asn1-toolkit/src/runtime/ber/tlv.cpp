@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/ber/tlv.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   BER TLV parsing and serialization.
+**
+** Specification: ITU-T X.690 — ASN.1 encoding rules: Basic Encoding
+**                 Rules (BER).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/ber/tlv.hpp>
 #include <asn1/runtime/limits.hpp>
 
@@ -8,12 +30,24 @@ namespace asn1 {
 namespace ber {
 namespace {
 
+/**
+ *  Function    : fail
+ *  Description : Returns success or an error from fail.
+ *  Parameters  : code — Error::Code code; offset — std::size_t offset; message — std::string message
+ *  Returns     : Result<void>
+ */
 Result<void> fail(Error::Code code, std::size_t offset, std::string message) {
   return make_error(code, offset, std::move(message));
 }
 
 }  // namespace
 
+/**
+ *  Function    : encode_tag
+ *  Description : Performs encode tag (definition).
+ *  Parameters  : out — ByteWriter& out; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_tag(ByteWriter& out, Tag tag) {
   std::uint8_t first = static_cast<std::uint8_t>(
       (static_cast<std::uint8_t>(tag.cls) << 6) | (tag.constructed ? 0x20u : 0u));
@@ -37,6 +71,12 @@ void encode_tag(ByteWriter& out, Tag tag) {
   }
 }
 
+/**
+ *  Function    : decode_tag
+ *  Description : Returns success or an error from decode tag.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<Tag>
+ */
 Result<Tag> decode_tag(ByteReader& in) {
   auto first_r = in.get();
   if (!first_r) {
@@ -78,6 +118,12 @@ Result<Tag> decode_tag(ByteReader& in) {
   return tag;
 }
 
+/**
+ *  Function    : encode_length
+ *  Description : Performs encode length (definition).
+ *  Parameters  : out — ByteWriter& out; length — std::size_t length
+ *  Returns     : void
+ */
 void encode_length(ByteWriter& out, std::size_t length) {
   if (length <= 0x7Fu) {
     out.put(static_cast<std::uint8_t>(length));
@@ -96,6 +142,12 @@ void encode_length(ByteWriter& out, std::size_t length) {
   }
 }
 
+/**
+ *  Function    : decode_length
+ *  Description : Returns success or an error from decode length.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<Length>
+ */
 Result<Length> decode_length(ByteReader& in) {
   auto first_r = in.get();
   if (!first_r) {
@@ -137,12 +189,24 @@ Result<Length> decode_length(ByteReader& in) {
   return len;
 }
 
+/**
+ *  Function    : encode_tlv
+ *  Description : Performs encode tlv (definition).
+ *  Parameters  : out — ByteWriter& out; tag — Tag tag; content — Span<const std::uint8_t> content
+ *  Returns     : void
+ */
 void encode_tlv(ByteWriter& out, Tag tag, Span<const std::uint8_t> content) {
   encode_tag(out, tag);
   encode_length(out, content.size());
   out.write(content);
 }
 
+/**
+ *  Function    : decode_tlv_header
+ *  Description : Returns success or an error from decode tlv header.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<TlvHeader>
+ */
 Result<TlvHeader> decode_tlv_header(ByteReader& in) {
   auto tag_r = decode_tag(in);
   if (!tag_r) {
@@ -155,6 +219,12 @@ Result<TlvHeader> decode_tlv_header(ByteReader& in) {
   return TlvHeader{tag_r.value(), len_r.value()};
 }
 
+/**
+ *  Function    : decode_end_of_contents
+ *  Description : Returns success or an error from decode end of contents.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<void>
+ */
 Result<void> decode_end_of_contents(ByteReader& in) {
   auto a = in.get();
   if (!a) {

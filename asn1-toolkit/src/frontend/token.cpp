@@ -1,7 +1,35 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/frontend/token.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Token spelling tables and keyword classification.
+**
+** Specification: ITU-T X.680 — ASN.1 abstract syntax (lexical and
+**                 syntactic notation).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/frontend/token.hpp>
 
 namespace asn1 {
 
+/**
+ *  Function    : to_string
+ *  Description : Computes to string from (kind).
+ *  Parameters  : kind — TokenKind kind
+ *  Returns     : const char*
+ */
 const char* to_string(TokenKind kind) {
   switch (kind) {
     case TokenKind::EndOfFile:

@@ -1,3 +1,27 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/tools/asn1cxx/main.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Command-line driver: lex/parse ASN.1 modules, run semantic analysis,
+**   optional
+**   AST/IR dumps, and emit generated C++ under --emit-dir.
+**
+** Specification: Invokes X.680/X.681 front end; optional codecs per
+**                 X.690/X.691/X.696/X.693/X.697.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/ast/print.hpp>
 #include <asn1/codegen/emit.hpp>
 #include <asn1/frontend/lexer.hpp>
@@ -22,6 +46,12 @@ namespace {
 
 constexpr std::string_view kVersion = "0.1.0";
 
+/**
+ *  Function    : print_usage
+ *  Description : Performs print usage (definition).
+ *  Parameters  : out — std::ostream& out
+ *  Returns     : void
+ */
 void print_usage(std::ostream& out) {
   out << "asn1cxx - ASN.1 compiler (asn1-toolkit " << kVersion << ")\n"
       << "\n"
@@ -42,6 +72,12 @@ void print_usage(std::ostream& out) {
       << "See docs/ARCHITECTURE.md.\n";
 }
 
+/**
+ *  Function    : dump_tokens
+ *  Description : Computes dump tokens from (path).
+ *  Parameters  : path — const std::string& path
+ *  Returns     : int
+ */
 int dump_tokens(const std::string& path) {
   asn1::Diagnostics diag;
   asn1::SourceFile file = asn1::SourceFile::from_path(path);
@@ -67,6 +103,12 @@ int dump_tokens(const std::string& path) {
   return EXIT_SUCCESS;
 }
 
+/**
+ *  Function    : dump_ast
+ *  Description : Computes dump ast from (path).
+ *  Parameters  : path — const std::string& path
+ *  Returns     : int
+ */
 int dump_ast(const std::string& path) {
   asn1::Diagnostics diag;
   asn1::SourceFile file = asn1::SourceFile::from_path(path);
@@ -107,6 +149,12 @@ asn1::ir::Model analyze_files(const std::vector<std::string>& paths, asn1::Diagn
   return analyzer.analyze(std::move(modules));
 }
 
+/**
+ *  Function    : dump_ir
+ *  Description : Computes dump ir from (paths).
+ *  Parameters  : paths — const std::vector<std::string>& paths
+ *  Returns     : int
+ */
 int dump_ir(const std::vector<std::string>& paths) {
   asn1::Diagnostics diag;
   std::vector<asn1::SourceFile> files;
@@ -158,6 +206,12 @@ int emit_code(const std::vector<std::string>& paths, const std::string& dir,
 
 }  // namespace
 
+/**
+ *  Function    : main
+ *  Description : Computes main from (argc, argv).
+ *  Parameters  : argc — int argc; argv — char** argv
+ *  Returns     : int
+ */
 int main(int argc, char** argv) {
   if (argc <= 1) {
     print_usage(std::cerr);

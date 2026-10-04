@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/der/codec.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   DER codec implementation.
+**
+** Specification: ITU-T X.690 — Distinguished Encoding Rules (DER),
+**                 canonical BER subset.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/der/codec.hpp>
 
 #include <algorithm>
@@ -7,6 +29,12 @@ namespace asn1 {
 namespace der {
 namespace {
 
+/**
+ *  Function    : require_tag_number
+ *  Description : Returns success or an error from require tag number.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected; got — ber::Tag got
+ *  Returns     : Result<void>
+ */
 Result<void> require_tag_number(ByteReader& in, ber::Tag expected, ber::Tag got) {
   if (got.cls != expected.cls || got.number != expected.number) {
     return make_error(Error::Code::TagMismatch, in.offset(), "DER tag mismatch");
@@ -14,6 +42,12 @@ Result<void> require_tag_number(ByteReader& in, ber::Tag expected, ber::Tag got)
   return Result<void>::success();
 }
 
+/**
+ *  Function    : require_primitive
+ *  Description : Returns success or an error from require primitive.
+ *  Parameters  : in — ByteReader& in; tag — const ber::Tag& tag
+ *  Returns     : Result<void>
+ */
 Result<void> require_primitive(ByteReader& in, const ber::Tag& tag) {
   if (tag.constructed) {
     return make_error(Error::Code::NonCanonical, in.offset(),
@@ -22,6 +56,12 @@ Result<void> require_primitive(ByteReader& in, const ber::Tag& tag) {
   return Result<void>::success();
 }
 
+/**
+ *  Function    : require_constructed
+ *  Description : Returns success or an error from require constructed.
+ *  Parameters  : in — ByteReader& in; tag — const ber::Tag& tag
+ *  Returns     : Result<void>
+ */
 Result<void> require_constructed(ByteReader& in, const ber::Tag& tag) {
   if (!tag.constructed) {
     return make_error(Error::Code::NonCanonical, in.offset(),
@@ -30,6 +70,12 @@ Result<void> require_constructed(ByteReader& in, const ber::Tag& tag) {
   return Result<void>::success();
 }
 
+/**
+ *  Function    : ensure_remaining
+ *  Description : Returns success or an error from ensure remaining.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<void>
+ */
 Result<void> ensure_remaining(ByteReader& in, std::size_t length) {
   if (in.remaining() < length) {
     return make_error(Error::Code::Truncated, in.offset(), "truncated DER value");
@@ -37,6 +83,12 @@ Result<void> ensure_remaining(ByteReader& in, std::size_t length) {
   return Result<void>::success();
 }
 
+/**
+ *  Function    : check_integer_minimal
+ *  Description : Returns success or an error from check integer minimal.
+ *  Parameters  : bytes — Span<const std::uint8_t> bytes; offset — std::size_t offset
+ *  Returns     : Result<void>
+ */
 Result<void> check_integer_minimal(Span<const std::uint8_t> bytes, std::size_t offset) {
   if (bytes.empty()) {
     return make_error(Error::Code::InvalidArgument, offset, "INTEGER content empty");
@@ -70,12 +122,24 @@ Result<void> check_bit_string_unused_zero(const ber::BitStringValue& v,
   return Result<void>::success();
 }
 
+/**
+ *  Function    : tag_encoding
+ *  Description : Computes tag encoding from (tag).
+ *  Parameters  : tag — ber::Tag tag
+ *  Returns     : std::vector<std::uint8_t>
+ */
 std::vector<std::uint8_t> tag_encoding(ber::Tag tag) {
   ByteWriter w;
   ber::encode_tag(w, tag);
   return w.take();
 }
 
+/**
+ *  Function    : read_tag_encoding_prefix
+ *  Description : Returns success or an error from read tag encoding prefix.
+ *  Parameters  : tlv — Span<const std::uint8_t> tlv
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> read_tag_encoding_prefix(Span<const std::uint8_t> tlv) {
   ByteReader r(tlv);
   auto tag = ber::decode_tag(r);
@@ -85,6 +149,12 @@ Result<std::vector<std::uint8_t>> read_tag_encoding_prefix(Span<const std::uint8
   return tag_encoding(tag.value());
 }
 
+/**
+ *  Function    : tag_encoding_less
+ *  Description : Returns a boolean result from a, b.
+ *  Parameters  : a — Span<const std::uint8_t> a; b — Span<const std::uint8_t> b
+ *  Returns     : bool
+ */
 bool tag_encoding_less(Span<const std::uint8_t> a, Span<const std::uint8_t> b) {
   const std::size_t n = std::min(a.size(), b.size());
   for (std::size_t i = 0; i < n; ++i) {
@@ -95,6 +165,12 @@ bool tag_encoding_less(Span<const std::uint8_t> a, Span<const std::uint8_t> b) {
   return a.size() < b.size();
 }
 
+/**
+ *  Function    : validate_set_order
+ *  Description : Returns success or an error from validate set order.
+ *  Parameters  : content — Span<const std::uint8_t> content
+ *  Returns     : Result<void>
+ */
 Result<void> validate_set_order(Span<const std::uint8_t> content) {
   ByteReader r(content);
   std::vector<std::uint8_t> prev;
@@ -124,6 +200,12 @@ Result<void> validate_set_order(Span<const std::uint8_t> content) {
 
 template <typename T>
 Result<T> decode_primitive(ByteReader& in, ber::Tag expected,
+                           /**
+                            *  Function    : (*decode_content)
+                            *  Description : Returns success or an error from (*decode content).
+                            *  Parameters  : decode_content)(ByteReader — *decode_content)(ByteReader&
+                            *  Returns     : Result<T>
+                            */
                            Result<T> (*decode_content)(ByteReader&, std::size_t)) {
   auto hdr = decode_tlv_header(in);
   if (!hdr) {
@@ -142,6 +224,12 @@ Result<T> decode_primitive(ByteReader& in, ber::Tag expected,
   return decode_content(in, length);
 }
 
+/**
+ *  Function    : decode_boolean_content_der
+ *  Description : Returns a boolean result from in, length.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<bool>
+ */
 Result<bool> decode_boolean_content_der(ByteReader& in, std::size_t length) {
   if (length != 1) {
     return make_error(Error::Code::InvalidArgument, in.offset(),
@@ -158,6 +246,12 @@ Result<bool> decode_boolean_content_der(ByteReader& in, std::size_t length) {
   return b.value() == 0xFFu;
 }
 
+/**
+ *  Function    : decode_big_integer_content_der
+ *  Description : Returns success or an error from decode big integer content der.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<BigInteger>
+ */
 Result<BigInteger> decode_big_integer_content_der(ByteReader& in, std::size_t length) {
   if (length == 0) {
     return make_error(Error::Code::InvalidArgument, in.offset(),
@@ -175,6 +269,12 @@ Result<BigInteger> decode_big_integer_content_der(ByteReader& in, std::size_t le
   return BigInteger::from_twos_complement(bytes);
 }
 
+/**
+ *  Function    : decode_integer_content_der
+ *  Description : Returns success or an error from decode integer content der.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_integer_content_der(ByteReader& in, std::size_t length) {
   auto big = decode_big_integer_content_der(in, length);
   if (!big) {
@@ -225,34 +325,82 @@ Result<std::vector<std::uint8_t>> decode_constructed_definite(ByteReader& in,
 
 }  // namespace
 
+/**
+ *  Function    : encode_boolean
+ *  Description : Performs encode boolean (definition).
+ *  Parameters  : out — ByteWriter& out; value — bool value; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_boolean(ByteWriter& out, bool value, ber::Tag tag) {
   ber::encode_boolean(out, value, tag);
 }
 
+/**
+ *  Function    : decode_boolean
+ *  Description : Returns a boolean result from in, expected.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<bool>
+ */
 Result<bool> decode_boolean(ByteReader& in, ber::Tag expected) {
   return decode_primitive<bool>(in, expected, decode_boolean_content_der);
 }
 
+/**
+ *  Function    : encode_integer
+ *  Description : Performs encode integer (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::int64_t value; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_integer(ByteWriter& out, std::int64_t value, ber::Tag tag) {
   ber::encode_integer(out, value, tag);
 }
 
+/**
+ *  Function    : encode_integer
+ *  Description : Performs encode integer (definition).
+ *  Parameters  : out — ByteWriter& out; value — const BigInteger& value; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_integer(ByteWriter& out, const BigInteger& value, ber::Tag tag) {
   ber::encode_integer(out, value, tag);
 }
 
+/**
+ *  Function    : decode_integer
+ *  Description : Returns success or an error from decode integer.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_integer(ByteReader& in, ber::Tag expected) {
   return decode_primitive<std::int64_t>(in, expected, decode_integer_content_der);
 }
 
+/**
+ *  Function    : decode_big_integer
+ *  Description : Returns success or an error from decode big integer.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<BigInteger>
+ */
 Result<BigInteger> decode_big_integer(ByteReader& in, ber::Tag expected) {
   return decode_primitive<BigInteger>(in, expected, decode_big_integer_content_der);
 }
 
+/**
+ *  Function    : encode_null
+ *  Description : Performs encode null (definition).
+ *  Parameters  : out — ByteWriter& out; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_null(ByteWriter& out, ber::Tag tag) {
   ber::encode_null(out, tag);
 }
 
+/**
+ *  Function    : decode_null
+ *  Description : Returns success or an error from decode null.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<void>
+ */
 Result<void> decode_null(ByteReader& in, ber::Tag expected) {
   auto hdr = decode_tlv_header(in);
   if (!hdr) {
@@ -267,12 +415,24 @@ Result<void> decode_null(ByteReader& in, ber::Tag expected) {
   return ber::decode_null_content(in, hdr.value().length.value);
 }
 
+/**
+ *  Function    : encode_octet_string
+ *  Description : Performs encode octet string (definition).
+ *  Parameters  : out — ByteWriter& out; value — Span<const std::uint8_t> value; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_octet_string(ByteWriter& out, Span<const std::uint8_t> value, ber::Tag tag) {
   ber::Tag t = tag;
   t.constructed = false;
   ber::encode_octet_string(out, value, t);
 }
 
+/**
+ *  Function    : decode_octet_string
+ *  Description : Returns success or an error from decode octet string.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_octet_string(ByteReader& in, ber::Tag expected) {
   ber::Tag want = expected;
   want.constructed = false;
@@ -293,30 +453,60 @@ void encode_bit_string(ByteWriter& out, Span<const std::uint8_t> bits,
   ber::encode_bit_string(out, cleaned, unused_bits, t);
 }
 
+/**
+ *  Function    : decode_bit_string
+ *  Description : Returns success or an error from decode bit string.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<ber::BitStringValue>
+ */
 Result<ber::BitStringValue> decode_bit_string(ByteReader& in, ber::Tag expected) {
   ber::Tag want = expected;
   want.constructed = false;
   return decode_primitive<ber::BitStringValue>(in, want, decode_bit_string_content_der);
 }
 
+/**
+ *  Function    : encode_utf8_string
+ *  Description : Performs encode utf8 string (definition).
+ *  Parameters  : out — ByteWriter& out; value — const std::string& value; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_utf8_string(ByteWriter& out, const std::string& value, ber::Tag tag) {
   ber::Tag t = tag;
   t.constructed = false;
   ber::encode_utf8_string(out, value, t);
 }
 
+/**
+ *  Function    : decode_utf8_string
+ *  Description : Builds and returns a string for decode utf8 string.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<std::string>
+ */
 Result<std::string> decode_utf8_string(ByteReader& in, ber::Tag expected) {
   ber::Tag want = expected;
   want.constructed = false;
   return decode_primitive<std::string>(in, want, ber::decode_utf8_string_content);
 }
 
+/**
+ *  Function    : encode_enumerated
+ *  Description : Performs encode enumerated (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::int64_t value; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_enumerated(ByteWriter& out, std::int64_t value, ber::Tag tag) {
   ber::Tag t = tag;
   t.constructed = false;
   ber::encode_enumerated(out, value, t);
 }
 
+/**
+ *  Function    : decode_enumerated
+ *  Description : Returns success or an error from decode enumerated.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_enumerated(ByteReader& in, ber::Tag expected) {
   ber::Tag want = expected;
   want.constructed = false;
@@ -338,12 +528,24 @@ Result<std::vector<std::uint64_t>> decode_object_identifier(ByteReader& in,
       in, want, ber::decode_object_identifier_content);
 }
 
+/**
+ *  Function    : encode_relative_oid
+ *  Description : Performs encode relative oid (definition).
+ *  Parameters  : out — ByteWriter& out; arcs — Span<const std::uint64_t> arcs; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_relative_oid(ByteWriter& out, Span<const std::uint64_t> arcs, ber::Tag tag) {
   ber::Tag t = tag;
   t.constructed = false;
   ber::encode_relative_oid(out, arcs, t);
 }
 
+/**
+ *  Function    : decode_relative_oid
+ *  Description : Returns success or an error from decode relative oid.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<std::vector<std::uint64_t>>
+ */
 Result<std::vector<std::uint64_t>> decode_relative_oid(ByteReader& in, ber::Tag expected) {
   ber::Tag want = expected;
   want.constructed = false;
@@ -351,22 +553,46 @@ Result<std::vector<std::uint64_t>> decode_relative_oid(ByteReader& in, ber::Tag 
                                                       ber::decode_relative_oid_content);
 }
 
+/**
+ *  Function    : encode_real
+ *  Description : Performs encode real (definition).
+ *  Parameters  : out — ByteWriter& out; value — double value; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_real(ByteWriter& out, double value, ber::Tag tag) {
   ber::Tag t = tag;
   t.constructed = false;
   ber::encode_real(out, value, t);
 }
 
+/**
+ *  Function    : decode_real
+ *  Description : Returns success or an error from decode real.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<double>
+ */
 Result<double> decode_real(ByteReader& in, ber::Tag expected) {
   ber::Tag want = expected;
   want.constructed = false;
   return decode_primitive<double>(in, want, ber::decode_real_content);
 }
 
+/**
+ *  Function    : encode_sequence
+ *  Description : Performs encode sequence (definition).
+ *  Parameters  : out — ByteWriter& out; components — Span<const std::uint8_t> components; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_sequence(ByteWriter& out, Span<const std::uint8_t> components, ber::Tag tag) {
   ber::encode_constructed(out, tag, components);
 }
 
+/**
+ *  Function    : decode_sequence
+ *  Description : Returns success or an error from decode sequence.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_sequence(ByteReader& in, ber::Tag expected) {
   return decode_constructed_definite(in, expected);
 }
@@ -392,6 +618,12 @@ void encode_set(ByteWriter& out, std::vector<std::vector<std::uint8_t>> componen
   ber::encode_constructed(out, tag, body.buffer());
 }
 
+/**
+ *  Function    : decode_set
+ *  Description : Returns success or an error from decode set.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_set(ByteReader& in, ber::Tag expected) {
   auto content = decode_constructed_definite(in, expected);
   if (!content) {
@@ -405,6 +637,12 @@ Result<std::vector<std::uint8_t>> decode_set(ByteReader& in, ber::Tag expected) 
 
 namespace {
 
+/**
+ *  Function    : validate_associated_pdv_der_content
+ *  Description : Returns success or an error from validate associated pdv der content.
+ *  Parameters  : content — Span<const std::uint8_t> content
+ *  Returns     : Result<void>
+ */
 Result<void> validate_associated_pdv_der_content(Span<const std::uint8_t> content) {
   ByteReader r(content);
   while (!r.eof()) {
@@ -421,6 +659,12 @@ Result<void> validate_associated_pdv_der_content(Span<const std::uint8_t> conten
                         "unexpected component in associated PDV SEQUENCE");
     }
     if ((hdr.value().tag.number == 1 || hdr.value().tag.number == 2) &&
+        /**
+         *  Function    : value
+         *  Description : Computes value from (none).
+         *  Parameters  : none
+         *  Returns     : hdr.
+         */
         hdr.value().tag.constructed) {
       return make_error(Error::Code::NonCanonical, r.offset(),
                         "DER forbids constructed string components in associated PDV");
@@ -436,6 +680,12 @@ Result<void> validate_associated_pdv_der_content(Span<const std::uint8_t> conten
 template <typename T>
 Result<T> decode_associated_pdv_der(
     ByteReader& in, ber::Tag expected,
+    /**
+     *  Function    : (*ber_decode)
+     *  Description : Returns success or an error from (*ber decode).
+     *  Parameters  : ber_decode)(ByteReader — *ber_decode)(ByteReader&
+     *  Returns     : Result<T>
+     */
     Result<T> (*ber_decode)(ByteReader&, ber::Tag)) {
   ber::Tag want = expected;
   want.constructed = true;
@@ -472,10 +722,22 @@ Result<T> decode_associated_pdv_der(
 
 }  // namespace
 
+/**
+ *  Function    : encode_embedded_pdv
+ *  Description : Performs encode embedded pdv (definition).
+ *  Parameters  : out — ByteWriter& out; value — const ber::EmbeddedPdvValue& value; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_embedded_pdv(ByteWriter& out, const ber::EmbeddedPdvValue& value, ber::Tag tag) {
   ber::encode_embedded_pdv(out, value, tag);
 }
 
+/**
+ *  Function    : decode_embedded_pdv
+ *  Description : Returns success or an error from decode embedded pdv.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<ber::EmbeddedPdvValue>
+ */
 Result<ber::EmbeddedPdvValue> decode_embedded_pdv(ByteReader& in, ber::Tag expected) {
   return decode_associated_pdv_der<ber::EmbeddedPdvValue>(in, expected, ber::decode_embedded_pdv);
 }
@@ -485,6 +747,12 @@ void encode_character_string(ByteWriter& out, const ber::CharacterStringValue& v
   ber::encode_character_string(out, value, tag);
 }
 
+/**
+ *  Function    : decode_character_string
+ *  Description : Returns success or an error from decode character string.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<ber::CharacterStringValue>
+ */
 Result<ber::CharacterStringValue> decode_character_string(ByteReader& in, ber::Tag expected) {
   return decode_associated_pdv_der<ber::CharacterStringValue>(in, expected,
                                                               ber::decode_character_string);
@@ -495,15 +763,33 @@ void encode_external_modern(ByteWriter& out, const ber::ModernExternalValue& val
   ber::encode_external_modern(out, value, tag);
 }
 
+/**
+ *  Function    : decode_external_modern
+ *  Description : Returns success or an error from decode external modern.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<ber::ModernExternalValue>
+ */
 Result<ber::ModernExternalValue> decode_external_modern(ByteReader& in, ber::Tag expected) {
   return decode_associated_pdv_der<ber::ModernExternalValue>(in, expected,
                                                              ber::decode_external_modern);
 }
 
+/**
+ *  Function    : encode_external
+ *  Description : Performs encode external (definition).
+ *  Parameters  : out — ByteWriter& out; value — const ber::ExternalValue& value; tag — ber::Tag tag
+ *  Returns     : void
+ */
 void encode_external(ByteWriter& out, const ber::ExternalValue& value, ber::Tag tag) {
   ber::encode_external(out, value, tag);
 }
 
+/**
+ *  Function    : decode_external
+ *  Description : Returns success or an error from decode external.
+ *  Parameters  : in — ByteReader& in; expected — ber::Tag expected
+ *  Returns     : Result<ber::ExternalValue>
+ */
 Result<ber::ExternalValue> decode_external(ByteReader& in, ber::Tag expected) {
   ber::Tag want = expected;
   want.constructed = true;

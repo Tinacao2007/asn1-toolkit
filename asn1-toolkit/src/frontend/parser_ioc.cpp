@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/frontend/parser_ioc.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Parser clauses for object classes, object sets, and table constraints.
+**
+** Specification: ITU-T X.680 — ASN.1 abstract syntax (lexical and
+**                 syntactic notation).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/frontend/parser.hpp>
 
 #include <cctype>
@@ -6,6 +28,12 @@
 namespace asn1 {
 namespace {
 
+/**
+ *  Function    : merge_range
+ *  Description : Computes merge range from (a, b).
+ *  Parameters  : a — const SourceRange& a; b — const SourceRange& b
+ *  Returns     : SourceRange
+ */
 SourceRange merge_range(const SourceRange& a, const SourceRange& b) {
   SourceRange r;
   r.begin = a.begin;
@@ -13,10 +41,22 @@ SourceRange merge_range(const SourceRange& a, const SourceRange& b) {
   return r;
 }
 
+/**
+ *  Function    : starts_uppercase
+ *  Description : Returns a boolean result from s.
+ *  Parameters  : s — const std::string& s
+ *  Returns     : bool
+ */
 bool starts_uppercase(const std::string& s) {
   return !s.empty() && std::isupper(static_cast<unsigned char>(s[0]));
 }
 
+/**
+ *  Function    : is_all_caps_word
+ *  Description : Returns whether all caps word holds for the given inputs.
+ *  Parameters  : s — const std::string& s
+ *  Returns     : bool
+ */
 bool is_all_caps_word(const std::string& s) {
   if (s.empty()) {
     return false;
@@ -63,6 +103,12 @@ std::unique_ptr<ast::ObjectClassAssignment> Parser::parse_object_class_assignmen
                                                       std::move(defn));
 }
 
+/**
+ *  Function    : parse_object_class_defn
+ *  Description : Computes parse object class defn from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::ObjectClassDefn> Parser::
+ */
 std::unique_ptr<ast::ObjectClassDefn> Parser::parse_object_class_defn() {
   Token start = current_;
   if (!expect(TokenKind::KwCLASS, "CLASS")) {
@@ -99,6 +145,12 @@ std::unique_ptr<ast::ObjectClassDefn> Parser::parse_object_class_defn() {
                                                 std::move(fields), std::move(syntax));
 }
 
+/**
+ *  Function    : parse_field_spec
+ *  Description : Computes parse field spec from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::FieldSpec> Parser::
+ */
 std::unique_ptr<ast::FieldSpec> Parser::parse_field_spec() {
   if (!expect(TokenKind::Ampersand, "'&'")) {
     return nullptr;
@@ -147,6 +199,12 @@ std::unique_ptr<ast::FieldSpec> Parser::parse_field_spec() {
                                           presence, std::move(def_value));
 }
 
+/**
+ *  Function    : parse_with_syntax
+ *  Description : Computes parse with syntax from (none).
+ *  Parameters  : none
+ *  Returns     : std::vector<ast::SyntaxToken> Parser::
+ */
 std::vector<ast::SyntaxToken> Parser::parse_with_syntax() {
   std::vector<ast::SyntaxToken> tokens;
   if (!expect(TokenKind::LBrace, "'{'")) {
@@ -156,6 +214,12 @@ std::vector<ast::SyntaxToken> Parser::parse_with_syntax() {
     if (match(TokenKind::LBracket)) {
       // Optional group [ ... ] — flatten contents with markers.
       tokens.push_back(ast::SyntaxToken{"[", current_.range, false});
+      /**
+       *  Function    : check
+       *  Description : Computes check from (!check(TokenKind::RBrace)).
+       *  Parameters  : !check(TokenKind::RBrace) — !check(TokenKind::RBracket) && !check(TokenKind::EndOfFile) && !check(TokenKind::RBrace)
+       *  Returns     : while (!check(TokenKind::RBracket) && !check(TokenKind::EndOfFile) && !
+       */
       while (!check(TokenKind::RBracket) && !check(TokenKind::EndOfFile) &&
              !check(TokenKind::RBrace)) {
         if (match(TokenKind::Ampersand)) {
@@ -164,6 +228,12 @@ std::vector<ast::SyntaxToken> Parser::parse_with_syntax() {
             tokens.push_back(ast::SyntaxToken{std::string(n.text), n.range, true});
           }
         } else if (check(TokenKind::TypeReference) || check(TokenKind::Identifier) ||
+                   /**
+                    *  Function    : check
+                    *  Description : Performs check (definition).
+                    *  Parameters  : none
+                    *  Returns     : void
+                    */
                    check(TokenKind::Comma)) {
           Token t = advance();
           tokens.push_back(ast::SyntaxToken{std::string(t.text), t.range, false});
@@ -184,6 +254,12 @@ std::vector<ast::SyntaxToken> Parser::parse_with_syntax() {
     }
     if (check(TokenKind::TypeReference) || check(TokenKind::Identifier) ||
         check(TokenKind::Comma) || check(TokenKind::KwIDENTIFIER) ||
+        /**
+         *  Function    : check
+         *  Description : Performs check (definition).
+         *  Parameters  : none
+         *  Returns     : void
+         */
         check(TokenKind::KwBY)) {
       Token t = advance();
       tokens.push_back(ast::SyntaxToken{std::string(t.text), t.range, false});
@@ -227,6 +303,12 @@ std::unique_ptr<ast::ObjectSetAssignment> Parser::parse_object_set_assignment(
       std::move(range), std::string(name_tok.text), class_name, std::move(defn));
 }
 
+/**
+ *  Function    : parse_object_defn
+ *  Description : Computes parse object defn from (class_name).
+ *  Parameters  : class_name — const std::string& class_name
+ *  Returns     : std::unique_ptr<ast::ObjectDefn> Parser::
+ */
 std::unique_ptr<ast::ObjectDefn> Parser::parse_object_defn(const std::string& class_name) {
   Token start = current_;
   if (!expect(TokenKind::LBrace, "'{'")) {
@@ -316,6 +398,12 @@ std::unique_ptr<ast::ObjectDefn> Parser::parse_object_defn(const std::string& cl
   return nullptr;
 }
 
+/**
+ *  Function    : parse_heuristic_defined_syntax_object
+ *  Description : Computes parse heuristic defined syntax object from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::ObjectDefn> Parser::
+ */
 std::unique_ptr<ast::ObjectDefn> Parser::parse_heuristic_defined_syntax_object() {
   // Pattern used by S1AP/NGAP: ALL-CAPS literal words, then a type or value setting,
   // repeated until '}'. Example:
@@ -384,6 +472,12 @@ std::unique_ptr<ast::ObjectDefn> Parser::parse_defined_syntax_object(
       return check(TokenKind::Comma);
     }
     if (!(check(TokenKind::Identifier) || check(TokenKind::TypeReference) ||
+          /**
+           *  Function    : check
+           *  Description : Computes check from (none).
+           *  Parameters  : none
+           *  Returns     : check(TokenKind::KwIDENTIFIER) ||
+           */
           check(TokenKind::KwIDENTIFIER) || check(TokenKind::KwBY))) {
       return false;
     }
@@ -540,6 +634,12 @@ std::unique_ptr<ast::ObjectSetDefn> Parser::parse_object_set_defn(
                                               std::move(elements), extensible);
 }
 
+/**
+ *  Function    : parse_table_or_component_constraint
+ *  Description : Computes parse table or component constraint from (none).
+ *  Parameters  : none
+ *  Returns     : std::unique_ptr<ast::Constraint> Parser::
+ */
 std::unique_ptr<ast::Constraint> Parser::parse_table_or_component_constraint() {
   // Called when current is TypeReference (object set name) or '{' inside (...).
   Token start = current_;

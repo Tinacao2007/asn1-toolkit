@@ -1,3 +1,27 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/tests/telecom/telecom_test.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Loads large 3GPP-oriented ASN.1 fixtures; parse and analyze smoke tests.
+**
+** Specification: 3GPP TS 36.331 (NR/LTE RRC), TS 37.355 (LPP), TS 36.413
+**                 (S1AP) ASN.1 modules (fixtures);
+**                 compiler front-end only in this file (ITU-T X.680
+**                 module syntax).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/codegen/emit.hpp>
 #include <asn1/frontend/lexer.hpp>
 #include <asn1/frontend/parser.hpp>

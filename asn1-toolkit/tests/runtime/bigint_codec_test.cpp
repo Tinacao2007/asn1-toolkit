@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/tests/runtime/bigint_codec_test.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   GoogleTest exercising bigint codec behaviour.
+**
+** Specification: ITU-T X.680 INTEGER type; unconstrained encoding as
+**                 used by BER/PER/OER callers.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/bigint.hpp>
 #include <asn1/runtime/ber/codec.hpp>
 #include <asn1/runtime/der/codec.hpp>

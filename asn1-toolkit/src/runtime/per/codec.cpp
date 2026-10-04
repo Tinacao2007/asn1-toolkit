@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/per/codec.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   PER structured-type orchestration.
+**
+** Specification: ITU-T X.691 — ASN.1 encoding rules: Packed Encoding
+**                 Rules (PER); UPER/APER variants.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/per/codec.hpp>
 #include <asn1/runtime/ber/codec.hpp>
 #include <asn1/runtime/byte_io.hpp>
@@ -6,10 +28,22 @@ namespace asn1 {
 namespace per {
 namespace {
 
+/**
+ *  Function    : in_root_integer
+ *  Description : Returns a boolean result from value, c.
+ *  Parameters  : value — std::int64_t value; c — const IntegerConstraint& c
+ *  Returns     : bool
+ */
 bool in_root_integer(std::int64_t value, const IntegerConstraint& c) {
   return c.contains(value);
 }
 
+/**
+ *  Function    : in_root_size
+ *  Description : Returns a boolean result from n, size.
+ *  Parameters  : n — std::size_t n; size — const SizeConstraint& size
+ *  Returns     : bool
+ */
 bool in_root_size(std::size_t n, const SizeConstraint& size) {
   return size.contains(n);
 }
@@ -29,6 +63,12 @@ void encode_length_chunks(BitWriter& out, Variant variant, std::size_t length,
   }
 }
 
+/**
+ *  Function    : decode_length_chunks
+ *  Description : Returns success or an error from decode length chunks.
+ *  Parameters  : in — BitReader& in; variant — Variant variant
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_length_chunks(BitReader& in, Variant variant) {
   std::vector<std::uint8_t> out;
   for (;;) {
@@ -72,6 +112,12 @@ void encode_bit_length_chunks(BitWriter& out, Variant variant, std::size_t bit_l
   }
 }
 
+/**
+ *  Function    : decode_bit_length_chunks
+ *  Description : Returns success or an error from decode bit length chunks.
+ *  Parameters  : in — BitReader& in; variant — Variant variant
+ *  Returns     : Result<BitStringValue>
+ */
 Result<BitStringValue> decode_bit_length_chunks(BitReader& in, Variant variant) {
   BitStringValue v;
   for (;;) {
@@ -175,16 +221,40 @@ Result<std::size_t> decode_size(BitReader& in, Variant variant,
 
 }  // namespace
 
+/**
+ *  Function    : encode_boolean
+ *  Description : Performs encode boolean (definition).
+ *  Parameters  : out — BitWriter& out; / — Variant /*variant*/; value — bool value
+ *  Returns     : void
+ */
 void encode_boolean(BitWriter& out, Variant /*variant*/, bool value) {
   out.put_bit(value);
 }
 
+/**
+ *  Function    : decode_boolean
+ *  Description : Returns a boolean result from in, /.
+ *  Parameters  : in — BitReader& in; / — Variant /*variant*/
+ *  Returns     : Result<bool>
+ */
 Result<bool> decode_boolean(BitReader& in, Variant /*variant*/) {
   return in.get_bit();
 }
 
+/**
+ *  Function    : encode_null
+ *  Description : Performs encode null (definition).
+ *  Parameters  : / — BitWriter& /*out*/; / — Variant /*variant*/
+ *  Returns     : void
+ */
 void encode_null(BitWriter& /*out*/, Variant /*variant*/) {}
 
+/**
+ *  Function    : decode_null
+ *  Description : Returns success or an error from decode null.
+ *  Parameters  : / — BitReader& /*in*/; / — Variant /*variant*/
+ *  Returns     : Result<void>
+ */
 Result<void> decode_null(BitReader& /*in*/, Variant /*variant*/) {
   return Result<void>::success();
 }
@@ -526,6 +596,12 @@ void encode_extension_additions(BitWriter& out, Variant variant,
   }
 }
 
+/**
+ *  Function    : decode_extension_additions
+ *  Description : Returns success or an error from decode extension additions.
+ *  Parameters  : in — BitReader& in; variant — Variant variant
+ *  Returns     : Result<ExtensionAdditions>
+ */
 Result<ExtensionAdditions> decode_extension_additions(BitReader& in, Variant variant) {
   auto n = decode_normally_small_length(in, variant);
   if (!n) {
@@ -699,6 +775,12 @@ void encode_enumerated(BitWriter& out, Variant variant, std::size_t root_index,
   out.put_bits(static_cast<std::uint64_t>(root_index), nbits);
 }
 
+/**
+ *  Function    : encode_enumerated_extension
+ *  Description : Performs encode enumerated extension (definition).
+ *  Parameters  : out — BitWriter& out; variant — Variant variant; ext_index — std::size_t ext_index
+ *  Returns     : void
+ */
 void encode_enumerated_extension(BitWriter& out, Variant variant, std::size_t ext_index) {
   out.put_bit(true);
   encode_normally_small_non_negative_whole_number(out, variant, ext_index);
@@ -767,6 +849,12 @@ Result<std::vector<std::uint64_t>> decode_object_identifier(BitReader& in, Varia
   return ber::decode_object_identifier_content(r, bytes.value().size());
 }
 
+/**
+ *  Function    : encode_real
+ *  Description : Performs encode real (definition).
+ *  Parameters  : out — BitWriter& out; variant — Variant variant; value — double value
+ *  Returns     : void
+ */
 void encode_real(BitWriter& out, Variant variant, double value) {
   ByteWriter content;
   ber::encode_real_content(content, value);
@@ -774,6 +862,12 @@ void encode_real(BitWriter& out, Variant variant, double value) {
   encode_length_chunks(out, variant, content.buffer().size(), content.buffer());
 }
 
+/**
+ *  Function    : decode_real
+ *  Description : Returns success or an error from decode real.
+ *  Parameters  : in — BitReader& in; variant — Variant variant
+ *  Returns     : Result<double>
+ */
 Result<double> decode_real(BitReader& in, Variant variant) {
   if (auto a = maybe_align(in, variant); !a) {
     return a.error();

@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/include/asn1/ir/type.hpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Semantic type IR: arena, TypeKind, constraints, tagging metadata.
+**
+** Specification: Internal type IR (lowering target for X.680/X.681
+**                 constructs; not a wire standard).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #pragma once
 
 #include <cstddef>
@@ -13,7 +35,19 @@ namespace ir {
 using TypeId = std::uint32_t;
 using ValueId = std::uint32_t;
 
+/**
+ *  Function    : static_cast<TypeId>
+ *  Description : Computes static cast<TypeId> from (-1).
+ *  Parameters  : -1 — -1
+ *  Returns     : constexpr TypeId kInvalidType =
+ */
 constexpr TypeId kInvalidType = static_cast<TypeId>(-1);
+/**
+ *  Function    : static_cast<ValueId>
+ *  Description : Computes static cast<ValueId> from (-1).
+ *  Parameters  : -1 — -1
+ *  Returns     : constexpr ValueId kInvalidValue =
+ */
 constexpr ValueId kInvalidValue = static_cast<ValueId>(-1);
 
 /// Sign-magnitude integer for unconstrained ASN.1 INTEGER bounds.
@@ -23,17 +57,71 @@ struct BigInt {
   std::string digits;  // absolute value, decimal, no leading zeros (except "0")
   std::optional<std::int64_t> as_i64;
 
+  /**
+   *  Function    : from_decimal
+   *  Description : Computes from decimal from (text, negative).
+   *  Parameters  : text — std::string text; negative — bool negative
+   *  Returns     : static BigInt
+   */
   static BigInt from_decimal(std::string text, bool negative);
+  /**
+   *  Function    : from_i64
+   *  Description : Computes from i64 from (v).
+   *  Parameters  : v — std::int64_t v
+   *  Returns     : static BigInt
+   */
   static BigInt from_i64(std::int64_t v);
 
+  /**
+   *  Function    : to_string
+   *  Description : Builds and returns a string for to string.
+   *  Parameters  : none
+   *  Returns     : std::string
+   */
   std::string to_string() const;
   bool operator==(const BigInt& o) const;
+  /**
+   *  Function    : !
+   *  Description : Performs ! (definition).
+   *  Parameters  : this — const BigInt& o) const { return !(*this
+   *  Returns     : —
+   */
   bool operator!=(const BigInt& o) const { return !(*this == o); }
   /// Three-way compare: -1 if *this < o, 0 if equal, +1 if *this > o.
+  /**
+   *  Function    : compare
+   *  Description : Computes compare from (o).
+   *  Parameters  : o — const BigInt& o
+   *  Returns     : int
+   */
   int compare(const BigInt& o) const;
+  /**
+   *  Function    : compare
+   *  Description : Performs compare (definition).
+   *  Parameters  : compare(o — const BigInt& o) const { return compare(o
+   *  Returns     : —
+   */
   bool operator<(const BigInt& o) const { return compare(o) < 0; }
+  /**
+   *  Function    : compare
+   *  Description : Performs compare (definition).
+   *  Parameters  : compare(o — const BigInt& o) const { return compare(o
+   *  Returns     : —
+   */
   bool operator<=(const BigInt& o) const { return compare(o) <= 0; }
+  /**
+   *  Function    : compare
+   *  Description : Performs compare (definition).
+   *  Parameters  : compare(o — const BigInt& o) const { return compare(o
+   *  Returns     : —
+   */
   bool operator>(const BigInt& o) const { return compare(o) > 0; }
+  /**
+   *  Function    : compare
+   *  Description : Performs compare (definition).
+   *  Parameters  : compare(o — const BigInt& o) const { return compare(o
+   *  Returns     : —
+   */
   bool operator>=(const BigInt& o) const { return compare(o) >= 0; }
 };
 
@@ -95,9 +183,33 @@ struct IntegerInterval {
   std::optional<BigInt> lower;  // nullopt = MIN
   std::optional<BigInt> upper;  // nullopt = MAX
 
+  /**
+   *  Function    : contains
+   *  Description : Returns a boolean result from v.
+   *  Parameters  : v — const BigInt& v
+   *  Returns     : bool
+   */
   bool contains(const BigInt& v) const;
+  /**
+   *  Function    : overlaps_or_adjacent
+   *  Description : Returns a boolean result from o.
+   *  Parameters  : o — const IntegerInterval& o
+   *  Returns     : bool
+   */
   bool overlaps_or_adjacent(const IntegerInterval& o) const;
+  /**
+   *  Function    : merged_with
+   *  Description : Computes merged with from (o).
+   *  Parameters  : o — const IntegerInterval& o
+   *  Returns     : IntegerInterval
+   */
   IntegerInterval merged_with(const IntegerInterval& o) const;
+  /**
+   *  Function    : intersected_with
+   *  Description : Computes intersected with from (o).
+   *  Parameters  : o — const IntegerInterval& o
+   *  Returns     : std::optional<IntegerInterval>
+   */
   std::optional<IntegerInterval> intersected_with(const IntegerInterval& o) const;
 };
 
@@ -115,10 +227,34 @@ struct ConstraintDesc {
   std::optional<BigInt> lower;
   std::optional<BigInt> upper;
 
+  /**
+   *  Function    : per_kind
+   *  Description : Computes per kind from (none).
+   *  Parameters  : none
+   *  Returns     : PerBoundKind
+   */
   PerBoundKind per_kind() const;
   /// ub - lb as unsigned when both bounds fit in int64 and lb <= ub.
+  /**
+   *  Function    : constrained_span
+   *  Description : Computes constrained span from (none).
+   *  Parameters  : none
+   *  Returns     : std::optional<std::uint64_t>
+   */
   std::optional<std::uint64_t> constrained_span() const;
+  /**
+   *  Function    : size
+   *  Description : Returns a boolean result from root_ranges.size(.
+   *  Parameters  : root_ranges.size( — ) const { return root_ranges.size(
+   *  Returns     : bool is_single_interval() const { return root_ranges.
+   */
   bool is_single_interval() const { return root_ranges.size() == 1; }
+  /**
+   *  Function    : recompute_envelope
+   *  Description : Performs recompute envelope (declaration).
+   *  Parameters  : none
+   *  Returns     : void
+   */
   void recompute_envelope();
 };
 
@@ -340,18 +476,78 @@ struct ModuleInfo {
 
 class TypeArena {
  public:
+  /**
+   *  Function    : add
+   *  Description : Computes add from (type).
+   *  Parameters  : type — Type type
+   *  Returns     : TypeId
+   */
   TypeId add(Type type);
+  /**
+   *  Function    : add_value
+   *  Description : Computes add value from (value).
+   *  Parameters  : value — Value value
+   *  Returns     : ValueId
+   */
   ValueId add_value(Value value);
 
+  /**
+   *  Function    : get
+   *  Description : Computes get from (id).
+   *  Parameters  : id — TypeId id
+   *  Returns     : Type&
+   */
   Type& get(TypeId id);
+  /**
+   *  Function    : get
+   *  Description : Computes get from (id).
+   *  Parameters  : id — TypeId id
+   *  Returns     : const Type&
+   */
   const Type& get(TypeId id) const;
+  /**
+   *  Function    : get_value
+   *  Description : Computes get value from (id).
+   *  Parameters  : id — ValueId id
+   *  Returns     : Value&
+   */
   Value& get_value(ValueId id);
+  /**
+   *  Function    : get_value
+   *  Description : Computes get value from (id).
+   *  Parameters  : id — ValueId id
+   *  Returns     : const Value&
+   */
   const Value& get_value(ValueId id) const;
 
+  /**
+   *  Function    : size
+   *  Description : Computes size from (types_.size().
+   *  Parameters  : types_.size( — ) const noexcept { return types_.size(
+   *  Returns     : std::size_t type_count() const noexcept { return types_.
+   */
   std::size_t type_count() const noexcept { return types_.size(); }
+  /**
+   *  Function    : size
+   *  Description : Computes size from (values_.size().
+   *  Parameters  : values_.size( — ) const noexcept { return values_.size(
+   *  Returns     : std::size_t value_count() const noexcept { return values_.
+   */
   std::size_t value_count() const noexcept { return values_.size(); }
 
+  /**
+   *  Function    : types
+   *  Description : Computes types from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<Type>&
+   */
   const std::vector<Type>& types() const noexcept { return types_; }
+  /**
+   *  Function    : values
+   *  Description : Computes values from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<Value>&
+   */
   const std::vector<Value>& values() const noexcept { return values_; }
 
  private:

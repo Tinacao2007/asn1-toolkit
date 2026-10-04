@@ -1,3 +1,24 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/support/source_file.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   SourceFile load and line/column offset mapping.
+**
+** Specification: No external protocol; compiler infrastructure.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/support/source_file.hpp>
 
 #include <fstream>
@@ -6,15 +27,33 @@
 
 namespace asn1 {
 
+/**
+ *  Function    : move
+ *  Description : Builds and returns a string for move.
+ *  Parameters  : path — std::string path; text_(std::move(text) — std::string text) : path_(std::move(path)), text_(std::move(text)
+ *  Returns     : SourceFile::SourceFile(std::string path, std::string text) : path_(std::move(path)), text_(std::
+ */
 SourceFile::SourceFile(std::string path, std::string text)
     : path_(std::move(path)), text_(std::move(text)) {
   build_line_index();
 }
 
+/**
+ *  Function    : from_string
+ *  Description : Computes from string from (path, contents).
+ *  Parameters  : path — std::string path; contents — std::string contents
+ *  Returns     : SourceFile SourceFile::
+ */
 SourceFile SourceFile::from_string(std::string path, std::string contents) {
   return SourceFile(std::move(path), std::move(contents));
 }
 
+/**
+ *  Function    : from_path
+ *  Description : Computes from path from (path).
+ *  Parameters  : path — const std::string& path
+ *  Returns     : SourceFile SourceFile::
+ */
 SourceFile SourceFile::from_path(const std::string& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) {
@@ -25,6 +64,12 @@ SourceFile SourceFile::from_path(const std::string& path) {
   return SourceFile(path, std::move(contents));
 }
 
+/**
+ *  Function    : build_line_index
+ *  Description : Performs build line index (definition).
+ *  Parameters  : none
+ *  Returns     : void SourceFile::
+ */
 void SourceFile::build_line_index() {
   line_starts_.clear();
   line_starts_.push_back(0);

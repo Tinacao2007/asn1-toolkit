@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/xer/xml.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   XML parse/serialize helpers for XER elements.
+**
+** Specification: ITU-T X.693 — XML Encoding Rules (support types in this
+**                 file).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/xer/xml.hpp>
 #include <asn1/runtime/byte_io.hpp>
 
@@ -7,18 +29,42 @@ namespace asn1 {
 namespace xer {
 namespace {
 
+/**
+ *  Function    : bad
+ *  Description : Computes bad from (offset, message).
+ *  Parameters  : offset — std::size_t offset; message — std::string message
+ *  Returns     : Error
+ */
 Error bad(std::size_t offset, std::string message) {
   return make_error(Error::Code::InvalidArgument, offset, std::move(message));
 }
 
+/**
+ *  Function    : is_name_start
+ *  Description : Returns whether name start holds for the given inputs.
+ *  Parameters  : c — unsigned char c
+ *  Returns     : bool
+ */
 bool is_name_start(unsigned char c) {
   return std::isalpha(c) || c == '_' || c == ':';
 }
 
+/**
+ *  Function    : is_name_char
+ *  Description : Returns whether name char holds for the given inputs.
+ *  Parameters  : c — unsigned char c
+ *  Returns     : bool
+ */
 bool is_name_char(unsigned char c) {
   return std::isalnum(c) || c == '_' || c == '-' || c == '.' || c == ':';
 }
 
+/**
+ *  Function    : skip_ws
+ *  Description : Performs skip ws (definition).
+ *  Parameters  : xml — const std::string& xml; i — std::size_t& i
+ *  Returns     : void
+ */
 void skip_ws(const std::string& xml, std::size_t& i) {
   while (i < xml.size() &&
          (xml[i] == ' ' || xml[i] == '\t' || xml[i] == '\n' || xml[i] == '\r')) {
@@ -26,6 +72,12 @@ void skip_ws(const std::string& xml, std::size_t& i) {
   }
 }
 
+/**
+ *  Function    : parse_name
+ *  Description : Builds and returns a string for parse name.
+ *  Parameters  : xml — const std::string& xml; i — std::size_t& i
+ *  Returns     : Result<std::string>
+ */
 Result<std::string> parse_name(const std::string& xml, std::size_t& i) {
   if (i >= xml.size() || !is_name_start(static_cast<unsigned char>(xml[i]))) {
     return bad(i, "expected XML name");
@@ -38,6 +90,12 @@ Result<std::string> parse_name(const std::string& xml, std::size_t& i) {
   return xml.substr(start, i - start);
 }
 
+/**
+ *  Function    : expect_char
+ *  Description : Returns success or an error from expect char.
+ *  Parameters  : xml — const std::string& xml; i — std::size_t& i; c — char c
+ *  Returns     : Result<void>
+ */
 Result<void> expect_char(const std::string& xml, std::size_t& i, char c) {
   if (i >= xml.size() || xml[i] != c) {
     return bad(i, std::string("expected '") + c + "'");
@@ -47,6 +105,12 @@ Result<void> expect_char(const std::string& xml, std::size_t& i, char c) {
 }
 
 /// Decode one UTF-8 code point starting at `i`; advances `i`.
+/**
+ *  Function    : decode_utf8
+ *  Description : Returns success or an error from decode utf8.
+ *  Parameters  : s — const std::string& s; i — std::size_t& i
+ *  Returns     : Result<std::uint32_t>
+ */
 Result<std::uint32_t> decode_utf8(const std::string& s, std::size_t& i) {
   if (i >= s.size()) {
     return bad(i, "truncated UTF-8");
@@ -82,6 +146,12 @@ Result<std::uint32_t> decode_utf8(const std::string& s, std::size_t& i) {
   return cp;
 }
 
+/**
+ *  Function    : append_utf8
+ *  Description : Performs append utf8 (definition).
+ *  Parameters  : out — std::string& out; cp — std::uint32_t cp
+ *  Returns     : void
+ */
 void append_utf8(std::string& out, std::uint32_t cp) {
   if (cp < 0x80u) {
     out.push_back(static_cast<char>(cp));
@@ -104,6 +174,12 @@ constexpr std::size_t kMaxXmlNestingDepth = 256;
 
 Result<Element> parse_element(const std::string& xml, std::size_t& i, std::size_t depth);
 
+/**
+ *  Function    : parse_content
+ *  Description : Returns success or an error from parse content.
+ *  Parameters  : xml — const std::string& xml; i — std::size_t& i; el — Element& el; depth — std::size_t depth
+ *  Returns     : Result<void>
+ */
 Result<void> parse_content(const std::string& xml, std::size_t& i, Element& el, std::size_t depth) {
   std::string text_acc;
   while (i < xml.size()) {
@@ -162,6 +238,12 @@ Result<void> parse_content(const std::string& xml, std::size_t& i, Element& el, 
   return Result<void>::success();
 }
 
+/**
+ *  Function    : parse_element
+ *  Description : Returns success or an error from parse element.
+ *  Parameters  : xml — const std::string& xml; i — std::size_t& i; depth — std::size_t depth
+ *  Returns     : Result<Element>
+ */
 Result<Element> parse_element(const std::string& xml, std::size_t& i, std::size_t depth) {
   if (depth > kMaxXmlNestingDepth) {
     return bad(i, "XML maximum nesting depth exceeded");
@@ -240,6 +322,12 @@ Result<Element> parse_element(const std::string& xml, std::size_t& i, std::size_
 
 }  // namespace
 
+/**
+ *  Function    : append_escaped_text
+ *  Description : Performs append escaped text (definition).
+ *  Parameters  : out — std::string& out; text — const std::string& text
+ *  Returns     : void
+ */
 void append_escaped_text(std::string& out, const std::string& text) {
   std::size_t i = 0;
   while (i < text.size()) {
@@ -279,6 +367,12 @@ void append_escaped_text(std::string& out, const std::string& text) {
   }
 }
 
+/**
+ *  Function    : unescape_text
+ *  Description : Builds and returns a string for unescape text.
+ *  Parameters  : escaped — const std::string& escaped; offset — std::size_t offset
+ *  Returns     : Result<std::string>
+ */
 Result<std::string> unescape_text(const std::string& escaped, std::size_t offset) {
   std::string out;
   out.reserve(escaped.size());
@@ -351,6 +445,12 @@ Result<std::string> unescape_text(const std::string& escaped, std::size_t offset
   return out;
 }
 
+/**
+ *  Function    : append_escaped_attr
+ *  Description : Performs append escaped attr (definition).
+ *  Parameters  : out — std::string& out; text — const std::string& text
+ *  Returns     : void
+ */
 void append_escaped_attr(std::string& out, const std::string& text) {
   for (unsigned char b : text) {
     if (b == '&') {
@@ -367,6 +467,12 @@ void append_escaped_attr(std::string& out, const std::string& text) {
   }
 }
 
+/**
+ *  Function    : write_element
+ *  Description : Performs write element (definition).
+ *  Parameters  : out — std::string& out; el — const Element& el
+ *  Returns     : void
+ */
 void write_element(std::string& out, const Element& el) {
   out.push_back('<');
   out += el.name;
@@ -393,12 +499,24 @@ void write_element(std::string& out, const Element& el) {
   out.push_back('>');
 }
 
+/**
+ *  Function    : to_string
+ *  Description : Builds and returns a string for to string.
+ *  Parameters  : el — const Element& el
+ *  Returns     : std::string
+ */
 std::string to_string(const Element& el) {
   std::string out;
   write_element(out, el);
   return out;
 }
 
+/**
+ *  Function    : parse_document
+ *  Description : Returns success or an error from parse document.
+ *  Parameters  : xml — const std::string& xml
+ *  Returns     : Result<Element>
+ */
 Result<Element> parse_document(const std::string& xml) {
   std::size_t i = 0;
   skip_ws(xml, i);

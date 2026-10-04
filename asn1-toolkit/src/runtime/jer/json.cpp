@@ -1,3 +1,24 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/jer/json.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   JSON text lexer/parser for JER.
+**
+** Specification: ITU-T X.697 — JSON-related helpers for JER/JERI codecs.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/jer/json.hpp>
 #include <asn1/common/float_conv.hpp>
 #include <asn1/runtime/byte_io.hpp>
@@ -11,10 +32,22 @@ namespace asn1 {
 namespace jer {
 namespace {
 
+/**
+ *  Function    : bad
+ *  Description : Computes bad from (offset, message).
+ *  Parameters  : offset — std::size_t offset; message — std::string message
+ *  Returns     : Error
+ */
 Error bad(std::size_t offset, std::string message) {
   return make_error(Error::Code::InvalidArgument, offset, std::move(message));
 }
 
+/**
+ *  Function    : skip_ws
+ *  Description : Performs skip ws (definition).
+ *  Parameters  : s — const std::string& s; i — std::size_t& i
+ *  Returns     : void
+ */
 void skip_ws(const std::string& s, std::size_t& i) {
   while (i < s.size() &&
          (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r')) {
@@ -22,6 +55,12 @@ void skip_ws(const std::string& s, std::size_t& i) {
   }
 }
 
+/**
+ *  Function    : expect_char
+ *  Description : Returns success or an error from expect char.
+ *  Parameters  : s — const std::string& s; i — std::size_t& i; c — char c
+ *  Returns     : Result<void>
+ */
 Result<void> expect_char(const std::string& s, std::size_t& i, char c) {
   if (i >= s.size() || s[i] != c) {
     return bad(i, std::string("expected '") + c + "'");
@@ -30,6 +69,12 @@ Result<void> expect_char(const std::string& s, std::size_t& i, char c) {
   return Result<void>::success();
 }
 
+/**
+ *  Function    : append_escaped_string
+ *  Description : Performs append escaped string (definition).
+ *  Parameters  : out — std::string& out; text — const std::string& text
+ *  Returns     : void
+ */
 void append_escaped_string(std::string& out, const std::string& text) {
   out.push_back('"');
   for (unsigned char b : text) {
@@ -70,6 +115,12 @@ void append_escaped_string(std::string& out, const std::string& text) {
   out.push_back('"');
 }
 
+/**
+ *  Function    : parse_string
+ *  Description : Builds and returns a string for parse string.
+ *  Parameters  : s — const std::string& s; i — std::size_t& i
+ *  Returns     : Result<std::string>
+ */
 Result<std::string> parse_string(const std::string& s, std::size_t& i) {
   if (auto r = expect_char(s, i, '"'); !r.ok()) {
     return r.error();
@@ -148,6 +199,12 @@ Result<std::string> parse_string(const std::string& s, std::size_t& i) {
 
 Result<Value> parse_value(const std::string& s, std::size_t& i);
 
+/**
+ *  Function    : parse_number
+ *  Description : Returns success or an error from parse number.
+ *  Parameters  : s — const std::string& s; i — std::size_t& i
+ *  Returns     : Result<Value>
+ */
 Result<Value> parse_number(const std::string& s, std::size_t& i) {
   const std::size_t start = i;
   if (i < s.size() && s[i] == '-') {
@@ -206,6 +263,12 @@ constexpr std::size_t kMaxJsonNestingDepth = 256;
 
 Result<Value> parse_value(const std::string& s, std::size_t& i, std::size_t depth);
 
+/**
+ *  Function    : parse_array
+ *  Description : Returns success or an error from parse array.
+ *  Parameters  : s — const std::string& s; i — std::size_t& i; depth — std::size_t depth
+ *  Returns     : Result<Value>
+ */
 Result<Value> parse_array(const std::string& s, std::size_t& i, std::size_t depth) {
   if (depth > kMaxJsonNestingDepth) {
     return bad(i, "JSON maximum nesting depth exceeded");
@@ -239,6 +302,12 @@ Result<Value> parse_array(const std::string& s, std::size_t& i, std::size_t dept
   return out;
 }
 
+/**
+ *  Function    : parse_object
+ *  Description : Returns success or an error from parse object.
+ *  Parameters  : s — const std::string& s; i — std::size_t& i; depth — std::size_t depth
+ *  Returns     : Result<Value>
+ */
 Result<Value> parse_object(const std::string& s, std::size_t& i, std::size_t depth) {
   if (depth > kMaxJsonNestingDepth) {
     return bad(i, "JSON maximum nesting depth exceeded");
@@ -281,6 +350,12 @@ Result<Value> parse_object(const std::string& s, std::size_t& i, std::size_t dep
   return out;
 }
 
+/**
+ *  Function    : parse_value
+ *  Description : Returns success or an error from parse value.
+ *  Parameters  : s — const std::string& s; i — std::size_t& i; depth — std::size_t depth
+ *  Returns     : Result<Value>
+ */
 Result<Value> parse_value(const std::string& s, std::size_t& i, std::size_t depth) {
   if (depth > kMaxJsonNestingDepth) {
     return bad(i, "JSON maximum nesting depth exceeded");
@@ -332,6 +407,12 @@ Result<Value> parse_value(const std::string& s, std::size_t& i, std::size_t dept
 
 }  // namespace
 
+/**
+ *  Function    : write_value
+ *  Description : Performs write value (definition).
+ *  Parameters  : out — std::string& out; v — const Value& v
+ *  Returns     : void
+ */
 void write_value(std::string& out, const Value& v) {
   switch (v.kind) {
     case ValueKind::Null:
@@ -386,12 +467,24 @@ void write_value(std::string& out, const Value& v) {
   }
 }
 
+/**
+ *  Function    : to_string
+ *  Description : Builds and returns a string for to string.
+ *  Parameters  : v — const Value& v
+ *  Returns     : std::string
+ */
 std::string to_string(const Value& v) {
   std::string out;
   write_value(out, v);
   return out;
 }
 
+/**
+ *  Function    : parse_document
+ *  Description : Returns success or an error from parse document.
+ *  Parameters  : json — const std::string& json
+ *  Returns     : Result<Value>
+ */
 Result<Value> parse_document(const std::string& json) {
   std::size_t i = 0;
   auto v = parse_value(json, i, 0);

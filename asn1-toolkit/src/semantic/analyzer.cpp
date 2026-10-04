@@ -1,3 +1,26 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/semantic/analyzer.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Analyzer implementation lowering AST to ir::Model.
+**
+** Specification: ITU-T X.680 — name and module semantics;
+**                 ITU-T X.681 / X.683 — object and parameterization
+**                 semantics where implemented.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/semantic/analyzer.hpp>
 
 #include <asn1/ast/encoding.hpp>
@@ -15,6 +38,12 @@ namespace asn1 {
 namespace {
 
 /// Extract a closed integer interval from a simple value / range constraint.
+/**
+ *  Function    : extract_i64_bounds
+ *  Description : Returns a boolean result from c, lo, hi.
+ *  Parameters  : c — const ast::Constraint* c; lo — std::int64_t& lo; hi — std::int64_t& hi
+ *  Returns     : bool
+ */
 bool extract_i64_bounds(const ast::Constraint* c, std::int64_t& lo, std::int64_t& hi) {
   if (!c) {
     return false;
@@ -62,6 +91,12 @@ bool extract_i64_bounds(const ast::Constraint* c, std::int64_t& lo, std::int64_t
   return false;
 }
 
+/**
+ *  Function    : universal_tag_number_for
+ *  Description : Computes universal tag number for from (kind).
+ *  Parameters  : kind — ir::TypeKind kind
+ *  Returns     : static std::uint64_t
+ */
 static std::uint64_t universal_tag_number_for(ir::TypeKind kind) {
   switch (kind) {
     case ir::TypeKind::Boolean: return 1;
@@ -83,6 +118,12 @@ static std::uint64_t universal_tag_number_for(ir::TypeKind kind) {
   }
 }
 
+/**
+ *  Function    : classify_real_with_components
+ *  Description : Computes classify real with components from (wc).
+ *  Parameters  : wc — const ast::WithComponentsConstraint& wc
+ *  Returns     : ir::RealIeeeForm
+ */
 ir::RealIeeeForm classify_real_with_components(const ast::WithComponentsConstraint& wc) {
   std::optional<std::int64_t> mant_lo, mant_hi, base, exp_lo, exp_hi;
   for (const auto& c : wc.components()) {
@@ -117,6 +158,12 @@ ir::RealIeeeForm classify_real_with_components(const ast::WithComponentsConstrai
   return ir::RealIeeeForm::Unconstrained;
 }
 
+/**
+ *  Function    : real_ieee_form_from_constraint
+ *  Description : Computes real ieee form from constraint from (c).
+ *  Parameters  : c — const ast::Constraint* c
+ *  Returns     : ir::RealIeeeForm
+ */
 ir::RealIeeeForm real_ieee_form_from_constraint(const ast::Constraint* c) {
   if (!c) {
     return ir::RealIeeeForm::Unconstrained;
@@ -140,10 +187,22 @@ ir::RealIeeeForm real_ieee_form_from_constraint(const ast::Constraint* c) {
   return ir::RealIeeeForm::Unconstrained;
 }
 
+/**
+ *  Function    : universal
+ *  Description : Computes universal from (number).
+ *  Parameters  : number — std::uint64_t number
+ *  Returns     : ir::Tag
+ */
 ir::Tag universal(std::uint64_t number) {
   return ir::Tag{ir::TagClass::Universal, number, false};
 }
 
+/**
+ *  Function    : builtin_tag_for
+ *  Description : Computes builtin tag for from (type).
+ *  Parameters  : type — const ast::Type& type
+ *  Returns     : ir::Tag
+ */
 ir::Tag builtin_tag_for(const ast::Type& type) {
   if (dynamic_cast<const ast::BooleanType*>(&type)) {
     return universal(1);
@@ -179,14 +238,32 @@ ir::Tag builtin_tag_for(const ast::Type& type) {
     return universal(29);
   }
   if (dynamic_cast<const ast::ExternalType*>(&type) ||
+      /**
+       *  Function    : InstanceOfType*>
+       *  Description : Constructs or initializes InstanceOfType*>.
+       *  Parameters  : none
+       *  Returns     : dynamic_cast<const ast::
+       */
       dynamic_cast<const ast::InstanceOfType*>(&type)) {
     return universal(8);
   }
   if (dynamic_cast<const ast::SequenceOfType*>(&type) ||
+      /**
+       *  Function    : SequenceType*>
+       *  Description : Constructs or initializes SequenceType*>.
+       *  Parameters  : none
+       *  Returns     : dynamic_cast<const ast::
+       */
       dynamic_cast<const ast::SequenceType*>(&type)) {
     return universal(16);
   }
   if (dynamic_cast<const ast::SetOfType*>(&type) ||
+      /**
+       *  Function    : SetType*>
+       *  Description : Constructs or initializes SetType*>.
+       *  Parameters  : none
+       *  Returns     : dynamic_cast<const ast::
+       */
       dynamic_cast<const ast::SetType*>(&type)) {
     return universal(17);
   }
@@ -227,6 +304,12 @@ ir::Tag builtin_tag_for(const ast::Type& type) {
   return universal(0);
 }
 
+/**
+ *  Function    : parse_u64
+ *  Description : Returns a boolean result from text, out.
+ *  Parameters  : text — const std::string& text; out — std::uint64_t& out
+ *  Returns     : bool
+ */
 bool parse_u64(const std::string& text, std::uint64_t& out) {
   if (text.empty()) {
     return false;
@@ -245,6 +328,12 @@ bool parse_u64(const std::string& text, std::uint64_t& out) {
   return true;
 }
 
+/**
+ *  Function    : map_string_kind
+ *  Description : Computes map string kind from (k).
+ *  Parameters  : k — ast::StringKind k
+ *  Returns     : ir::StringKind
+ */
 ir::StringKind map_string_kind(ast::StringKind k) {
   switch (k) {
     case ast::StringKind::UTF8String:
@@ -277,6 +366,12 @@ ir::StringKind map_string_kind(ast::StringKind k) {
   return ir::StringKind::UTF8String;
 }
 
+/**
+ *  Function    : make_ast_tag
+ *  Description : Computes make ast tag from (t, module_default, force_explicit).
+ *  Parameters  : t — const ast::Tag& t; module_default — ast::TagDefault module_default; force_explicit — bool force_explicit
+ *  Returns     : ir::Tag
+ */
 ir::Tag make_ast_tag(const ast::Tag& t, ast::TagDefault module_default, bool force_explicit) {
   ir::Tag out;
   switch (t.cls) {
@@ -326,6 +421,12 @@ struct LowerCtx {
   std::uint32_t synth_serial = 0;
 };
 
+/**
+ *  Function    : synth_type_name
+ *  Description : Builds and returns a string for synth type name.
+ *  Parameters  : ctx — LowerCtx& ctx; assigned — const std::string& assigned; kind — const char* kind
+ *  Returns     : std::string
+ */
 std::string synth_type_name(LowerCtx& ctx, const std::string& assigned, const char* kind) {
   if (!assigned.empty()) {
     return assigned;
@@ -334,12 +435,24 @@ std::string synth_type_name(LowerCtx& ctx, const std::string& assigned, const ch
 }
 
 /// Nested anonymous SEQUENCE/SET/CHOICE need stable IR names for codegen.
+/**
+ *  Function    : needs_synthetic_nested_name
+ *  Description : Returns whether synthetic nested name holds for the given inputs.
+ *  Parameters  : type — const ast::Type& type
+ *  Returns     : bool
+ */
 bool needs_synthetic_nested_name(const ast::Type& type) {
   return dynamic_cast<const ast::SequenceType*>(&type) != nullptr ||
          dynamic_cast<const ast::SetType*>(&type) != nullptr ||
          dynamic_cast<const ast::ChoiceType*>(&type) != nullptr;
 }
 
+/**
+ *  Function    : uniquify_type_name
+ *  Description : Builds and returns a string for uniquify type name.
+ *  Parameters  : ctx — LowerCtx& ctx; name — std::string name
+ *  Returns     : std::string
+ */
 std::string uniquify_type_name(LowerCtx& ctx, std::string name) {
   if (name.empty()) {
     return name;
@@ -401,6 +514,12 @@ std::string actual_param_label(const ast::ActualParameter& a, const SubstEnv* su
         }
         if (it->second->type) {
           if (const auto* r =
+                  /**
+                   *  Function    : get
+                   *  Description : Computes get from (none).
+                   *  Parameters  : none
+                   *  Returns     : dynamic_cast<const ast::ReferencedType*>(it->second->type.
+                   */
                   dynamic_cast<const ast::ReferencedType*>(it->second->type.get())) {
             return r->name();
           }
@@ -450,6 +569,12 @@ const ast::ActualParameter* resolve_actual(const ast::ActualParameter& actual,
   return &actual;
 }
 
+/**
+ *  Function    : lower_simple_value
+ *  Description : Computes lower simple value from (ctx, v).
+ *  Parameters  : ctx — LowerCtx& ctx; v — const ast::Value& v
+ *  Returns     : std::optional<ir::ValueId>
+ */
 std::optional<ir::ValueId> lower_simple_value(LowerCtx& ctx, const ast::Value& v) {
   ir::Value out;
   out.module = ctx.mod.name();
@@ -471,6 +596,12 @@ std::optional<ir::ValueId> lower_simple_value(LowerCtx& ctx, const ast::Value& v
   return ctx.model.arena.add_value(std::move(out));
 }
 
+/**
+ *  Function    : resolve_object_class_field
+ *  Description : Performs resolve object class field (definition).
+ *  Parameters  : t — ir::Type& t; model — const ir::Model& model
+ *  Returns     : void
+ */
 void resolve_object_class_field(ir::Type& t, const ir::Model& model) {
   if (t.kind != ir::TypeKind::ObjectClassField) {
     return;
@@ -507,6 +638,12 @@ void resolve_object_class_field(ir::Type& t, const ir::Model& model) {
   }
 }
 
+/**
+ *  Function    : re_resolve_all_object_class_fields
+ *  Description : Performs re resolve all object class fields (definition).
+ *  Parameters  : model — ir::Model& model
+ *  Returns     : void
+ */
 void re_resolve_all_object_class_fields(ir::Model& model) {
   for (std::size_t i = 0; i < model.arena.type_count(); ++i) {
     resolve_object_class_field(model.arena.get(static_cast<ir::TypeId>(i)), model);
@@ -514,6 +651,12 @@ void re_resolve_all_object_class_fields(ir::Model& model) {
 }
 
 /// Walk a constraint tree for the first ContentsConstraint contained type.
+/**
+ *  Function    : find_containing_type
+ *  Description : Computes find containing type from (c).
+ *  Parameters  : c — const ast::Constraint* c
+ *  Returns     : const ast::Type*
+ */
 const ast::Type* find_containing_type(const ast::Constraint* c) {
   if (!c) {
     return nullptr;
@@ -547,6 +690,12 @@ const ast::Type* find_containing_type(const ast::Constraint* c) {
 ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& assigned_name,
                       const SubstEnv* subst = nullptr);
 
+/**
+ *  Function    : map_jer_name_form
+ *  Description : Computes map jer name form from (t).
+ *  Parameters  : t — ast::NameTransform t
+ *  Returns     : ir::Field::JerNameForm
+ */
 ir::Field::JerNameForm map_jer_name_form(ast::NameTransform t) {
   switch (t) {
     case ast::NameTransform::AsIs:
@@ -563,6 +712,12 @@ ir::Field::JerNameForm map_jer_name_form(ast::NameTransform t) {
   return ir::Field::JerNameForm::AsIs;
 }
 
+/**
+ *  Function    : map_jer_text_form
+ *  Description : Computes map jer text form from (t).
+ *  Parameters  : t — ast::NameTransform t
+ *  Returns     : ir::JerEncoding::TextForm
+ */
 ir::JerEncoding::TextForm map_jer_text_form(ast::NameTransform t) {
   switch (t) {
     case ast::NameTransform::AsIs:
@@ -639,6 +794,12 @@ void apply_exer_instructions(ir::Type& out,
   }
 }
 
+/**
+ *  Function    : apply_field_jer_name_from_ast
+ *  Description : Performs apply field jer name from ast (definition).
+ *  Parameters  : field — ir::Field& field; ast_type — const ast::Type& ast_type
+ *  Returns     : void
+ */
 void apply_field_jer_name_from_ast(ir::Field& field, const ast::Type& ast_type) {
   for (const auto& ei : ast_type.encoding_instructions()) {
     if (ei.kind == ast::EncodingInstructionKind::Name) {
@@ -648,6 +809,12 @@ void apply_field_jer_name_from_ast(ir::Field& field, const ast::Type& ast_type) 
   }
 }
 
+/**
+ *  Function    : apply_field_exer_from_ast
+ *  Description : Performs apply field exer from ast (definition).
+ *  Parameters  : field — ir::Field& field; ast_type — const ast::Type& ast_type
+ *  Returns     : void
+ */
 void apply_field_exer_from_ast(ir::Field& field, const ast::Type& ast_type) {
   for (const auto& ei : ast_type.encoding_instructions()) {
     switch (ei.kind) {
@@ -670,6 +837,12 @@ void apply_field_exer_from_ast(ir::Field& field, const ast::Type& ast_type) {
   }
 }
 
+/**
+ *  Function    : map_presence
+ *  Description : Computes map presence from (p).
+ *  Parameters  : p — ast::Presence p
+ *  Returns     : ir::Presence
+ */
 ir::Presence map_presence(ast::Presence p) {
   switch (p) {
     case ast::Presence::Mandatory:
@@ -682,6 +855,12 @@ ir::Presence map_presence(ast::Presence p) {
   return ir::Presence::Mandatory;
 }
 
+/**
+ *  Function    : apply_outer_tag
+ *  Description : Performs apply outer tag (definition).
+ *  Parameters  : out — ir::Type& out; type — const ast::Type& type; tag_default — ast::TagDefault tag_default
+ *  Returns     : void
+ */
 void apply_outer_tag(ir::Type& out, const ast::Type& type, ast::TagDefault tag_default) {
   out.tag = builtin_tag_for(type);
   if (type.tag()) {
@@ -701,6 +880,12 @@ ir::TypeId make_builtin_scalar(LowerCtx& ctx, ir::TypeKind kind, ir::Tag tag,
   return ctx.model.arena.add(std::move(t));
 }
 
+/**
+ *  Function    : make_field
+ *  Description : Computes make field from (name, type, presence, tag).
+ *  Parameters  : name — std::string name; type — ir::TypeId type; presence — ir::Presence presence; tag — ir::Tag tag
+ *  Returns     : ir::Field
+ */
 ir::Field make_field(std::string name, ir::TypeId type, ir::Presence presence, ir::Tag tag) {
   ir::Field f;
   f.name = std::move(name);
@@ -710,6 +895,12 @@ ir::Field make_field(std::string name, ir::TypeId type, ir::Presence presence, i
   return f;
 }
 
+/**
+ *  Function    : lower_identification_choice
+ *  Description : Computes lower identification choice from (ctx, base).
+ *  Parameters  : ctx — LowerCtx& ctx; base — const std::string& base
+ *  Returns     : ir::TypeId
+ */
 ir::TypeId lower_identification_choice(LowerCtx& ctx, const std::string& base) {
   const ir::TypeId oid_ty = make_builtin_scalar(ctx, ir::TypeKind::ObjectIdentifier, universal(6));
   const ir::TypeId int_ty = make_builtin_scalar(ctx, ir::TypeKind::Integer, universal(2));
@@ -1270,6 +1461,12 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
     const Symbol* cls = ctx.symbols.lookup(ctx.mod.name(), inst->class_name());
     if (!cls || cls->kind != SymbolKind::ObjectClass) {
       if (inst->class_name() != "TYPE-IDENTIFIER" &&
+          /**
+           *  Function    : class_name
+           *  Description : Computes class name from (none).
+           *  Parameters  : none
+           *  Returns     : inst->
+           */
           inst->class_name() != "ABSTRACT-SYNTAX") {
         ctx.diagnostics.error(inst->range(),
                               "undefined object class '" + inst->class_name() + "'");
@@ -1316,6 +1513,12 @@ void check_type_refs(const ast::Type& type, const std::string& module, SymbolTab
       if (const auto* comp = dynamic_cast<const ast::Component*>(item.get())) {
         check_type_refs(comp->type(), module, symbols, diagnostics, formals);
       } else if (const auto* grp =
+                     /**
+                      *  Function    : get
+                      *  Description : Computes get from (none).
+                      *  Parameters  : none
+                      *  Returns     : dynamic_cast<const ast::VersionAdditionGroup*>(item.
+                      */
                      dynamic_cast<const ast::VersionAdditionGroup*>(item.get())) {
         for (const auto& child : grp->items()) {
           if (const auto* comp = dynamic_cast<const ast::Component*>(child.get())) {
@@ -1329,6 +1532,12 @@ void check_type_refs(const ast::Type& type, const std::string& module, SymbolTab
       if (const auto* comp = dynamic_cast<const ast::Component*>(item.get())) {
         check_type_refs(comp->type(), module, symbols, diagnostics, formals);
       } else if (const auto* grp =
+                     /**
+                      *  Function    : get
+                      *  Description : Computes get from (none).
+                      *  Parameters  : none
+                      *  Returns     : dynamic_cast<const ast::VersionAdditionGroup*>(item.
+                      */
                      dynamic_cast<const ast::VersionAdditionGroup*>(item.get())) {
         for (const auto& child : grp->items()) {
           if (const auto* comp = dynamic_cast<const ast::Component*>(child.get())) {
@@ -1344,6 +1553,12 @@ void check_type_refs(const ast::Type& type, const std::string& module, SymbolTab
       if (const auto* comp = dynamic_cast<const ast::Component*>(item.get())) {
         check_type_refs(comp->type(), module, symbols, diagnostics, formals);
       } else if (const auto* grp =
+                     /**
+                      *  Function    : get
+                      *  Description : Computes get from (none).
+                      *  Parameters  : none
+                      *  Returns     : dynamic_cast<const ast::VersionAdditionGroup*>(item.
+                      */
                      dynamic_cast<const ast::VersionAdditionGroup*>(item.get())) {
         for (const auto& child : grp->items()) {
           if (const auto* comp = dynamic_cast<const ast::Component*>(child.get())) {
@@ -1359,6 +1574,12 @@ void check_type_refs(const ast::Type& type, const std::string& module, SymbolTab
     if (!cls || cls->kind != SymbolKind::ObjectClass) {
       // Useful object classes are injected later; allow unresolved for now.
       if (ocf->class_name() != "TYPE-IDENTIFIER" &&
+          /**
+           *  Function    : class_name
+           *  Description : Computes class name from (none).
+           *  Parameters  : none
+           *  Returns     : ocf->
+           */
           ocf->class_name() != "ABSTRACT-SYNTAX") {
         // Governor object-class formals (e.g. PROTOCOL-IES : IEsSetParam) — class name
         // may be a formal governor type; skip if it looks like a known class formal.
@@ -1372,6 +1593,12 @@ void check_type_refs(const ast::Type& type, const std::string& module, SymbolTab
     const Symbol* cls = symbols.lookup(module, inst->class_name());
     if (!cls || cls->kind != SymbolKind::ObjectClass) {
       if (inst->class_name() != "TYPE-IDENTIFIER" &&
+          /**
+           *  Function    : class_name
+           *  Description : Computes class name from (none).
+           *  Parameters  : none
+           *  Returns     : inst->
+           */
           inst->class_name() != "ABSTRACT-SYNTAX") {
         if (!(formals && formals->count(inst->class_name()))) {
           diagnostics.error(inst->range(),
@@ -1386,6 +1613,12 @@ void check_type_refs(const ast::Type& type, const std::string& module, SymbolTab
 
 Analyzer::Analyzer(Diagnostics& diagnostics) : diagnostics_(diagnostics) {}
 
+/**
+ *  Function    : analyze
+ *  Description : Computes analyze from (modules).
+ *  Parameters  : modules — std::vector<std::unique_ptr<ast::Module>> modules
+ *  Returns     : ir::Model Analyzer::
+ */
 ir::Model Analyzer::analyze(std::vector<std::unique_ptr<ast::Module>> modules) {
   modules_ = std::move(modules);
   model_ = ir::Model{};
@@ -1399,6 +1632,12 @@ ir::Model Analyzer::analyze(std::vector<std::unique_ptr<ast::Module>> modules) {
   return std::move(model_);
 }
 
+/**
+ *  Function    : declare_pass
+ *  Description : Performs declare pass (definition).
+ *  Parameters  : none
+ *  Returns     : void Analyzer::
+ */
 void Analyzer::declare_pass() {
   for (auto& mod_ptr : modules_) {
     if (!mod_ptr) {
@@ -1438,6 +1677,12 @@ void Analyzer::declare_pass() {
         s.ast = ta;
         symbols_.declare(std::move(s), diagnostics_);
       } else if (const auto* va =
+                     /**
+                      *  Function    : get
+                      *  Description : Computes get from (none).
+                      *  Parameters  : none
+                      *  Returns     : dynamic_cast<const ast::ValueAssignment*>(assignment.
+                      */
                      dynamic_cast<const ast::ValueAssignment*>(assignment.get())) {
         Symbol s;
         s.kind = SymbolKind::Value;
@@ -1447,6 +1692,12 @@ void Analyzer::declare_pass() {
         s.ast = va;
         symbols_.declare(std::move(s), diagnostics_);
       } else if (const auto* oc =
+                     /**
+                      *  Function    : get
+                      *  Description : Computes get from (none).
+                      *  Parameters  : none
+                      *  Returns     : dynamic_cast<const ast::ObjectClassAssignment*>(assignment.
+                      */
                      dynamic_cast<const ast::ObjectClassAssignment*>(assignment.get())) {
         Symbol s;
         s.kind = SymbolKind::ObjectClass;
@@ -1456,6 +1707,12 @@ void Analyzer::declare_pass() {
         s.ast = oc;
         symbols_.declare(std::move(s), diagnostics_);
       } else if (const auto* obj =
+                     /**
+                      *  Function    : get
+                      *  Description : Computes get from (none).
+                      *  Parameters  : none
+                      *  Returns     : dynamic_cast<const ast::ObjectAssignment*>(assignment.
+                      */
                      dynamic_cast<const ast::ObjectAssignment*>(assignment.get())) {
         Symbol s;
         s.kind = SymbolKind::Object;
@@ -1465,6 +1722,12 @@ void Analyzer::declare_pass() {
         s.ast = obj;
         symbols_.declare(std::move(s), diagnostics_);
       } else if (const auto* oset =
+                     /**
+                      *  Function    : get
+                      *  Description : Computes get from (none).
+                      *  Parameters  : none
+                      *  Returns     : dynamic_cast<const ast::ObjectSetAssignment*>(assignment.
+                      */
                      dynamic_cast<const ast::ObjectSetAssignment*>(assignment.get())) {
         Symbol s;
         s.kind = SymbolKind::ObjectSet;
@@ -1497,6 +1760,12 @@ void Analyzer::declare_pass() {
   }
 }
 
+/**
+ *  Function    : resolve_pass
+ *  Description : Performs resolve pass (definition).
+ *  Parameters  : none
+ *  Returns     : void Analyzer::
+ */
 void Analyzer::resolve_pass() {
   for (const auto& mod_ptr : modules_) {
     if (!mod_ptr) {
@@ -1533,6 +1802,12 @@ void Analyzer::resolve_pass() {
         check_type_refs(ta->type(), mod.name(), symbols_, diagnostics_,
                         formals.empty() ? nullptr : &formals);
       } else if (const auto* va =
+                     /**
+                      *  Function    : get
+                      *  Description : Computes get from (none).
+                      *  Parameters  : none
+                      *  Returns     : dynamic_cast<const ast::ValueAssignment*>(assignment.
+                      */
                      dynamic_cast<const ast::ValueAssignment*>(assignment.get())) {
         check_type_refs(va->type(), mod.name(), symbols_, diagnostics_);
       }
@@ -1540,6 +1815,12 @@ void Analyzer::resolve_pass() {
   }
 }
 
+/**
+ *  Function    : lower_pass
+ *  Description : Performs lower pass (definition).
+ *  Parameters  : none
+ *  Returns     : void Analyzer::
+ */
 void Analyzer::lower_pass() {
   for (auto& mod_ptr : modules_) {
     if (!mod_ptr) {
@@ -1658,6 +1939,12 @@ void Analyzer::lower_pass() {
         }
         model_.objects.push_back(std::move(info));
       } else if (const auto* oset =
+                     /**
+                      *  Function    : get
+                      *  Description : Computes get from (none).
+                      *  Parameters  : none
+                      *  Returns     : dynamic_cast<const ast::ObjectSetAssignment*>(assignment.
+                      */
                      dynamic_cast<const ast::ObjectSetAssignment*>(assignment.get())) {
         ir::ObjectSetInfo info;
         info.module = mod.name();
@@ -1820,6 +2107,12 @@ void Analyzer::lower_pass() {
         }
         if ((clause.target == ast::EncodingControlTarget::SequenceOf ||
              clause.target == ast::EncodingControlTarget::SetOf) &&
+            /**
+             *  Function    : &&
+             *  Description : Computes && from (none).
+             *  Parameters  : none
+             *  Returns     : clause.instruction.kind == ast::EncodingInstructionKind::List
+             */
             clause.instruction.kind == ast::EncodingInstructionKind::List &&
             (ty.kind == ir::TypeKind::SequenceOf || ty.kind == ir::TypeKind::SetOf)) {
           ty.exer.list = true;
@@ -1835,6 +2128,12 @@ void Analyzer::lower_pass() {
   re_resolve_all_object_class_fields(model_);
 }
 
+/**
+ *  Function    : tag_pass
+ *  Description : Performs tag pass (definition).
+ *  Parameters  : none
+ *  Returns     : void Analyzer::
+ */
 void Analyzer::tag_pass() {
   // Resolve Referenced placeholders and rewrite field type ids to the real type.
   for (std::size_t i = 0; i < model_.arena.type_count(); ++i) {

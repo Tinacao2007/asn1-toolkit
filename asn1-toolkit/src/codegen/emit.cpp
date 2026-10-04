@@ -1,3 +1,27 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/codegen/emit.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Generates C++ headers (value types plus inline encode/decode) from
+**   semantic IR,
+**   calling shared runtime codec namespaces selected by EmitOptions.
+**
+** Specification: Generated code layout follows ITU type rules; emission
+**                 logic is toolchain-internal.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/codegen/emit.hpp>
 
 #include <algorithm>
@@ -11,6 +35,12 @@ namespace asn1 {
 namespace codegen {
 namespace {
 
+/**
+ *  Function    : is_cpp_keyword
+ *  Description : Returns whether cpp keyword holds for the given inputs.
+ *  Parameters  : id — std::string_view id
+ *  Returns     : bool
+ */
 bool is_cpp_keyword(std::string_view id) {
   // Identifiers that would be illegal as C++ enum/member/type names.
   static constexpr const char* kWords[] = {
@@ -42,6 +72,12 @@ bool is_cpp_keyword(std::string_view id) {
   return false;
 }
 
+/**
+ *  Function    : cpp_ident
+ *  Description : Builds and returns a string for cpp ident.
+ *  Parameters  : name — std::string_view name
+ *  Returns     : std::string
+ */
 std::string cpp_ident(std::string_view name) {
   std::string out;
   out.reserve(name.size() + 1);
@@ -62,6 +98,12 @@ std::string cpp_ident(std::string_view name) {
   return out;
 }
 
+/**
+ *  Function    : resolve
+ *  Description : Computes resolve from (model, id).
+ *  Parameters  : model — const ir::Model& model; id — ir::TypeId id
+ *  Returns     : const ir::Type&
+ */
 const ir::Type& resolve(const ir::Model& model, ir::TypeId id) {
   const ir::Type* t = &model.arena.get(id);
   while (t->kind == ir::TypeKind::Referenced && t->referenced.resolved != ir::kInvalidType) {
@@ -70,12 +112,36 @@ const ir::Type& resolve(const ir::Model& model, ir::TypeId id) {
   return *t;
 }
 
+/**
+ *  Function    : empty
+ *  Description : Returns a boolean result from !t.name.empty(.
+ *  Parameters  : !t.name.empty( — const ir::Type& t) { return !t.name.empty(
+ *  Returns     : bool is_named(const ir::Type& t) { return !t.name.
+ */
 bool is_named(const ir::Type& t) { return !t.name.empty(); }
 
+/**
+ *  Function    : cpp_ident
+ *  Description : Builds and returns a string for cpp ident.
+ *  Parameters  : cpp_ident(t.name — const ir::Type& t) { return cpp_ident(t.name
+ *  Returns     : std::string named_type_cpp(const ir::Type& t) { return
+ */
 std::string named_type_cpp(const ir::Type& t) { return cpp_ident(t.name); }
 
+/**
+ *  Function    : has_value
+ *  Description : Returns whether value holds for the given inputs.
+ *  Parameters  : !d.host_bits.has_value( — const ir::IntegerDesc& d) { return !d.host_bits.has_value(
+ *  Returns     : bool integer_is_bigint(const ir::IntegerDesc& d) { return !d.host_bits.
+ */
 bool integer_is_bigint(const ir::IntegerDesc& d) { return !d.host_bits.has_value(); }
 
+/**
+ *  Function    : integer_host_type
+ *  Description : Builds and returns a string for integer host type.
+ *  Parameters  : d — const ir::IntegerDesc& d
+ *  Returns     : std::string
+ */
 std::string integer_host_type(const ir::IntegerDesc& d) {
   if (d.host_bits) {
     if (!d.is_signed) {
@@ -104,6 +170,12 @@ std::string integer_host_type(const ir::IntegerDesc& d) {
   return "asn1::BigInteger";
 }
 
+/**
+ *  Function    : opt_i64_expr
+ *  Description : Builds and returns a string for opt i64 expr.
+ *  Parameters  : b — const std::optional<ir::BigInt>& b
+ *  Returns     : std::string
+ */
 std::string opt_i64_expr(const std::optional<ir::BigInt>& b) {
   if (b && b->as_i64) {
     return "std::int64_t{" + std::to_string(*b->as_i64) + "}";
@@ -111,6 +183,12 @@ std::string opt_i64_expr(const std::optional<ir::BigInt>& b) {
   return "std::nullopt";
 }
 
+/**
+ *  Function    : integer_constraint_expr
+ *  Description : Builds and returns a string for integer constraint expr.
+ *  Parameters  : d — const ir::IntegerDesc& d
+ *  Returns     : std::string
+ */
 std::string integer_constraint_expr(const ir::IntegerDesc& d) {
   std::ostringstream os;
   os << "asn1::per::IntegerConstraint{" << opt_i64_expr(d.constraint.lower) << ", "
@@ -129,6 +207,12 @@ std::string integer_constraint_expr(const ir::IntegerDesc& d) {
   return os.str();
 }
 
+/**
+ *  Function    : opt_size_expr
+ *  Description : Builds and returns a string for opt size expr.
+ *  Parameters  : b — const std::optional<ir::BigInt>& b
+ *  Returns     : std::string
+ */
 std::string opt_size_expr(const std::optional<ir::BigInt>& b) {
   if (b && b->as_i64 && *b->as_i64 >= 0) {
     return "std::size_t{" + std::to_string(static_cast<std::uint64_t>(*b->as_i64)) + "}";
@@ -136,6 +220,12 @@ std::string opt_size_expr(const std::optional<ir::BigInt>& b) {
   return "std::nullopt";
 }
 
+/**
+ *  Function    : size_constraint_expr
+ *  Description : Builds and returns a string for size constraint expr.
+ *  Parameters  : d — const ir::ConstraintDesc& d
+ *  Returns     : std::string
+ */
 std::string size_constraint_expr(const ir::ConstraintDesc& d) {
   std::ostringstream os;
   os << "asn1::per::SizeConstraint{" << opt_size_expr(d.lower) << ", "
@@ -158,6 +248,12 @@ class Emitter {
   Emitter(const ir::Model& model, EmitOptions options, Diagnostics& diag)
       : model_(model), options_(std::move(options)), diag_(diag) {}
 
+  /**
+   *  Function    : run
+   *  Description : Performs run (definition).
+   *  Parameters  : header — std::ostream& header; source — std::ostream* source
+   *  Returns     : void
+   */
   void run(std::ostream& header, std::ostream* source) {
     collect_named();
     emit_header(header);
@@ -174,6 +270,12 @@ class Emitter {
   std::vector<ir::TypeId> named_order_;
   std::unordered_set<ir::TypeId> named_set_;
 
+  /**
+   *  Function    : collect_named
+   *  Description : Performs collect named (definition).
+   *  Parameters  : none
+   *  Returns     : void
+   */
   void collect_named() {
     std::unordered_set<ir::TypeId> visiting;
     std::function<void(ir::TypeId)> consider = [&](ir::TypeId id) {
@@ -254,6 +356,12 @@ class Emitter {
     }
   }
 
+  /**
+   *  Function    : type_cpp
+   *  Description : Builds and returns a string for type cpp.
+   *  Parameters  : id — ir::TypeId id; for_optional — bool for_optional
+   *  Returns     : std::string
+   */
   std::string type_cpp(ir::TypeId id, bool for_optional = false) {
     if (named_set_.count(id)) {
       return named_type_cpp(model_.arena.get(id));
@@ -271,6 +379,12 @@ class Emitter {
     return inline_type_cpp(t, for_optional);
   }
 
+  /**
+   *  Function    : inline_type_cpp
+   *  Description : Builds and returns a string for inline type cpp.
+   *  Parameters  : t — const ir::Type& t; / — bool /*for_optional*/
+   *  Returns     : std::string
+   */
   std::string inline_type_cpp(const ir::Type& t, bool /*for_optional*/) {
     switch (t.kind) {
       case ir::TypeKind::Boolean:
@@ -321,6 +435,12 @@ class Emitter {
     return "void";
   }
 
+  /**
+   *  Function    : emit_header
+   *  Description : Performs emit header (definition).
+   *  Parameters  : out — std::ostream& out
+   *  Returns     : void
+   */
   void emit_header(std::ostream& out) {
     const std::string ns = cpp_ident(options_.namespace_name);
     const std::string guard =
@@ -444,6 +564,12 @@ class Emitter {
         << "#endif  // " << guard << "\n";
   }
 
+  /**
+   *  Function    : emit_type_decl
+   *  Description : Performs emit type decl (definition).
+   *  Parameters  : out — std::ostream& out; id — ir::TypeId id
+   *  Returns     : void
+   */
   void emit_type_decl(std::ostream& out, ir::TypeId id) {
     const ir::Type& t = model_.arena.get(id);
     const std::string name = named_type_cpp(t);
@@ -565,9 +691,27 @@ class Emitter {
     }
   }
 
+  /**
+   *  Function    : ns_codec
+   *  Description : Computes ns codec from (aper).
+   *  Parameters  : aper — bool aper
+   *  Returns     : const char*
+   */
   const char* ns_codec(bool aper) const { return aper ? "asn1::aper" : "asn1::uper"; }
+  /**
+   *  Function    : fn_suffix
+   *  Description : Computes fn suffix from (aper).
+   *  Parameters  : aper — bool aper
+   *  Returns     : const char*
+   */
   const char* fn_suffix(bool aper) const { return aper ? "aper" : "uper"; }
 
+  /**
+   *  Function    : emit_codec_fns
+   *  Description : Performs emit codec fns (definition).
+   *  Parameters  : out — std::ostream& out; id — ir::TypeId id; aper — bool aper
+   *  Returns     : void
+   */
   void emit_codec_fns(std::ostream& out, ir::TypeId id, bool aper) {
     const ir::Type& t = model_.arena.get(id);
     const std::string name = named_type_cpp(t);
@@ -588,6 +732,12 @@ class Emitter {
   }
 
 
+  /**
+   *  Function    : enum_root_sorted_values
+   *  Description : Computes enum root sorted values from (e).
+   *  Parameters  : e — const ir::EnumeratedDesc& e
+   *  Returns     : static std::vector<std::int64_t>
+   */
   static std::vector<std::int64_t> enum_root_sorted_values(const ir::EnumeratedDesc& e) {
     std::vector<std::int64_t> vals;
     vals.reserve(e.root.size());
@@ -598,6 +748,12 @@ class Emitter {
     return vals;
   }
 
+  /**
+   *  Function    : enum_extension_values
+   *  Description : Computes enum extension values from (e).
+   *  Parameters  : e — const ir::EnumeratedDesc& e
+   *  Returns     : static std::vector<std::int64_t>
+   */
   static std::vector<std::int64_t> enum_extension_values(const ir::EnumeratedDesc& e) {
     std::vector<std::int64_t> vals;
     vals.reserve(e.extensions.size());
@@ -607,6 +763,12 @@ class Emitter {
     return vals;
   }
 
+  /**
+   *  Function    : choice_all_fields
+   *  Description : Computes choice all fields from (c).
+   *  Parameters  : c — const ir::ChoiceDesc& c
+   *  Returns     : static std::vector<const ir::Field*>
+   */
   static std::vector<const ir::Field*> choice_all_fields(const ir::ChoiceDesc& c) {
     std::vector<const ir::Field*> all;
     all.reserve(c.alternatives.size() + c.extensions.size());
@@ -619,10 +781,22 @@ class Emitter {
     return all;
   }
 
+  /**
+   *  Function    : field_has_presence_bit
+   *  Description : Returns a boolean result from f.
+   *  Parameters  : f — const ir::Field& f
+   *  Returns     : static bool
+   */
   static bool field_has_presence_bit(const ir::Field& f) {
     return f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
   }
 
+  /**
+   *  Function    : field_wraps_optional
+   *  Description : Returns a boolean result from f, force_optional.
+   *  Parameters  : f — const ir::Field& f; force_optional — bool force_optional
+   *  Returns     : static bool
+   */
   static bool field_wraps_optional(const ir::Field& f, bool force_optional) {
     if (f.presence == ir::Presence::Default) {
       return false;
@@ -641,6 +815,12 @@ class Emitter {
     }
   }
 
+  /**
+   *  Function    : default_val_cpp
+   *  Description : Builds and returns a string for default val cpp.
+   *  Parameters  : vid — ir::ValueId vid
+   *  Returns     : std::string
+   */
   std::string default_val_cpp(ir::ValueId vid) {
     if (vid >= model_.arena.value_count()) return "";
     const ir::Value& val = model_.arena.get_value(vid);
@@ -1461,6 +1641,12 @@ class Emitter {
     }
   }
 
+  /**
+   *  Function    : jer_name_form_expr
+   *  Description : Computes jer name form expr from (f).
+   *  Parameters  : f — ir::Field::JerNameForm f
+   *  Returns     : static const char*
+   */
   static const char* jer_name_form_expr(ir::Field::JerNameForm f) {
     switch (f) {
       case ir::Field::JerNameForm::AsIs:
@@ -1477,6 +1663,12 @@ class Emitter {
     return "asn1::jeri::NameForm::AsIs";
   }
 
+  /**
+   *  Function    : jer_text_form_expr
+   *  Description : Computes jer text form expr from (f).
+   *  Parameters  : f — ir::JerEncoding::TextForm f
+   *  Returns     : static const char*
+   */
   static const char* jer_text_form_expr(ir::JerEncoding::TextForm f) {
     switch (f) {
       case ir::JerEncoding::TextForm::AsIs:
@@ -1493,6 +1685,12 @@ class Emitter {
     return "asn1::jeri::NameForm::AsIs";
   }
 
+  /**
+   *  Function    : emit_jer_codec_fns
+   *  Description : Performs emit jer codec fns (definition).
+   *  Parameters  : out — std::ostream& out; id — ir::TypeId id
+   *  Returns     : void
+   */
   void emit_jer_codec_fns(std::ostream& out, ir::TypeId id) {
     const ir::Type& t = model_.arena.get(id);
     const std::string name = named_type_cpp(t);
@@ -1689,6 +1887,12 @@ class Emitter {
               emit_jer_field_encode_expr(out, ft, expr + "." + fname + ".value()",
                                          ind + "  ");
               out << ind << "  if (!jer_m) return jer_m.error();\n";
+              /**
+               *  Function    : empty
+               *  Description : Computes empty from (!).
+               *  Parameters  : ! — f.jer_name_form !
+               *  Returns     : if (f.jer_name_form != ir::Field::JerNameForm::AsIs || !f.jer_name_literal.
+               */
               if (f.jer_name_form != ir::Field::JerNameForm::AsIs ||
                   !f.jer_name_literal.empty()) {
                 out << ind << "  jer_members.push_back(asn1::jeri::named_member(\"" << f.name
@@ -1707,6 +1911,12 @@ class Emitter {
                   out << ind << "  auto jer_m = ";
                   emit_jer_field_encode_expr(out, ft, expr + "." + fname, ind + "  ");
                   out << ind << "  if (!jer_m) return jer_m.error();\n";
+                  /**
+                   *  Function    : empty
+                   *  Description : Computes empty from (!).
+                   *  Parameters  : ! — f.jer_name_form !
+                   *  Returns     : if (f.jer_name_form != ir::Field::JerNameForm::AsIs || !f.jer_name_literal.
+                   */
                   if (f.jer_name_form != ir::Field::JerNameForm::AsIs ||
                       !f.jer_name_literal.empty()) {
                     out << ind << "  jer_members.push_back(asn1::jeri::named_member(\"" << f.name
@@ -1724,6 +1934,12 @@ class Emitter {
               out << ind << "  auto jer_m = ";
               emit_jer_field_encode_expr(out, ft, expr + "." + fname, ind + "  ");
               out << ind << "  if (!jer_m) return jer_m.error();\n";
+              /**
+               *  Function    : empty
+               *  Description : Computes empty from (!).
+               *  Parameters  : ! — f.jer_name_form !
+               *  Returns     : if (f.jer_name_form != ir::Field::JerNameForm::AsIs || !f.jer_name_literal.
+               */
               if (f.jer_name_form != ir::Field::JerNameForm::AsIs ||
                   !f.jer_name_literal.empty()) {
                 out << ind << "  jer_members.push_back(asn1::jeri::named_member(\"" << f.name
@@ -1739,6 +1955,12 @@ class Emitter {
               out << ind << "  auto jer_m = ";
               emit_jer_field_encode_expr(out, ft, expr + "." + fname, ind + "  ");
               out << ind << "  if (!jer_m) return jer_m.error();\n";
+              /**
+               *  Function    : empty
+               *  Description : Computes empty from (!).
+               *  Parameters  : ! — f.jer_name_form !
+               *  Returns     : if (f.jer_name_form != ir::Field::JerNameForm::AsIs || !f.jer_name_literal.
+               */
               if (f.jer_name_form != ir::Field::JerNameForm::AsIs ||
                   !f.jer_name_literal.empty()) {
                 out << ind << "  jer_members.push_back(asn1::jeri::named_member(\"" << f.name
@@ -2144,9 +2366,33 @@ class Emitter {
     emit_jer_decode_body(out, ft, lhs_expr, v_expr, ind);
   }
 
+  /**
+   *  Function    : xer_use_exer
+   *  Description : Returns a boolean result from none.
+   *  Parameters  : none
+   *  Returns     : bool
+   */
   bool xer_use_exer() const { return options_.codec == CodecKind::Exer; }
+  /**
+   *  Function    : xer_use_cxer
+   *  Description : Returns a boolean result from none.
+   *  Parameters  : none
+   *  Returns     : bool
+   */
   bool xer_use_cxer() const { return options_.codec == CodecKind::Cxer; }
+  /**
+   *  Function    : xer_use_cxer
+   *  Description : Computes xer use cxer from (xer_use_cxer().
+   *  Parameters  : xer_use_cxer( — ) const { return xer_use_cxer(
+   *  Returns     : const char* xml_ns() const { return
+   */
   const char* xml_ns() const { return xer_use_cxer() ? "asn1::cxer" : "asn1::xer"; }
+  /**
+   *  Function    : xer_use_cxer
+   *  Description : Computes xer use cxer from (xer_use_cxer().
+   *  Parameters  : xer_use_cxer( — ) const { return xer_use_cxer(
+   *  Returns     : const char* xml_fn_suffix() const { return
+   */
   const char* xml_fn_suffix() const { return xer_use_cxer() ? "cxer" : "xer"; }
 
   static std::string transform_xml_name(const std::string& name, ir::Field::JerNameForm form,
@@ -2188,6 +2434,12 @@ class Emitter {
     return name;
   }
 
+  /**
+   *  Function    : xer_field_name
+   *  Description : Builds and returns a string for xer field name.
+   *  Parameters  : f — const ir::Field& f
+   *  Returns     : std::string
+   */
   std::string xer_field_name(const ir::Field& f) const {
     return transform_xml_name(f.name, f.jer_name_form, f.jer_name_literal);
   }
@@ -2234,6 +2486,12 @@ class Emitter {
     emit_xer_decode_body(out, ft, lhs_expr, el_expr, ind);
   }
 
+  /**
+   *  Function    : emit_xer_codec_fns
+   *  Description : Performs emit xer codec fns (definition).
+   *  Parameters  : out — std::ostream& out; id — ir::TypeId id
+   *  Returns     : void
+   */
   void emit_xer_codec_fns(std::ostream& out, ir::TypeId id) {
     const ir::Type& t = model_.arena.get(id);
     const std::string name = named_type_cpp(t);
@@ -3004,11 +3262,35 @@ class Emitter {
   }
   // ---- OER ----
 
+  /**
+   *  Function    : oer_use_coer
+   *  Description : Returns a boolean result from none.
+   *  Parameters  : none
+   *  Returns     : bool
+   */
   bool oer_use_coer() const { return options_.codec == CodecKind::Coer; }
+  /**
+   *  Function    : oer_use_coer
+   *  Description : Computes oer use coer from (oer_use_coer().
+   *  Parameters  : oer_use_coer( — ) const { return oer_use_coer(
+   *  Returns     : const char* oer_ns() const { return
+   */
   const char* oer_ns() const { return oer_use_coer() ? "asn1::coer" : "asn1::oer"; }
+  /**
+   *  Function    : oer_use_coer
+   *  Description : Computes oer use coer from (oer_use_coer().
+   *  Parameters  : oer_use_coer( — ) const { return oer_use_coer(
+   *  Returns     : const char* oer_fn_suffix() const { return
+   */
   const char* oer_fn_suffix() const { return oer_use_coer() ? "coer" : "oer"; }
 
 
+  /**
+   *  Function    : oer_integer_constraint_expr
+   *  Description : Builds and returns a string for oer integer constraint expr.
+   *  Parameters  : d — const ir::IntegerDesc& d
+   *  Returns     : std::string
+   */
   std::string oer_integer_constraint_expr(const ir::IntegerDesc& d) {
     std::ostringstream os;
     os << "" << oer_ns() << "::IntegerConstraint{" << opt_i64_expr(d.constraint.lower) << ", "
@@ -3027,6 +3309,12 @@ class Emitter {
     return os.str();
   }
 
+  /**
+   *  Function    : oer_size_constraint_expr
+   *  Description : Builds and returns a string for oer size constraint expr.
+   *  Parameters  : d — const ir::ConstraintDesc& d
+   *  Returns     : std::string
+   */
   std::string oer_size_constraint_expr(const ir::ConstraintDesc& d) {
     std::ostringstream os;
     os << "" << oer_ns() << "::SizeConstraint{" << opt_size_expr(d.lower) << ", "
@@ -3044,6 +3332,12 @@ class Emitter {
     return os.str();
   }
 
+  /**
+   *  Function    : oer_real_form_expr
+   *  Description : Builds and returns a string for oer real form expr.
+   *  Parameters  : f — ir::RealIeeeForm f
+   *  Returns     : std::string
+   */
   std::string oer_real_form_expr(ir::RealIeeeForm f) {
     const std::string ns = oer_ns();
     switch (f) {
@@ -3057,6 +3351,12 @@ class Emitter {
     }
   }
 
+  /**
+   *  Function    : type_is_constructed
+   *  Description : Returns a boolean result from t.
+   *  Parameters  : t — const ir::Type& t
+   *  Returns     : static bool
+   */
   static bool type_is_constructed(const ir::Type& t) {
     switch (t.kind) {
       case ir::TypeKind::Sequence:
@@ -3071,6 +3371,12 @@ class Emitter {
     }
   }
 
+  /**
+   *  Function    : emit_oer_codec_fns
+   *  Description : Performs emit oer codec fns (definition).
+   *  Parameters  : out — std::ostream& out; id — ir::TypeId id
+   *  Returns     : void
+   */
   void emit_oer_codec_fns(std::ostream& out, ir::TypeId id) {
     const ir::Type& t = model_.arena.get(id);
     const std::string name = named_type_cpp(t);
@@ -3725,9 +4031,27 @@ class Emitter {
 
   // ---- BER / DER ----
 
+  /**
+   *  Function    : tlv_ns
+   *  Description : Computes tlv ns from (der).
+   *  Parameters  : der — bool der
+   *  Returns     : const char*
+   */
   const char* tlv_ns(bool der) const { return der ? "asn1::der" : "asn1::ber"; }
+  /**
+   *  Function    : tlv_fn
+   *  Description : Computes tlv fn from (der).
+   *  Parameters  : der — bool der
+   *  Returns     : const char*
+   */
   const char* tlv_fn(bool der) const { return der ? "der" : "ber"; }
 
+  /**
+   *  Function    : ber_tag_expr
+   *  Description : Builds and returns a string for ber tag expr.
+   *  Parameters  : tag — const ir::Tag& tag; constructed — bool constructed
+   *  Returns     : static std::string
+   */
   static std::string ber_tag_expr(const ir::Tag& tag, bool constructed) {
     std::ostringstream os;
     const char* fn = "asn1::ber::universal";
@@ -3750,6 +4074,12 @@ class Emitter {
     return os.str();
   }
 
+  /**
+   *  Function    : universal_number_for
+   *  Description : Computes universal number for from (t).
+   *  Parameters  : t — const ir::Type& t
+   *  Returns     : static std::uint64_t
+   */
   static std::uint64_t universal_number_for(const ir::Type& t) {
     switch (t.kind) {
       case ir::TypeKind::Boolean:
@@ -3786,6 +4116,12 @@ class Emitter {
     }
   }
 
+  /**
+   *  Function    : natural_tag_expr
+   *  Description : Builds and returns a string for natural tag expr.
+   *  Parameters  : t — const ir::Type& t
+   *  Returns     : static std::string
+   */
   static std::string natural_tag_expr(const ir::Type& t) {
     ir::Tag tag;
     tag.cls = ir::TagClass::Universal;
@@ -3794,6 +4130,12 @@ class Emitter {
     return ber_tag_expr(tag, type_is_constructed(t));
   }
 
+  /**
+   *  Function    : emit_tlv_codec_fns
+   *  Description : Performs emit tlv codec fns (definition).
+   *  Parameters  : out — std::ostream& out; id — ir::TypeId id; der — bool der
+   *  Returns     : void
+   */
   void emit_tlv_codec_fns(std::ostream& out, ir::TypeId id, bool der) {
     const ir::Type& t = model_.arena.get(id);
     const std::string name = named_type_cpp(t);

@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/ber/codec.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   BER codec implementation (constructed/ primitive types).
+**
+** Specification: ITU-T X.690 — ASN.1 encoding rules: Basic Encoding
+**                 Rules (BER).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/ber/codec.hpp>
 #include <asn1/common/float_conv.hpp>
 
@@ -11,6 +33,12 @@ namespace asn1 {
 namespace ber {
 namespace {
 
+/**
+ *  Function    : require_tag
+ *  Description : Returns success or an error from require tag.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected; got — Tag got
+ *  Returns     : Result<void>
+ */
 Result<void> require_tag(ByteReader& in, Tag expected, Tag got) {
   if (got != expected) {
     return make_error(Error::Code::TagMismatch, in.offset(), "BER tag mismatch");
@@ -18,6 +46,12 @@ Result<void> require_tag(ByteReader& in, Tag expected, Tag got) {
   return Result<void>::success();
 }
 
+/**
+ *  Function    : require_definite
+ *  Description : Returns success or an error from require definite.
+ *  Parameters  : in — ByteReader& in; len — const Length& len
+ *  Returns     : Result<std::size_t>
+ */
 Result<std::size_t> require_definite(ByteReader& in, const Length& len) {
   if (len.indefinite) {
     return make_error(Error::Code::Unsupported, in.offset(),
@@ -28,6 +62,12 @@ Result<std::size_t> require_definite(ByteReader& in, const Length& len) {
 
 template <typename T>
 Result<T> decode_primitive_tlv(ByteReader& in, Tag expected,
+                               /**
+                                *  Function    : (*decode_content)
+                                *  Description : Returns success or an error from (*decode content).
+                                *  Parameters  : decode_content)(ByteReader — *decode_content)(ByteReader&
+                                *  Returns     : Result<T>
+                                */
                                Result<T> (*decode_content)(ByteReader&, std::size_t)) {
   auto hdr = decode_tlv_header(in);
   if (!hdr) {
@@ -48,10 +88,22 @@ Result<T> decode_primitive_tlv(ByteReader& in, Tag expected,
 
 }  // namespace
 
+/**
+ *  Function    : encode_boolean_content
+ *  Description : Performs encode boolean content (definition).
+ *  Parameters  : out — ByteWriter& out; value — bool value
+ *  Returns     : void
+ */
 void encode_boolean_content(ByteWriter& out, bool value) {
   out.put(value ? 0xFFu : 0x00u);
 }
 
+/**
+ *  Function    : decode_boolean_content
+ *  Description : Returns a boolean result from in, length.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<bool>
+ */
 Result<bool> decode_boolean_content(ByteReader& in, std::size_t length) {
   if (length != 1) {
     return make_error(Error::Code::InvalidArgument, in.offset(),
@@ -64,15 +116,33 @@ Result<bool> decode_boolean_content(ByteReader& in, std::size_t length) {
   return b.value() != 0;
 }
 
+/**
+ *  Function    : encode_integer_content
+ *  Description : Performs encode integer content (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::int64_t value
+ *  Returns     : void
+ */
 void encode_integer_content(ByteWriter& out, std::int64_t value) {
   encode_integer_content(out, BigInteger::from_i64(value));
 }
 
+/**
+ *  Function    : encode_integer_content
+ *  Description : Performs encode integer content (definition).
+ *  Parameters  : out — ByteWriter& out; value — const BigInteger& value
+ *  Returns     : void
+ */
 void encode_integer_content(ByteWriter& out, const BigInteger& value) {
   const auto bytes = value.to_twos_complement();
   out.write(Span<const std::uint8_t>(bytes.data(), bytes.size()));
 }
 
+/**
+ *  Function    : decode_big_integer_content
+ *  Description : Returns success or an error from decode big integer content.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<BigInteger>
+ */
 Result<BigInteger> decode_big_integer_content(ByteReader& in, std::size_t length) {
   if (length == 0) {
     return make_error(Error::Code::InvalidArgument, in.offset(),
@@ -85,6 +155,12 @@ Result<BigInteger> decode_big_integer_content(ByteReader& in, std::size_t length
   return BigInteger::from_twos_complement(bytes_r.value());
 }
 
+/**
+ *  Function    : decode_integer_content
+ *  Description : Returns success or an error from decode integer content.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_integer_content(ByteReader& in, std::size_t length) {
   auto big = decode_big_integer_content(in, length);
   if (!big) {
@@ -98,8 +174,20 @@ Result<std::int64_t> decode_integer_content(ByteReader& in, std::size_t length) 
   return *v;
 }
 
+/**
+ *  Function    : encode_null_content
+ *  Description : Performs encode null content (definition).
+ *  Parameters  : ByteWriter — ByteWriter&
+ *  Returns     : void
+ */
 void encode_null_content(ByteWriter&) {}
 
+/**
+ *  Function    : decode_null_content
+ *  Description : Returns success or an error from decode null content.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<void>
+ */
 Result<void> decode_null_content(ByteReader& in, std::size_t length) {
   if (length != 0) {
     return make_error(Error::Code::InvalidArgument, in.offset(),
@@ -108,6 +196,12 @@ Result<void> decode_null_content(ByteReader& in, std::size_t length) {
   return Result<void>::success();
 }
 
+/**
+ *  Function    : encode_octet_string_content
+ *  Description : Performs encode octet string content (definition).
+ *  Parameters  : out — ByteWriter& out; value — Span<const std::uint8_t> value
+ *  Returns     : void
+ */
 void encode_octet_string_content(ByteWriter& out, Span<const std::uint8_t> value) {
   out.write(value);
 }
@@ -134,6 +228,12 @@ void encode_bit_string_content(ByteWriter& out, Span<const std::uint8_t> bits,
   out.write(bits);
 }
 
+/**
+ *  Function    : decode_bit_string_content
+ *  Description : Returns success or an error from decode bit string content.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<BitStringValue>
+ */
 Result<BitStringValue> decode_bit_string_content(ByteReader& in, std::size_t length) {
   if (length < 1) {
     return make_error(Error::Code::InvalidArgument, in.offset(),
@@ -166,10 +266,22 @@ Result<BitStringValue> decode_bit_string_content(ByteReader& in, std::size_t len
   return v;
 }
 
+/**
+ *  Function    : encode_utf8_string_content
+ *  Description : Performs encode utf8 string content (definition).
+ *  Parameters  : out — ByteWriter& out; value — const std::string& value
+ *  Returns     : void
+ */
 void encode_utf8_string_content(ByteWriter& out, const std::string& value) {
   out.write(reinterpret_cast<const std::uint8_t*>(value.data()), value.size());
 }
 
+/**
+ *  Function    : decode_utf8_string_content
+ *  Description : Builds and returns a string for decode utf8 string content.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<std::string>
+ */
 Result<std::string> decode_utf8_string_content(ByteReader& in, std::size_t length) {
   auto bytes_r = in.read(length);
   if (!bytes_r) {
@@ -179,40 +291,88 @@ Result<std::string> decode_utf8_string_content(ByteReader& in, std::size_t lengt
   return std::string(reinterpret_cast<const char*>(view.data()), view.size());
 }
 
+/**
+ *  Function    : encode_boolean
+ *  Description : Performs encode boolean (definition).
+ *  Parameters  : out — ByteWriter& out; value — bool value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_boolean(ByteWriter& out, bool value, Tag tag) {
   ByteWriter content;
   encode_boolean_content(content, value);
   encode_tlv(out, tag, content.buffer());
 }
 
+/**
+ *  Function    : decode_boolean
+ *  Description : Returns a boolean result from in, expected.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<bool>
+ */
 Result<bool> decode_boolean(ByteReader& in, Tag expected) {
   return decode_primitive_tlv<bool>(in, expected, decode_boolean_content);
 }
 
+/**
+ *  Function    : encode_integer
+ *  Description : Performs encode integer (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::int64_t value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_integer(ByteWriter& out, std::int64_t value, Tag tag) {
   ByteWriter content;
   encode_integer_content(content, value);
   encode_tlv(out, tag, content.buffer());
 }
 
+/**
+ *  Function    : encode_integer
+ *  Description : Performs encode integer (definition).
+ *  Parameters  : out — ByteWriter& out; value — const BigInteger& value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_integer(ByteWriter& out, const BigInteger& value, Tag tag) {
   ByteWriter content;
   encode_integer_content(content, value);
   encode_tlv(out, tag, content.buffer());
 }
 
+/**
+ *  Function    : decode_integer
+ *  Description : Returns success or an error from decode integer.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_integer(ByteReader& in, Tag expected) {
   return decode_primitive_tlv<std::int64_t>(in, expected, decode_integer_content);
 }
 
+/**
+ *  Function    : decode_big_integer
+ *  Description : Returns success or an error from decode big integer.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<BigInteger>
+ */
 Result<BigInteger> decode_big_integer(ByteReader& in, Tag expected) {
   return decode_primitive_tlv<BigInteger>(in, expected, decode_big_integer_content);
 }
 
+/**
+ *  Function    : encode_null
+ *  Description : Performs encode null (definition).
+ *  Parameters  : out — ByteWriter& out; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_null(ByteWriter& out, Tag tag) {
   encode_tlv(out, tag, Span<const std::uint8_t>());
 }
 
+/**
+ *  Function    : decode_null
+ *  Description : Returns success or an error from decode null.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<void>
+ */
 Result<void> decode_null(ByteReader& in, Tag expected) {
   auto hdr = decode_tlv_header(in);
   if (!hdr) {
@@ -228,10 +388,22 @@ Result<void> decode_null(ByteReader& in, Tag expected) {
   return decode_null_content(in, len.value());
 }
 
+/**
+ *  Function    : encode_octet_string
+ *  Description : Performs encode octet string (definition).
+ *  Parameters  : out — ByteWriter& out; value — Span<const std::uint8_t> value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_octet_string(ByteWriter& out, Span<const std::uint8_t> value, Tag tag) {
   encode_tlv(out, tag, value);
 }
 
+/**
+ *  Function    : decode_octet_string
+ *  Description : Returns success or an error from decode octet string.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_octet_string(ByteReader& in, Tag expected) {
   return decode_primitive_tlv<std::vector<std::uint8_t>>(in, expected,
                                                          decode_octet_string_content);
@@ -244,10 +416,22 @@ void encode_bit_string(ByteWriter& out, Span<const std::uint8_t> bits, std::uint
   encode_tlv(out, tag, content.buffer());
 }
 
+/**
+ *  Function    : decode_bit_string
+ *  Description : Returns success or an error from decode bit string.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<BitStringValue>
+ */
 Result<BitStringValue> decode_bit_string(ByteReader& in, Tag expected) {
   return decode_primitive_tlv<BitStringValue>(in, expected, decode_bit_string_content);
 }
 
+/**
+ *  Function    : encode_utf8_string
+ *  Description : Performs encode utf8 string (definition).
+ *  Parameters  : out — ByteWriter& out; value — const std::string& value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_utf8_string(ByteWriter& out, const std::string& value, Tag tag) {
   ByteWriter content;
   encode_utf8_string_content(content, value);
@@ -256,16 +440,34 @@ void encode_utf8_string(ByteWriter& out, const std::string& value, Tag tag) {
   encode_tlv(out, t, content.buffer());
 }
 
+/**
+ *  Function    : decode_utf8_string
+ *  Description : Builds and returns a string for decode utf8 string.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<std::string>
+ */
 Result<std::string> decode_utf8_string(ByteReader& in, Tag expected) {
   return decode_primitive_tlv<std::string>(in, expected, decode_utf8_string_content);
 }
 
+/**
+ *  Function    : encode_constructed
+ *  Description : Performs encode constructed (definition).
+ *  Parameters  : out — ByteWriter& out; tag — Tag tag; components — Span<const std::uint8_t> components
+ *  Returns     : void
+ */
 void encode_constructed(ByteWriter& out, Tag tag, Span<const std::uint8_t> components) {
   Tag t = tag;
   t.constructed = true;
   encode_tlv(out, t, components);
 }
 
+/**
+ *  Function    : decode_constructed
+ *  Description : Returns success or an error from decode constructed.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_constructed(ByteReader& in, Tag expected) {
   auto hdr = decode_tlv_header(in);
   if (!hdr) {
@@ -319,26 +521,56 @@ Result<std::vector<std::uint8_t>> decode_constructed(ByteReader& in, Tag expecte
   return acc.take();
 }
 
+/**
+ *  Function    : encode_enumerated_content
+ *  Description : Performs encode enumerated content (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::int64_t value
+ *  Returns     : void
+ */
 void encode_enumerated_content(ByteWriter& out, std::int64_t value) {
   encode_integer_content(out, value);
 }
 
+/**
+ *  Function    : decode_enumerated_content
+ *  Description : Returns success or an error from decode enumerated content.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_enumerated_content(ByteReader& in, std::size_t length) {
   return decode_integer_content(in, length);
 }
 
+/**
+ *  Function    : encode_enumerated
+ *  Description : Performs encode enumerated (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::int64_t value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_enumerated(ByteWriter& out, std::int64_t value, Tag tag) {
   ByteWriter content;
   encode_enumerated_content(content, value);
   encode_tlv(out, tag, content.buffer());
 }
 
+/**
+ *  Function    : decode_enumerated
+ *  Description : Returns success or an error from decode enumerated.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_enumerated(ByteReader& in, Tag expected) {
   return decode_primitive_tlv<std::int64_t>(in, expected, decode_enumerated_content);
 }
 
 namespace {
 
+/**
+ *  Function    : encode_oid_subidentifier
+ *  Description : Performs encode oid subidentifier (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::uint64_t value
+ *  Returns     : void
+ */
 void encode_oid_subidentifier(ByteWriter& out, std::uint64_t value) {
   std::uint8_t stack[10];
   int n = 0;
@@ -353,6 +585,12 @@ void encode_oid_subidentifier(ByteWriter& out, std::uint64_t value) {
   }
 }
 
+/**
+ *  Function    : decode_oid_subidentifier
+ *  Description : Returns success or an error from decode oid subidentifier.
+ *  Parameters  : in — ByteReader& in; remaining — std::size_t& remaining
+ *  Returns     : Result<std::uint64_t>
+ */
 Result<std::uint64_t> decode_oid_subidentifier(ByteReader& in, std::size_t& remaining) {
   std::uint64_t value = 0;
   for (;;) {
@@ -376,6 +614,12 @@ Result<std::uint64_t> decode_oid_subidentifier(ByteReader& in, std::size_t& rema
 
 }  // namespace
 
+/**
+ *  Function    : encode_object_identifier_content
+ *  Description : Performs encode object identifier content (definition).
+ *  Parameters  : out — ByteWriter& out; arcs — Span<const std::uint64_t> arcs
+ *  Returns     : void
+ */
 void encode_object_identifier_content(ByteWriter& out, Span<const std::uint64_t> arcs) {
   if (arcs.size() < 2) {
     return;
@@ -416,17 +660,35 @@ Result<std::vector<std::uint64_t>> decode_object_identifier_content(ByteReader& 
   return arcs;
 }
 
+/**
+ *  Function    : encode_object_identifier
+ *  Description : Performs encode object identifier (definition).
+ *  Parameters  : out — ByteWriter& out; arcs — Span<const std::uint64_t> arcs; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_object_identifier(ByteWriter& out, Span<const std::uint64_t> arcs, Tag tag) {
   ByteWriter content;
   encode_object_identifier_content(content, arcs);
   encode_tlv(out, tag, content.buffer());
 }
 
+/**
+ *  Function    : decode_object_identifier
+ *  Description : Returns success or an error from decode object identifier.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<std::vector<std::uint64_t>>
+ */
 Result<std::vector<std::uint64_t>> decode_object_identifier(ByteReader& in, Tag expected) {
   return decode_primitive_tlv<std::vector<std::uint64_t>>(in, expected,
                                                           decode_object_identifier_content);
 }
 
+/**
+ *  Function    : encode_relative_oid_content
+ *  Description : Performs encode relative oid content (definition).
+ *  Parameters  : out — ByteWriter& out; arcs — Span<const std::uint64_t> arcs
+ *  Returns     : void
+ */
 void encode_relative_oid_content(ByteWriter& out, Span<const std::uint64_t> arcs) {
   for (std::uint64_t a : arcs) {
     encode_oid_subidentifier(out, a);
@@ -447,12 +709,24 @@ Result<std::vector<std::uint64_t>> decode_relative_oid_content(ByteReader& in,
   return arcs;
 }
 
+/**
+ *  Function    : encode_relative_oid
+ *  Description : Performs encode relative oid (definition).
+ *  Parameters  : out — ByteWriter& out; arcs — Span<const std::uint64_t> arcs; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_relative_oid(ByteWriter& out, Span<const std::uint64_t> arcs, Tag tag) {
   ByteWriter content;
   encode_relative_oid_content(content, arcs);
   encode_tlv(out, tag, content.buffer());
 }
 
+/**
+ *  Function    : decode_relative_oid
+ *  Description : Returns success or an error from decode relative oid.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<std::vector<std::uint64_t>>
+ */
 Result<std::vector<std::uint64_t>> decode_relative_oid(ByteReader& in, Tag expected) {
   return decode_primitive_tlv<std::vector<std::uint64_t>>(in, expected,
                                                           decode_relative_oid_content);
@@ -460,6 +734,12 @@ Result<std::vector<std::uint64_t>> decode_relative_oid(ByteReader& in, Tag expec
 
 namespace {
 
+/**
+ *  Function    : encode_real_exponent
+ *  Description : Performs encode real exponent (definition).
+ *  Parameters  : out — ByteWriter& out; exponent — std::int32_t exponent; negative_mantissa — bool negative_mantissa
+ *  Returns     : void
+ */
 void encode_real_exponent(ByteWriter& out, std::int32_t exponent, bool negative_mantissa) {
   // Binary encoding, base 2, scale 0. Exponent two's-complement, minimal length.
   std::uint8_t control = 0x80u | (negative_mantissa ? 0x40u : 0x00u);
@@ -481,6 +761,12 @@ void encode_real_exponent(ByteWriter& out, std::int32_t exponent, bool negative_
   out.put(static_cast<std::uint8_t>(exponent & 0xFF));
 }
 
+/**
+ *  Function    : decode_real_binary
+ *  Description : Returns success or an error from decode real binary.
+ *  Parameters  : data — Span<const std::uint8_t> data; err_offset — std::size_t err_offset
+ *  Returns     : Result<double>
+ */
 Result<double> decode_real_binary(Span<const std::uint8_t> data, std::size_t err_offset) {
   if (data.empty()) {
     return make_error(Error::Code::InvalidArgument, err_offset,
@@ -541,6 +827,12 @@ Result<double> decode_real_binary(Span<const std::uint8_t> data, std::size_t err
   return value;
 }
 
+/**
+ *  Function    : decode_real_special
+ *  Description : Returns success or an error from decode real special.
+ *  Parameters  : control — std::uint8_t control; offset — std::size_t offset
+ *  Returns     : Result<double>
+ */
 Result<double> decode_real_special(std::uint8_t control, std::size_t offset) {
   switch (control) {
     case 0x40u:
@@ -557,6 +849,12 @@ Result<double> decode_real_special(std::uint8_t control, std::size_t offset) {
   }
 }
 
+/**
+ *  Function    : decode_real_decimal
+ *  Description : Returns success or an error from decode real decimal.
+ *  Parameters  : data — Span<const std::uint8_t> data; offset — std::size_t offset
+ *  Returns     : Result<double>
+ */
 Result<double> decode_real_decimal(Span<const std::uint8_t> data, std::size_t offset) {
   if (data.size() < 2) {
     return make_error(Error::Code::InvalidArgument, offset,
@@ -581,6 +879,12 @@ Result<double> decode_real_decimal(Span<const std::uint8_t> data, std::size_t of
 
 }  // namespace
 
+/**
+ *  Function    : encode_real_content
+ *  Description : Performs encode real content (definition).
+ *  Parameters  : out — ByteWriter& out; value — double value
+ *  Returns     : void
+ */
 void encode_real_content(ByteWriter& out, double value) {
   if (std::isnan(value)) {
     out.put(0x42u);
@@ -633,6 +937,12 @@ void encode_real_content(ByteWriter& out, double value) {
   }
 }
 
+/**
+ *  Function    : decode_real_content
+ *  Description : Returns success or an error from decode real content.
+ *  Parameters  : in — ByteReader& in; length — std::size_t length
+ *  Returns     : Result<double>
+ */
 Result<double> decode_real_content(ByteReader& in, std::size_t length) {
   if (length == 0) {
     return 0.0;
@@ -659,12 +969,24 @@ Result<double> decode_real_content(ByteReader& in, std::size_t length) {
   return decode_real_decimal(data, in.offset());
 }
 
+/**
+ *  Function    : encode_real
+ *  Description : Performs encode real (definition).
+ *  Parameters  : out — ByteWriter& out; value — double value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_real(ByteWriter& out, double value, Tag tag) {
   ByteWriter content;
   encode_real_content(content, value);
   encode_tlv(out, tag, content.buffer());
 }
 
+/**
+ *  Function    : decode_real
+ *  Description : Returns success or an error from decode real.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<double>
+ */
 Result<double> decode_real(ByteReader& in, Tag expected) {
   return decode_primitive_tlv<double>(in, expected, decode_real_content);
 }
@@ -678,16 +1000,34 @@ void encode_implicit_oid(ByteWriter& out, std::uint64_t context_number,
   encode_tlv(out, context(context_number, /*constructed=*/false), content.buffer());
 }
 
+/**
+ *  Function    : encode_implicit_integer
+ *  Description : Performs encode implicit integer (definition).
+ *  Parameters  : out — ByteWriter& out; context_number — std::uint64_t context_number; value — std::int64_t value
+ *  Returns     : void
+ */
 void encode_implicit_integer(ByteWriter& out, std::uint64_t context_number, std::int64_t value) {
   ByteWriter content;
   encode_integer_content(content, value);
   encode_tlv(out, context(context_number, /*constructed=*/false), content.buffer());
 }
 
+/**
+ *  Function    : encode_implicit_null
+ *  Description : Performs encode implicit null (definition).
+ *  Parameters  : out — ByteWriter& out; context_number — std::uint64_t context_number
+ *  Returns     : void
+ */
 void encode_implicit_null(ByteWriter& out, std::uint64_t context_number) {
   encode_tlv(out, context(context_number, /*constructed=*/false), Span<const std::uint8_t>());
 }
 
+/**
+ *  Function    : encode_identification_choice
+ *  Description : Performs encode identification choice (definition).
+ *  Parameters  : out — ByteWriter& out; id — const Identification& id
+ *  Returns     : void
+ */
 void encode_identification_choice(ByteWriter& out, const Identification& id) {
   switch (id.kind) {
     case Identification::Kind::Syntaxes: {
@@ -726,6 +1066,12 @@ void encode_identification_choice(ByteWriter& out, const Identification& id) {
   }
 }
 
+/**
+ *  Function    : decode_identification_choice
+ *  Description : Returns success or an error from decode identification choice.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<Identification>
+ */
 Result<Identification> decode_identification_choice(ByteReader& in) {
   auto hdr = decode_tlv_header(in);
   if (!hdr) {
@@ -920,6 +1266,12 @@ Result<std::vector<std::uint8_t>> decode_constructed_string_fragments(
       return hdr.error();
     }
     if (hdr.value().tag.cls != TagClass::Universal ||
+        /**
+         *  Function    : value
+         *  Description : Computes value from (none).
+         *  Parameters  : none
+         *  Returns     : hdr.value().tag.number != fragment_univ_tag || hdr.
+         */
         hdr.value().tag.number != fragment_univ_tag || hdr.value().tag.constructed) {
       return make_error(Error::Code::InvalidArgument, r.offset(),
                         "constructed string fragment must be primitive universal");
@@ -953,6 +1305,12 @@ Result<std::vector<std::uint8_t>> decode_implicit_string_component(
   return decode_constructed_string_fragments(in, hdr.length.value, fragment_univ_tag);
 }
 
+/**
+ *  Function    : decode_associated_pdv_body
+ *  Description : Returns success or an error from decode associated pdv body.
+ *  Parameters  : r — ByteReader& r
+ *  Returns     : Result<AssociatedPdvBody>
+ */
 Result<AssociatedPdvBody> decode_associated_pdv_body(ByteReader& r) {
   AssociatedPdvBody out;
   bool saw_ident = false;
@@ -1015,6 +1373,12 @@ Result<AssociatedPdvBody> decode_associated_pdv_body(ByteReader& r) {
 
 }  // namespace
 
+/**
+ *  Function    : encode_external
+ *  Description : Performs encode external (definition).
+ *  Parameters  : out — ByteWriter& out; value — const ExternalValue& value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_external(ByteWriter& out, const ExternalValue& value, Tag tag) {
   ByteWriter body;
   if (value.direct_reference) {
@@ -1056,6 +1420,12 @@ void encode_external(ByteWriter& out, const ExternalValue& value, Tag tag) {
   encode_tlv(out, outer, body.buffer());
 }
 
+/**
+ *  Function    : decode_external
+ *  Description : Returns success or an error from decode external.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<ExternalValue>
+ */
 Result<ExternalValue> decode_external(ByteReader& in, Tag expected) {
   Tag want = expected;
   want.constructed = true;
@@ -1133,6 +1503,12 @@ Result<ExternalValue> decode_external(ByteReader& in, Tag expected) {
   return out;
 }
 
+/**
+ *  Function    : encode_embedded_pdv
+ *  Description : Performs encode embedded pdv (definition).
+ *  Parameters  : out — ByteWriter& out; value — const EmbeddedPdvValue& value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_embedded_pdv(ByteWriter& out, const EmbeddedPdvValue& value, Tag tag) {
   ByteWriter body;
   encode_associated_pdv_body(body, value.identification, value.data_value_descriptor,
@@ -1143,6 +1519,12 @@ void encode_embedded_pdv(ByteWriter& out, const EmbeddedPdvValue& value, Tag tag
   encode_tlv(out, outer, body.buffer());
 }
 
+/**
+ *  Function    : decode_embedded_pdv
+ *  Description : Returns success or an error from decode embedded pdv.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<EmbeddedPdvValue>
+ */
 Result<EmbeddedPdvValue> decode_embedded_pdv(ByteReader& in, Tag expected) {
   Tag want = expected;
   want.constructed = true;
@@ -1162,6 +1544,12 @@ Result<EmbeddedPdvValue> decode_embedded_pdv(ByteReader& in, Tag expected) {
   return out;
 }
 
+/**
+ *  Function    : encode_character_string
+ *  Description : Performs encode character string (definition).
+ *  Parameters  : out — ByteWriter& out; value — const CharacterStringValue& value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_character_string(ByteWriter& out, const CharacterStringValue& value, Tag tag) {
   ByteWriter body;
   encode_associated_pdv_body(body, value.identification, value.data_value_descriptor,
@@ -1172,6 +1560,12 @@ void encode_character_string(ByteWriter& out, const CharacterStringValue& value,
   encode_tlv(out, outer, body.buffer());
 }
 
+/**
+ *  Function    : decode_character_string
+ *  Description : Returns success or an error from decode character string.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<CharacterStringValue>
+ */
 Result<CharacterStringValue> decode_character_string(ByteReader& in, Tag expected) {
   Tag want = expected;
   want.constructed = true;
@@ -1191,6 +1585,12 @@ Result<CharacterStringValue> decode_character_string(ByteReader& in, Tag expecte
   return out;
 }
 
+/**
+ *  Function    : encode_external_modern
+ *  Description : Performs encode external modern (definition).
+ *  Parameters  : out — ByteWriter& out; value — const ModernExternalValue& value; tag — Tag tag
+ *  Returns     : void
+ */
 void encode_external_modern(ByteWriter& out, const ModernExternalValue& value, Tag tag) {
   ByteWriter body;
   encode_associated_pdv_body(body, value.identification, value.data_value_descriptor,
@@ -1201,6 +1601,12 @@ void encode_external_modern(ByteWriter& out, const ModernExternalValue& value, T
   encode_tlv(out, outer, body.buffer());
 }
 
+/**
+ *  Function    : decode_external_modern
+ *  Description : Returns success or an error from decode external modern.
+ *  Parameters  : in — ByteReader& in; expected — Tag expected
+ *  Returns     : Result<ModernExternalValue>
+ */
 Result<ModernExternalValue> decode_external_modern(ByteReader& in, Tag expected) {
   Tag want = expected;
   want.constructed = true;

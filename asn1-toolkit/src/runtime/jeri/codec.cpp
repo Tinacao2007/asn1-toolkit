@@ -1,3 +1,24 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/jeri/codec.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   JERI canonical JSON encoding on top of JER.
+**
+** Specification: ITU-T X.697 — Canonical JSON Encoding Rules (JERI).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/jeri/codec.hpp>
 #include <asn1/runtime/byte_io.hpp>
 
@@ -7,6 +28,12 @@ namespace asn1 {
 namespace jeri {
 namespace {
 
+/**
+ *  Function    : bad
+ *  Description : Computes bad from (offset, message).
+ *  Parameters  : offset — std::size_t offset; message — std::string message
+ *  Returns     : Error
+ */
 Error bad(std::size_t offset, std::string message) {
   return make_error(Error::Code::InvalidArgument, offset, std::move(message));
 }
@@ -14,6 +41,12 @@ Error bad(std::size_t offset, std::string message) {
 constexpr char kBase64[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/**
+ *  Function    : base64_index
+ *  Description : Computes base64 index from (c).
+ *  Parameters  : c — char c
+ *  Returns     : int
+ */
 int base64_index(char c) {
   if (c >= 'A' && c <= 'Z') {
     return c - 'A';
@@ -73,6 +106,12 @@ std::pair<std::string, Value> named_member(const std::string& identifier, Value 
   return {transform_name(identifier, form, literal), std::move(encoding)};
 }
 
+/**
+ *  Function    : encode_base64
+ *  Description : Builds and returns a string for encode base64.
+ *  Parameters  : value — Span<const std::uint8_t> value
+ *  Returns     : std::string
+ */
 std::string encode_base64(Span<const std::uint8_t> value) {
   std::string out;
   out.reserve(((value.size() + 2) / 3) * 4);
@@ -104,6 +143,12 @@ std::string encode_base64(Span<const std::uint8_t> value) {
   return out;
 }
 
+/**
+ *  Function    : decode_base64
+ *  Description : Returns success or an error from decode base64.
+ *  Parameters  : text — const std::string& text
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_base64(const std::string& text) {
   std::string t;
   t.reserve(text.size());
@@ -149,10 +194,22 @@ Result<std::vector<std::uint8_t>> decode_base64(const std::string& text) {
   return out;
 }
 
+/**
+ *  Function    : encode_octet_string_base64
+ *  Description : Computes encode octet string base64 from (value).
+ *  Parameters  : value — Span<const std::uint8_t> value
+ *  Returns     : Value
+ */
 Value encode_octet_string_base64(Span<const std::uint8_t> value) {
   return Value::string(encode_base64(value));
 }
 
+/**
+ *  Function    : decode_octet_string_base64
+ *  Description : Returns success or an error from decode octet string base64.
+ *  Parameters  : v — const Value& v
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_octet_string_base64(const Value& v) {
   if (v.kind != ValueKind::String) {
     return bad(0, "JER BASE64 OCTET STRING expects JSON string");
@@ -163,6 +220,12 @@ Result<std::vector<std::uint8_t>> decode_octet_string_base64(const Value& v) {
   return decode_base64(v.string_value);
 }
 
+/**
+ *  Function    : encode_sequence_array
+ *  Description : Computes encode sequence array from (components, omit_trailing_nulls).
+ *  Parameters  : components — std::vector<Value> components; omit_trailing_nulls — bool omit_trailing_nulls
+ *  Returns     : Value
+ */
 Value encode_sequence_array(std::vector<Value> components, bool omit_trailing_nulls) {
   if (omit_trailing_nulls) {
     while (!components.empty() && components.back().kind == ValueKind::Null) {
@@ -172,6 +235,12 @@ Value encode_sequence_array(std::vector<Value> components, bool omit_trailing_nu
   return Value::make_array(std::move(components));
 }
 
+/**
+ *  Function    : decode_sequence_array
+ *  Description : Returns success or an error from decode sequence array.
+ *  Parameters  : v — const Value& v
+ *  Returns     : Result<const std::vector<Value>*>
+ */
 Result<const std::vector<Value>*> decode_sequence_array(const Value& v) {
   if (v.kind != ValueKind::Array) {
     return bad(0, "JER ARRAY SEQUENCE expects JSON array");
@@ -179,6 +248,12 @@ Result<const std::vector<Value>*> decode_sequence_array(const Value& v) {
   return &v.array;
 }
 
+/**
+ *  Function    : encode_set_of_object
+ *  Description : Computes encode set of object from (std::vector<std::pair<std::string, entries).
+ *  Parameters  : std::vector<std::pair<std::string — std::vector<std::pair<std::string; entries — Value>> entries
+ *  Returns     : Value
+ */
 Value encode_set_of_object(std::vector<std::pair<std::string, Value>> entries) {
   return Value::make_object(std::move(entries));
 }
@@ -219,10 +294,22 @@ Result<std::string> decode_enumerated_text(const Value& v,
   return bad(0, "JER TEXT ENUMERATED value not in enumeration: " + got);
 }
 
+/**
+ *  Function    : encode_choice_unwrapped
+ *  Description : Computes encode choice unwrapped from (alternative_encoding).
+ *  Parameters  : alternative_encoding — Value alternative_encoding
+ *  Returns     : Value
+ */
 Value encode_choice_unwrapped(Value alternative_encoding) {
   return alternative_encoding;
 }
 
+/**
+ *  Function    : decode_choice_unwrapped
+ *  Description : Returns success or an error from decode choice unwrapped.
+ *  Parameters  : v — const Value& v
+ *  Returns     : Result<const Value*>
+ */
 Result<const Value*> decode_choice_unwrapped(const Value& v) {
   return &v;
 }

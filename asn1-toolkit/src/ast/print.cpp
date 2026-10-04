@@ -1,3 +1,30 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/ast/print.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Pretty-prints parse-time AST (modules, type/value assignments,
+**   constraints,
+**   information object syntax) to a character stream for --dump-ast and
+**   tests.
+**   Reflects ASN.1 source structure only; does not encode or decode protocol
+**   data.
+**
+** Specification: ITU-T X.680 — ASN.1 abstract syntax (parse tree
+**                 produced/consumed here).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/ast/print.hpp>
 #include <asn1/ast/encoding.hpp>
 #include <asn1/ast/ioc.hpp>
@@ -10,8 +37,20 @@ namespace {
 
 class Printer : public Visitor {
  public:
+  /**
+   *  Function    : out_
+   *  Description : Computes out  from (out_(out).
+   *  Parameters  : out_(out — std::ostream& out) : out_(out
+   *  Returns     : explicit Printer(std::ostream& out) :
+   */
   explicit Printer(std::ostream& out) : out_(out) {}
 
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const Module& n
+   *  Returns     : void
+   */
   void visit(const Module& n) override {
     indent() << "Module " << n.name()
              << " tagDefault=" << tag_default_name(n.tag_default())
@@ -58,6 +97,12 @@ class Printer : public Visitor {
     --depth_;
   }
 
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const TypeAssignment& n
+   *  Returns     : void
+   */
   void visit(const TypeAssignment& n) override {
     indent() << "TypeAssignment " << n.name();
     if (!n.parameters().empty()) {
@@ -80,6 +125,12 @@ class Printer : public Visitor {
     --depth_;
   }
 
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ValueAssignment& n
+   *  Returns     : void
+   */
   void visit(const ValueAssignment& n) override {
     indent() << "ValueAssignment " << n.name() << '\n';
     ++depth_;
@@ -88,24 +139,48 @@ class Printer : public Visitor {
     --depth_;
   }
 
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ObjectClassAssignment& n
+   *  Returns     : void
+   */
   void visit(const ObjectClassAssignment& n) override {
     indent() << "ObjectClassAssignment " << n.name() << '\n';
     ++depth_;
     n.defn().accept(*this);
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ObjectAssignment& n
+   *  Returns     : void
+   */
   void visit(const ObjectAssignment& n) override {
     indent() << "ObjectAssignment " << n.name() << " class=" << n.class_name() << '\n';
     ++depth_;
     n.defn().accept(*this);
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ObjectSetAssignment& n
+   *  Returns     : void
+   */
   void visit(const ObjectSetAssignment& n) override {
     indent() << "ObjectSetAssignment " << n.name() << " class=" << n.class_name() << '\n';
     ++depth_;
     n.defn().accept(*this);
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const FieldSpec& n
+   *  Returns     : void
+   */
   void visit(const FieldSpec& n) override {
     indent() << "FieldSpec &" << n.name()
              << (n.kind() == FieldSpecKind::TypeField ? " TypeField" : " ValueField");
@@ -122,6 +197,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ObjectClassDefn& n
+   *  Returns     : void
+   */
   void visit(const ObjectClassDefn& n) override {
     indent() << "ObjectClassDefn\n";
     ++depth_;
@@ -137,6 +218,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ObjectDefn& n
+   *  Returns     : void
+   */
   void visit(const ObjectDefn& n) override {
     indent() << "ObjectDefn\n";
     ++depth_;
@@ -153,6 +240,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ObjectSetDefn& n
+   *  Returns     : void
+   */
   void visit(const ObjectSetDefn& n) override {
     indent() << "ObjectSetDefn" << (n.extensible() ? " extensible" : "") << '\n';
     ++depth_;
@@ -166,10 +259,22 @@ class Printer : public Visitor {
     --depth_;
   }
 
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const BooleanType& n
+   *  Returns     : void
+   */
   void visit(const BooleanType& n) override {
     type_line("BooleanType", n);
     print_constraint(n);
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const IntegerType& n
+   *  Returns     : void
+   */
   void visit(const IntegerType& n) override {
     type_line("IntegerType", n);
     ++depth_;
@@ -182,6 +287,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const BitStringType& n
+   *  Returns     : void
+   */
   void visit(const BitStringType& n) override {
     type_line("BitStringType", n);
     ++depth_;
@@ -193,17 +304,41 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const OctetStringType& n
+   *  Returns     : void
+   */
   void visit(const OctetStringType& n) override {
     type_line("OctetStringType", n);
     print_constraint(n);
   }
+  /**
+   *  Function    : type_line
+   *  Description : Performs type line (definition).
+   *  Parameters  : type_line("NullType" — const NullType& n) override { type_line("NullType"; n — n
+   *  Returns     : void visit(const NullType& n) override {
+   */
   void visit(const NullType& n) override { type_line("NullType", n); }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const StringType& n
+   *  Returns     : void
+   */
   void visit(const StringType& n) override {
     indent() << "StringType " << string_kind_name(n.kind());
     print_tag(n);
     out_ << '\n';
     print_constraint(n);
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const SequenceType& n
+   *  Returns     : void
+   */
   void visit(const SequenceType& n) override {
     type_line("SequenceType", n);
     ++depth_;
@@ -215,6 +350,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ChoiceType& n
+   *  Returns     : void
+   */
   void visit(const ChoiceType& n) override {
     type_line("ChoiceType", n);
     ++depth_;
@@ -223,6 +364,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const SequenceOfType& n
+   *  Returns     : void
+   */
   void visit(const SequenceOfType& n) override {
     type_line("SequenceOfType", n);
     ++depth_;
@@ -232,6 +379,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const SetType& n
+   *  Returns     : void
+   */
   void visit(const SetType& n) override {
     type_line("SetType", n);
     ++depth_;
@@ -243,6 +396,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const SetOfType& n
+   *  Returns     : void
+   */
   void visit(const SetOfType& n) override {
     type_line("SetOfType", n);
     ++depth_;
@@ -252,6 +411,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const EnumeratedType& n
+   *  Returns     : void
+   */
   void visit(const EnumeratedType& n) override {
     type_line("EnumeratedType", n);
     ++depth_;
@@ -277,35 +442,83 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ObjectIdentifierType& n
+   *  Returns     : void
+   */
   void visit(const ObjectIdentifierType& n) override {
     type_line("ObjectIdentifierType", n);
     print_constraint(n);
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const RelativeOidType& n
+   *  Returns     : void
+   */
   void visit(const RelativeOidType& n) override {
     type_line("RelativeOidType", n);
     print_constraint(n);
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const RealType& n
+   *  Returns     : void
+   */
   void visit(const RealType& n) override {
     type_line("RealType", n);
     print_constraint(n);
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ExternalType& n
+   *  Returns     : void
+   */
   void visit(const ExternalType& n) override {
     type_line("ExternalType", n);
     print_constraint(n);
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const EmbeddedPdvType& n
+   *  Returns     : void
+   */
   void visit(const EmbeddedPdvType& n) override {
     type_line("EmbeddedPdvType", n);
     print_constraint(n);
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const CharacterStringType& n
+   *  Returns     : void
+   */
   void visit(const CharacterStringType& n) override {
     type_line("CharacterStringType", n);
     print_constraint(n);
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const InstanceOfType& n
+   *  Returns     : void
+   */
   void visit(const InstanceOfType& n) override {
     type_line("InstanceOfType", n);
     indent() << "className " << n.class_name() << '\n';
     print_constraint(n);
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ReferencedType& n
+   *  Returns     : void
+   */
   void visit(const ReferencedType& n) override {
     indent() << "ReferencedType ";
     if (n.module()) {
@@ -347,6 +560,12 @@ class Printer : public Visitor {
     --depth_;
     print_constraint(n);
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ObjectClassFieldType& n
+   *  Returns     : void
+   */
   void visit(const ObjectClassFieldType& n) override {
     indent() << "ObjectClassFieldType " << n.class_name() << ".&" << n.field_name();
     print_tag(n);
@@ -354,6 +573,12 @@ class Printer : public Visitor {
     print_constraint(n);
   }
 
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const Component& n
+   *  Returns     : void
+   */
   void visit(const Component& n) override {
     indent() << "Component " << n.name() << ' ' << presence_name(n.presence()) << '\n';
     ++depth_;
@@ -364,8 +589,20 @@ class Printer : public Visitor {
     --depth_;
   }
 
+  /**
+   *  Function    : indent
+   *  Description : Performs indent (definition).
+   *  Parameters  : indent( — const ExtensionMarker&) override { indent(
+   *  Returns     : void visit(const ExtensionMarker&) override {
+   */
   void visit(const ExtensionMarker&) override { indent() << "ExtensionMarker\n"; }
 
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const VersionAdditionGroup& n
+   *  Returns     : void
+   */
   void visit(const VersionAdditionGroup& n) override {
     indent() << "VersionAdditionGroup\n";
     ++depth_;
@@ -375,6 +612,12 @@ class Printer : public Visitor {
     --depth_;
   }
 
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ValueRangeConstraint& n
+   *  Returns     : void
+   */
   void visit(const ValueRangeConstraint& n) override {
     indent() << "ValueRangeConstraint\n";
     ++depth_;
@@ -390,18 +633,36 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const SingleValueConstraint& n
+   *  Returns     : void
+   */
   void visit(const SingleValueConstraint& n) override {
     indent() << "SingleValueConstraint\n";
     ++depth_;
     n.value().accept(*this);
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const SizeConstraint& n
+   *  Returns     : void
+   */
   void visit(const SizeConstraint& n) override {
     indent() << "SizeConstraint\n";
     ++depth_;
     n.inner().accept(*this);
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const UnionConstraint& n
+   *  Returns     : void
+   */
   void visit(const UnionConstraint& n) override {
     indent() << "UnionConstraint\n";
     ++depth_;
@@ -410,6 +671,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const IntersectionConstraint& n
+   *  Returns     : void
+   */
   void visit(const IntersectionConstraint& n) override {
     indent() << "IntersectionConstraint\n";
     ++depth_;
@@ -418,6 +685,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ExtensibleConstraint& n
+   *  Returns     : void
+   */
   void visit(const ExtensibleConstraint& n) override {
     indent() << "ExtensibleConstraint\n";
     ++depth_;
@@ -426,6 +699,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ContentsConstraint& n
+   *  Returns     : void
+   */
   void visit(const ContentsConstraint& n) override {
     indent() << "ContentsConstraint\n";
     ++depth_;
@@ -443,6 +722,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const WithComponentsConstraint& n
+   *  Returns     : void
+   */
   void visit(const WithComponentsConstraint& n) override {
     indent() << "WithComponentsConstraint\n";
     ++depth_;
@@ -464,6 +749,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const TableConstraint& n
+   *  Returns     : void
+   */
   void visit(const TableConstraint& n) override {
     indent() << "TableConstraint";
     if (!n.object_set_name().empty()) {
@@ -476,6 +767,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ComponentRelationConstraint& n
+   *  Returns     : void
+   */
   void visit(const ComponentRelationConstraint& n) override {
     indent() << "ComponentRelationConstraint";
     if (!n.object_set_name().empty()) {
@@ -492,28 +789,70 @@ class Printer : public Visitor {
     --depth_;
   }
 
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const IntegerValue& n
+   *  Returns     : void
+   */
   void visit(const IntegerValue& n) override {
     indent() << "IntegerValue " << (n.negative() ? "-" : "") << n.text() << '\n';
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const BooleanValue& n
+   *  Returns     : void
+   */
   void visit(const BooleanValue& n) override {
     indent() << "BooleanValue " << (n.value() ? "TRUE" : "FALSE") << '\n';
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const StringValue& n
+   *  Returns     : void
+   */
   void visit(const StringValue& n) override {
     indent() << "StringValue " << n.text() << '\n';
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const BitOrOctetValue& n
+   *  Returns     : void
+   */
   void visit(const BitOrOctetValue& n) override {
     indent() << (n.kind() == BitOrOctetKind::Binary ? "BinaryValue " : "HexValue ")
              << n.text() << '\n';
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ValueReference& n
+   *  Returns     : void
+   */
   void visit(const ValueReference& n) override {
     indent() << "ValueReference " << n.name() << '\n';
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const NamedValue& n
+   *  Returns     : void
+   */
   void visit(const NamedValue& n) override {
     indent() << "NamedValue " << n.name() << '\n';
     ++depth_;
     n.value().accept(*this);
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const NamedValueList& n
+   *  Returns     : void
+   */
   void visit(const NamedValueList& n) override {
     indent() << "NamedValueList\n";
     ++depth_;
@@ -522,6 +861,12 @@ class Printer : public Visitor {
     }
     --depth_;
   }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : n — const ObjectIdentifierValue& n
+   *  Returns     : void
+   */
   void visit(const ObjectIdentifierValue& n) override {
     indent() << "ObjectIdentifierValue";
     for (const auto& a : n.arcs()) {
@@ -541,6 +886,12 @@ class Printer : public Visitor {
   }
 
  private:
+  /**
+   *  Function    : indent
+   *  Description : Computes indent from (none).
+   *  Parameters  : none
+   *  Returns     : std::ostream&
+   */
   std::ostream& indent() {
     for (int i = 0; i < depth_; ++i) {
       out_ << "  ";
@@ -548,6 +899,12 @@ class Printer : public Visitor {
     return out_;
   }
 
+  /**
+   *  Function    : tag_default_name
+   *  Description : Computes tag default name from (d).
+   *  Parameters  : d — TagDefault d
+   *  Returns     : static const char*
+   */
   static const char* tag_default_name(TagDefault d) {
     switch (d) {
       case TagDefault::Explicit:
@@ -560,6 +917,12 @@ class Printer : public Visitor {
     return "?";
   }
 
+  /**
+   *  Function    : presence_name
+   *  Description : Computes presence name from (p).
+   *  Parameters  : p — Presence p
+   *  Returns     : static const char*
+   */
   static const char* presence_name(Presence p) {
     switch (p) {
       case Presence::Mandatory:
@@ -572,6 +935,12 @@ class Printer : public Visitor {
     return "?";
   }
 
+  /**
+   *  Function    : string_kind_name
+   *  Description : Computes string kind name from (k).
+   *  Parameters  : k — StringKind k
+   *  Returns     : static const char*
+   */
   static const char* string_kind_name(StringKind k) {
     switch (k) {
       case StringKind::UTF8String:
@@ -604,6 +973,12 @@ class Printer : public Visitor {
     return "?";
   }
 
+  /**
+   *  Function    : print_tag
+   *  Description : Performs print tag (definition).
+   *  Parameters  : n — const Type& n
+   *  Returns     : void
+   */
   void print_tag(const Type& n) {
     if (!n.tag()) {
       return;
@@ -629,6 +1004,12 @@ class Printer : public Visitor {
     }
   }
 
+  /**
+   *  Function    : ei_kind_brief
+   *  Description : Computes ei kind brief from (k).
+   *  Parameters  : k — EncodingInstructionKind k
+   *  Returns     : static const char*
+   */
   static const char* ei_kind_brief(EncodingInstructionKind k) {
     switch (k) {
       case EncodingInstructionKind::Array:
@@ -657,6 +1038,12 @@ class Printer : public Visitor {
     return "?";
   }
 
+  /**
+   *  Function    : print_encoding_instructions
+   *  Description : Performs print encoding instructions (definition).
+   *  Parameters  : n — const Type& n
+   *  Returns     : void
+   */
   void print_encoding_instructions(const Type& n) {
     if (n.encoding_instructions().empty()) {
       return;
@@ -668,6 +1055,12 @@ class Printer : public Visitor {
     out_ << '\n';
   }
 
+  /**
+   *  Function    : type_line
+   *  Description : Performs type line (definition).
+   *  Parameters  : name — const char* name; n — const Type& n
+   *  Returns     : void
+   */
   void type_line(const char* name, const Type& n) {
     indent() << name;
     print_tag(n);
@@ -675,6 +1068,12 @@ class Printer : public Visitor {
     print_encoding_instructions(n);
   }
 
+  /**
+   *  Function    : print_constraint
+   *  Description : Performs print constraint (definition).
+   *  Parameters  : n — const Type& n
+   *  Returns     : void
+   */
   void print_constraint(const Type& n) {
     if (!n.constraint()) {
       return;
@@ -690,11 +1089,23 @@ class Printer : public Visitor {
 
 }  // namespace
 
+/**
+ *  Function    : print
+ *  Description : Performs print (definition).
+ *  Parameters  : out — std::ostream& out; module — const Module& module
+ *  Returns     : void
+ */
 void print(std::ostream& out, const Module& module) {
   Printer p(out);
   module.accept(p);
 }
 
+/**
+ *  Function    : to_string
+ *  Description : Builds and returns a string for to string.
+ *  Parameters  : module — const Module& module
+ *  Returns     : std::string
+ */
 std::string to_string(const Module& module) {
   std::ostringstream oss;
   print(oss, module);

@@ -1,3 +1,26 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/ir/print.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Pretty-prints lowered type IR (arena types, constraints, tags) for
+**   --dump-ir.
+**
+** Specification: Internal type IR (lowering target for X.680/X.681
+**                 constructs; not a wire standard).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/ir/print.hpp>
 
 #include <sstream>
@@ -6,6 +29,12 @@ namespace asn1 {
 namespace ir {
 namespace {
 
+/**
+ *  Function    : tag_class_name
+ *  Description : Computes tag class name from (c).
+ *  Parameters  : c — TagClass c
+ *  Returns     : const char*
+ */
 const char* tag_class_name(TagClass c) {
   switch (c) {
     case TagClass::Universal:
@@ -20,6 +49,12 @@ const char* tag_class_name(TagClass c) {
   return "?";
 }
 
+/**
+ *  Function    : kind_name
+ *  Description : Computes kind name from (k).
+ *  Parameters  : k — TypeKind k
+ *  Returns     : const char*
+ */
 const char* kind_name(TypeKind k) {
   switch (k) {
     case TypeKind::Boolean:
@@ -62,6 +97,12 @@ const char* kind_name(TypeKind k) {
   return "?";
 }
 
+/**
+ *  Function    : presence_name
+ *  Description : Computes presence name from (p).
+ *  Parameters  : p — Presence p
+ *  Returns     : const char*
+ */
 const char* presence_name(Presence p) {
   switch (p) {
     case Presence::Mandatory:
@@ -74,11 +115,23 @@ const char* presence_name(Presence p) {
   return "?";
 }
 
+/**
+ *  Function    : print_tag
+ *  Description : Performs print tag (definition).
+ *  Parameters  : out — std::ostream& out; t — const Tag& t
+ *  Returns     : void
+ */
 void print_tag(std::ostream& out, const Tag& t) {
   out << '[' << tag_class_name(t.cls) << ' ' << t.number << ']'
       << (t.is_explicit ? " EXPLICIT" : " IMPLICIT");
 }
 
+/**
+ *  Function    : print_constraint
+ *  Description : Performs print constraint (definition).
+ *  Parameters  : out — std::ostream& out; c — const ConstraintDesc& c; depth — int depth
+ *  Returns     : void
+ */
 void print_constraint(std::ostream& out, const ConstraintDesc& c, int depth) {
   if (c.root_ranges.empty() && !c.lower && !c.upper && !c.extensible && !c.is_size &&
       !c.empty) {
@@ -152,6 +205,12 @@ void print_constraint(std::ostream& out, const ConstraintDesc& c, int depth) {
   out << '\n';
 }
 
+/**
+ *  Function    : print_exer_flags
+ *  Description : Performs print exer flags (definition).
+ *  Parameters  : out — std::ostream& out; exer — const ExerEncoding& exer; depth — int depth
+ *  Returns     : void
+ */
 void print_exer_flags(std::ostream& out, const ExerEncoding& exer, int depth) {
   if (!exer.attribute && !exer.base64 && !exer.text && !exer.use_number && !exer.list &&
       !exer.untagged && !exer.use_nil) {
@@ -185,6 +244,12 @@ void print_exer_flags(std::ostream& out, const ExerEncoding& exer, int depth) {
   out << '\n';
 }
 
+/**
+ *  Function    : print_jer_flags
+ *  Description : Performs print jer flags (definition).
+ *  Parameters  : out — std::ostream& out; jer — const JerEncoding& jer; depth — int depth
+ *  Returns     : void
+ */
 void print_jer_flags(std::ostream& out, const JerEncoding& jer, int depth) {
   if (!jer.array && !jer.base64 && !jer.object && !jer.unwrapped &&
       jer.text_form == JerEncoding::TextForm::AsIs) {
@@ -212,6 +277,12 @@ void print_jer_flags(std::ostream& out, const JerEncoding& jer, int depth) {
   out << '\n';
 }
 
+/**
+ *  Function    : print_field
+ *  Description : Performs print field (definition).
+ *  Parameters  : out — std::ostream& out; f — const Field& f; depth — int depth
+ *  Returns     : void
+ */
 void print_field(std::ostream& out, const Field& f, int depth) {
   for (int i = 0; i < depth; ++i) {
     out << "  ";
@@ -234,6 +305,12 @@ void print_field(std::ostream& out, const Field& f, int depth) {
   out << '\n';
 }
 
+/**
+ *  Function    : print_type
+ *  Description : Performs print type (definition).
+ *  Parameters  : out — std::ostream& out; arena — const TypeArena& arena; id — TypeId id; depth — int depth
+ *  Returns     : void
+ */
 void print_type(std::ostream& out, const TypeArena& arena, TypeId id, int depth) {
   const Type& t = arena.get(id);
   for (int i = 0; i < depth; ++i) {
@@ -429,6 +506,12 @@ void print_type(std::ostream& out, const TypeArena& arena, TypeId id, int depth)
 
 }  // namespace
 
+/**
+ *  Function    : print
+ *  Description : Performs print (definition).
+ *  Parameters  : out — std::ostream& out; model — const Model& model
+ *  Returns     : void
+ */
 void print(std::ostream& out, const Model& model) {
   for (const auto& mod : model.modules) {
     out << "Module " << mod.name << " tagDefault=";
@@ -456,6 +539,12 @@ void print(std::ostream& out, const Model& model) {
   }
 }
 
+/**
+ *  Function    : to_string
+ *  Description : Builds and returns a string for to string.
+ *  Parameters  : model — const Model& model
+ *  Returns     : std::string
+ */
 std::string to_string(const Model& model) {
   std::ostringstream oss;
   print(oss, model);

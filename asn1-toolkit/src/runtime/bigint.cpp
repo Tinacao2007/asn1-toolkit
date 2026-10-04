@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/bigint.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   BigInteger parse, compare, and encode/decode decimal text.
+**
+** Specification: ITU-T X.680 INTEGER type; unconstrained encoding as
+**                 used by BER/PER/OER callers.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/bigint.hpp>
 #include <asn1/runtime/byte_io.hpp>
 
@@ -8,12 +30,24 @@
 namespace asn1 {
 namespace {
 
+/**
+ *  Function    : bad_arg
+ *  Description : Computes bad arg from (message).
+ *  Parameters  : message — std::string message
+ *  Returns     : Error
+ */
 Error bad_arg(std::string message) {
   return make_error(Error::Code::InvalidArgument, 0, std::move(message));
 }
 
 }  // namespace
 
+/**
+ *  Function    : normalize
+ *  Description : Performs normalize (definition).
+ *  Parameters  : none
+ *  Returns     : void BigInteger::
+ */
 void BigInteger::normalize() {
   while (!limbs_.empty() && limbs_.back() == 0) {
     limbs_.pop_back();
@@ -25,6 +59,12 @@ void BigInteger::normalize() {
 
 BigInteger BigInteger::zero() { return BigInteger{}; }
 
+/**
+ *  Function    : from_i64
+ *  Description : Computes from i64 from (value).
+ *  Parameters  : value — std::int64_t value
+ *  Returns     : BigInteger BigInteger::
+ */
 BigInteger BigInteger::from_i64(std::int64_t value) {
   if (value == 0) {
     return zero();
@@ -52,6 +92,12 @@ BigInteger BigInteger::from_i64(std::int64_t value) {
   return b;
 }
 
+/**
+ *  Function    : from_u64
+ *  Description : Computes from u64 from (value).
+ *  Parameters  : value — std::uint64_t value
+ *  Returns     : BigInteger BigInteger::
+ */
 BigInteger BigInteger::from_u64(std::uint64_t value) {
   if (value == 0) {
     return zero();
@@ -65,6 +111,12 @@ BigInteger BigInteger::from_u64(std::uint64_t value) {
   return b;
 }
 
+/**
+ *  Function    : mul_add_u32
+ *  Description : Performs mul add u32 (definition).
+ *  Parameters  : mul — std::uint32_t mul; add — std::uint32_t add
+ *  Returns     : void BigInteger::
+ */
 void BigInteger::mul_add_u32(std::uint32_t mul, std::uint32_t add) {
   std::uint64_t carry = add;
   for (std::size_t i = 0; i < limbs_.size(); ++i) {
@@ -78,6 +130,12 @@ void BigInteger::mul_add_u32(std::uint32_t mul, std::uint32_t add) {
   }
 }
 
+/**
+ *  Function    : div_mod_u32
+ *  Description : Computes div mod u32 from (divisor).
+ *  Parameters  : divisor — std::uint32_t divisor
+ *  Returns     : std::uint32_t BigInteger::
+ */
 std::uint32_t BigInteger::div_mod_u32(std::uint32_t divisor) {
   std::uint64_t rem = 0;
   for (std::size_t i = limbs_.size(); i-- > 0;) {
@@ -89,6 +147,12 @@ std::uint32_t BigInteger::div_mod_u32(std::uint32_t divisor) {
   return static_cast<std::uint32_t>(rem);
 }
 
+/**
+ *  Function    : from_decimal
+ *  Description : Returns success or an error from from decimal.
+ *  Parameters  : text — std::string_view text
+ *  Returns     : Result<BigInteger> BigInteger::
+ */
 Result<BigInteger> BigInteger::from_decimal(std::string_view text) {
   if (text.empty()) {
     return bad_arg("empty INTEGER decimal");
@@ -121,6 +185,12 @@ Result<BigInteger> BigInteger::from_decimal(std::string_view text) {
   return b;
 }
 
+/**
+ *  Function    : magnitude_be
+ *  Description : Computes magnitude be from (none).
+ *  Parameters  : none
+ *  Returns     : std::vector<std::uint8_t> BigInteger::
+ */
 std::vector<std::uint8_t> BigInteger::magnitude_be() const {
   if (limbs_.empty()) {
     return {0};
@@ -142,6 +212,12 @@ std::vector<std::uint8_t> BigInteger::magnitude_be() const {
                                    out.end());
 }
 
+/**
+ *  Function    : from_unsigned_bytes
+ *  Description : Returns success or an error from from unsigned bytes.
+ *  Parameters  : bytes — Span<const std::uint8_t> bytes
+ *  Returns     : Result<BigInteger> BigInteger::
+ */
 Result<BigInteger> BigInteger::from_unsigned_bytes(Span<const std::uint8_t> bytes) {
   if (bytes.empty()) {
     return bad_arg("unsigned INTEGER content empty");
@@ -157,6 +233,12 @@ Result<BigInteger> BigInteger::from_unsigned_bytes(Span<const std::uint8_t> byte
   return b;
 }
 
+/**
+ *  Function    : from_twos_complement
+ *  Description : Returns success or an error from from twos complement.
+ *  Parameters  : bytes — Span<const std::uint8_t> bytes
+ *  Returns     : Result<BigInteger> BigInteger::
+ */
 Result<BigInteger> BigInteger::from_twos_complement(Span<const std::uint8_t> bytes) {
   if (bytes.empty()) {
     return bad_arg("INTEGER content must not be empty");
@@ -182,6 +264,12 @@ Result<BigInteger> BigInteger::from_twos_complement(Span<const std::uint8_t> byt
   return abs;
 }
 
+/**
+ *  Function    : to_twos_complement
+ *  Description : Computes to twos complement from (none).
+ *  Parameters  : none
+ *  Returns     : std::vector<std::uint8_t> BigInteger::
+ */
 std::vector<std::uint8_t> BigInteger::to_twos_complement() const {
   if (is_zero()) {
     return {0};
@@ -217,8 +305,20 @@ Result<std::vector<std::uint8_t>> BigInteger::to_unsigned_bytes() const {
   return magnitude_be();
 }
 
+/**
+ *  Function    : empty
+ *  Description : Returns a boolean result from limbs_.empty(.
+ *  Parameters  : limbs_.empty( — ) const noexcept { return limbs_.empty(
+ *  Returns     : bool BigInteger::is_zero() const noexcept { return limbs_.
+ */
 bool BigInteger::is_zero() const noexcept { return limbs_.empty(); }
 
+/**
+ *  Function    : as_i64
+ *  Description : Computes as i64 from (none).
+ *  Parameters  : none
+ *  Returns     : std::optional<std::int64_t> BigInteger::
+ */
 std::optional<std::int64_t> BigInteger::as_i64() const {
   if (limbs_.empty()) {
     return 0;
@@ -247,6 +347,12 @@ std::optional<std::int64_t> BigInteger::as_i64() const {
   return -static_cast<std::int64_t>(mag);
 }
 
+/**
+ *  Function    : as_u64
+ *  Description : Computes as u64 from (none).
+ *  Parameters  : none
+ *  Returns     : std::optional<std::uint64_t> BigInteger::
+ */
 std::optional<std::uint64_t> BigInteger::as_u64() const {
   if (negative_) {
     return std::nullopt;
@@ -264,6 +370,12 @@ std::optional<std::uint64_t> BigInteger::as_u64() const {
   return mag;
 }
 
+/**
+ *  Function    : to_decimal
+ *  Description : Builds and returns a string for to decimal.
+ *  Parameters  : none
+ *  Returns     : std::string BigInteger::
+ */
 std::string BigInteger::to_decimal() const {
   if (is_zero()) {
     return "0";
@@ -282,6 +394,12 @@ std::string BigInteger::to_decimal() const {
   return digits;
 }
 
+/**
+ *  Function    : compare_mag
+ *  Description : Computes compare mag from (a, b).
+ *  Parameters  : a — const BigInteger& a; b — const BigInteger& b
+ *  Returns     : int BigInteger::
+ */
 int BigInteger::compare_mag(const BigInteger& a, const BigInteger& b) {
   if (a.limbs_.size() != b.limbs_.size()) {
     return a.limbs_.size() < b.limbs_.size() ? -1 : 1;
@@ -294,6 +412,12 @@ int BigInteger::compare_mag(const BigInteger& a, const BigInteger& b) {
   return 0;
 }
 
+/**
+ *  Function    : compare
+ *  Description : Computes compare from (other).
+ *  Parameters  : other — const BigInteger& other
+ *  Returns     : int BigInteger::
+ */
 int BigInteger::compare(const BigInteger& other) const {
   if (is_zero() && other.is_zero()) {
     return 0;

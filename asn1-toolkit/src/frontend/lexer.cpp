@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/frontend/lexer.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Hand-written lexer for ASN.1 lexical syntax (X.680 clause 12).
+**
+** Specification: ITU-T X.680 — ASN.1 abstract syntax (lexical and
+**                 syntactic notation).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/frontend/lexer.hpp>
 
 #include <cctype>
@@ -7,26 +29,68 @@
 namespace asn1 {
 namespace {
 
+/**
+ *  Function    : is_letter
+ *  Description : Returns whether letter holds for the given inputs.
+ *  Parameters  : c — char c
+ *  Returns     : bool
+ */
 bool is_letter(char c) {
   return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 }
 
+/**
+ *  Function    : is_digit
+ *  Description : Returns whether digit holds for the given inputs.
+ *  Parameters  : c — char c
+ *  Returns     : bool
+ */
 bool is_digit(char c) { return c >= '0' && c <= '9'; }
 
+/**
+ *  Function    : is_hex_digit
+ *  Description : Returns whether hex digit holds for the given inputs.
+ *  Parameters  : c — char c
+ *  Returns     : bool
+ */
 bool is_hex_digit(char c) {
   return is_digit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
 }
 
+/**
+ *  Function    : is_binary_digit
+ *  Description : Returns whether binary digit holds for the given inputs.
+ *  Parameters  : c — char c
+ *  Returns     : bool
+ */
 bool is_binary_digit(char c) { return c == '0' || c == '1'; }
 
+/**
+ *  Function    : is_whitespace
+ *  Description : Returns whether whitespace holds for the given inputs.
+ *  Parameters  : c — char c
+ *  Returns     : bool
+ */
 bool is_whitespace(char c) {
   return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v';
 }
 
 // ASN.1 typereference / identifier body: letters, digits, hyphen;
 // hyphen not first, not last, and not consecutive (validated while scanning).
+/**
+ *  Function    : is_digit
+ *  Description : Returns whether digit holds for the given inputs.
+ *  Parameters  : is_digit(c — char c) { return is_letter(c) || is_digit(c
+ *  Returns     : bool is_name_continue(char c) { return is_letter(c) ||
+ */
 bool is_name_continue(char c) { return is_letter(c) || is_digit(c) || c == '-'; }
 
+/**
+ *  Function    : keyword_map
+ *  Description : Builds and returns a string for keyword map.
+ *  Parameters  : none
+ *  Returns     : const std::unordered_map<std::string_view, TokenKind>&
+ */
 const std::unordered_map<std::string_view, TokenKind>& keyword_map() {
   static const std::unordered_map<std::string_view, TokenKind> kMap = {
       {"ABSENT", TokenKind::KwABSENT},
@@ -137,6 +201,12 @@ const std::unordered_map<std::string_view, TokenKind>& keyword_map() {
 Lexer::Lexer(const SourceFile& file, Diagnostics& diagnostics)
     : file_(file), diagnostics_(diagnostics) {}
 
+/**
+ *  Function    : peek
+ *  Description : Computes peek from (ahead).
+ *  Parameters  : ahead — std::size_t ahead
+ *  Returns     : char Lexer::
+ */
 char Lexer::peek(std::size_t ahead) const {
   const std::size_t i = pos_ + ahead;
   if (i >= file_.size()) {
@@ -145,6 +215,12 @@ char Lexer::peek(std::size_t ahead) const {
   return file_.text()[i];
 }
 
+/**
+ *  Function    : get
+ *  Description : Computes get from (none).
+ *  Parameters  : none
+ *  Returns     : char Lexer::
+ */
 char Lexer::get() {
   if (eof()) {
     return '\0';
@@ -152,6 +228,12 @@ char Lexer::get() {
   return file_.text()[pos_++];
 }
 
+/**
+ *  Function    : size
+ *  Description : Returns a boolean result from >.
+ *  Parameters  : > — ) const { return pos_ >
+ *  Returns     : bool Lexer::eof() const { return pos_ >= file_.
+ */
 bool Lexer::eof() const { return pos_ >= file_.size(); }
 
 Token Lexer::make(TokenKind kind, std::size_t begin, std::size_t end) const {
@@ -162,6 +244,12 @@ Token Lexer::make(TokenKind kind, std::size_t begin, std::size_t end) const {
   return tok;
 }
 
+/**
+ *  Function    : try_skip_comment
+ *  Description : Returns a boolean result from none.
+ *  Parameters  : none
+ *  Returns     : bool Lexer::
+ */
 bool Lexer::try_skip_comment() {
   // Comment starts with "--" and ends at the next "--" or end of line.
   if (peek() != '-' || peek(1) != '-') {
@@ -182,6 +270,12 @@ bool Lexer::try_skip_comment() {
   return true;
 }
 
+/**
+ *  Function    : skip_whitespace_and_comments
+ *  Description : Performs skip whitespace and comments (definition).
+ *  Parameters  : none
+ *  Returns     : void Lexer::
+ */
 void Lexer::skip_whitespace_and_comments() {
   while (!eof()) {
     if (is_whitespace(peek())) {
@@ -195,6 +289,12 @@ void Lexer::skip_whitespace_and_comments() {
   }
 }
 
+/**
+ *  Function    : lex_identifier_or_keyword
+ *  Description : Computes lex identifier or keyword from (none).
+ *  Parameters  : none
+ *  Returns     : Token Lexer::
+ */
 Token Lexer::lex_identifier_or_keyword() {
   const std::size_t begin = pos_;
   const char first = get();
@@ -240,6 +340,12 @@ Token Lexer::lex_identifier_or_keyword() {
   return make(TokenKind::Identifier, begin, end);
 }
 
+/**
+ *  Function    : lex_number
+ *  Description : Computes lex number from (none).
+ *  Parameters  : none
+ *  Returns     : Token Lexer::
+ */
 Token Lexer::lex_number() {
   const std::size_t begin = pos_;
   while (is_digit(peek())) {
@@ -278,6 +384,12 @@ Token Lexer::lex_number() {
   return make(is_real ? TokenKind::RealNumber : TokenKind::Number, begin, pos_);
 }
 
+/**
+ *  Function    : lex_quoted_string
+ *  Description : Computes lex quoted string from (none).
+ *  Parameters  : none
+ *  Returns     : Token Lexer::
+ */
 Token Lexer::lex_quoted_string() {
   const std::size_t begin = pos_;
   get();  // opening '
@@ -336,6 +448,12 @@ Token Lexer::lex_quoted_string() {
   return make(TokenKind::Invalid, begin, pos_);
 }
 
+/**
+ *  Function    : lex_punctuation
+ *  Description : Computes lex punctuation from (none).
+ *  Parameters  : none
+ *  Returns     : Token Lexer::
+ */
 Token Lexer::lex_punctuation() {
   const std::size_t begin = pos_;
   const char c = peek();
@@ -411,6 +529,12 @@ Token Lexer::lex_punctuation() {
   return make(TokenKind::Invalid, begin, pos_);
 }
 
+/**
+ *  Function    : next
+ *  Description : Computes next from (none).
+ *  Parameters  : none
+ *  Returns     : Token Lexer::
+ */
 Token Lexer::next() {
   skip_whitespace_and_comments();
   if (eof()) {

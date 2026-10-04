@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/include/asn1/common/span.hpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   Span<T> non-owning buffer view (C++17 replacement for std::span).
+**
+** Specification: No external protocol; C++ infrastructure shared by
+**                 compiler and runtime.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #pragma once
 
 #include <cstddef>
@@ -52,6 +74,12 @@ class Span {
     const size_type remaining = size_ > offset ? size_ - offset : 0;
     const size_type n =
         (count == static_cast<size_type>(-1) || count > remaining) ? remaining : count;
+    /**
+     *  Function    : +
+     *  Description : Computes + from (size_), n).
+     *  Parameters  : size_) — data_ + (offset < size_ ? offset : size_); n — n
+     *  Returns     : return Span(data_
+     */
     return Span(data_ + (offset < size_ ? offset : size_), n);
   }
 

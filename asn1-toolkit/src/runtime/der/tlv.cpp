@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/der/tlv.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   DER TLV canonicalization utilities.
+**
+** Specification: ITU-T X.690 — Distinguished Encoding Rules (DER),
+**                 canonical BER subset.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/der/tlv.hpp>
 
 #include <climits>
@@ -6,6 +28,12 @@
 namespace asn1 {
 namespace der {
 
+/**
+ *  Function    : decode_length
+ *  Description : Returns success or an error from decode length.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<ber::Length>
+ */
 Result<ber::Length> decode_length(ByteReader& in) {
   auto first_r = in.get();
   if (!first_r) {
@@ -52,6 +80,12 @@ Result<ber::Length> decode_length(ByteReader& in) {
   return len;
 }
 
+/**
+ *  Function    : decode_tlv_header
+ *  Description : Returns success or an error from decode tlv header.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<ber::TlvHeader>
+ */
 Result<ber::TlvHeader> decode_tlv_header(ByteReader& in) {
   auto tag_r = ber::decode_tag(in);
   if (!tag_r) {

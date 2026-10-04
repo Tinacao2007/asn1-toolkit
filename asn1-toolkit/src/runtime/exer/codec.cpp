@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/exer/codec.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   E-XER encoding instructions and special cases.
+**
+** Specification: ITU-T X.693 — Extended XER (E-XER) and encoding
+**                 instructions.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/exer/codec.hpp>
 #include <asn1/runtime/byte_io.hpp>
 
@@ -8,6 +30,12 @@ namespace asn1 {
 namespace exer {
 namespace {
 
+/**
+ *  Function    : bad
+ *  Description : Computes bad from (offset, message).
+ *  Parameters  : offset — std::size_t offset; message — std::string message
+ *  Returns     : Error
+ */
 Error bad(std::size_t offset, std::string message) {
   return make_error(Error::Code::InvalidArgument, offset, std::move(message));
 }
@@ -15,6 +43,12 @@ Error bad(std::size_t offset, std::string message) {
 constexpr char kBase64[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/**
+ *  Function    : base64_index
+ *  Description : Computes base64 index from (c).
+ *  Parameters  : c — char c
+ *  Returns     : int
+ */
 int base64_index(char c) {
   if (c >= 'A' && c <= 'Z') {
     return c - 'A';
@@ -34,6 +68,12 @@ int base64_index(char c) {
   return -1;
 }
 
+/**
+ *  Function    : trim
+ *  Description : Builds and returns a string for trim.
+ *  Parameters  : s — const std::string& s
+ *  Returns     : std::string
+ */
 std::string trim(const std::string& s) {
   std::size_t a = 0;
   while (a < s.size() &&
@@ -50,6 +90,12 @@ std::string trim(const std::string& s) {
 
 }  // namespace
 
+/**
+ *  Function    : set_attribute
+ *  Description : Performs set attribute (definition).
+ *  Parameters  : el — Element& el; name — const std::string& name; value — const std::string& value
+ *  Returns     : void
+ */
 void set_attribute(Element& el, const std::string& name, const std::string& value) {
   for (auto& a : el.attributes) {
     if (a.name == name) {
@@ -60,6 +106,12 @@ void set_attribute(Element& el, const std::string& name, const std::string& valu
   el.attributes.push_back(Attribute{name, value});
 }
 
+/**
+ *  Function    : get_attribute
+ *  Description : Builds and returns a string for get attribute.
+ *  Parameters  : el — const Element& el; name — const std::string& name
+ *  Returns     : Result<std::string>
+ */
 Result<std::string> get_attribute(const Element& el, const std::string& name) {
   for (const auto& a : el.attributes) {
     if (a.name == name) {
@@ -84,10 +136,22 @@ void encode_attribute_integer(Element& parent, const std::string& attr_name,
   set_attribute(parent, attr_name, value.to_decimal());
 }
 
+/**
+ *  Function    : encode_attribute_boolean
+ *  Description : Performs encode attribute boolean (definition).
+ *  Parameters  : parent — Element& parent; attr_name — const std::string& attr_name; value — bool value
+ *  Returns     : void
+ */
 void encode_attribute_boolean(Element& parent, const std::string& attr_name, bool value) {
   set_attribute(parent, attr_name, value ? "true" : "false");
 }
 
+/**
+ *  Function    : decode_attribute_boolean
+ *  Description : Returns a boolean result from el, attr_name.
+ *  Parameters  : el — const Element& el; attr_name — const std::string& attr_name
+ *  Returns     : Result<bool>
+ */
 Result<bool> decode_attribute_boolean(const Element& el, const std::string& attr_name) {
   auto v = get_attribute(el, attr_name);
   if (!v.ok()) {
@@ -102,6 +166,12 @@ Result<bool> decode_attribute_boolean(const Element& el, const std::string& attr
   return bad(0, "EXTENDED-XER boolean attribute must be true or false");
 }
 
+/**
+ *  Function    : encode_base64
+ *  Description : Builds and returns a string for encode base64.
+ *  Parameters  : value — Span<const std::uint8_t> value
+ *  Returns     : std::string
+ */
 std::string encode_base64(Span<const std::uint8_t> value) {
   std::string out;
   out.reserve(((value.size() + 2) / 3) * 4);
@@ -133,6 +203,12 @@ std::string encode_base64(Span<const std::uint8_t> value) {
   return out;
 }
 
+/**
+ *  Function    : decode_base64
+ *  Description : Returns success or an error from decode base64.
+ *  Parameters  : text — const std::string& text
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_base64(const std::string& text) {
   std::string t;
   t.reserve(text.size());
@@ -178,6 +254,12 @@ Result<std::vector<std::uint8_t>> decode_base64(const std::string& text) {
   return out;
 }
 
+/**
+ *  Function    : encode_octet_string_base64
+ *  Description : Computes encode octet string base64 from (name, value).
+ *  Parameters  : name — const std::string& name; value — Span<const std::uint8_t> value
+ *  Returns     : Element
+ */
 Element encode_octet_string_base64(const std::string& name, Span<const std::uint8_t> value) {
   Element el;
   el.name = name;
@@ -187,6 +269,12 @@ Element encode_octet_string_base64(const std::string& name, Span<const std::uint
   return el;
 }
 
+/**
+ *  Function    : decode_octet_string_base64
+ *  Description : Returns success or an error from decode octet string base64.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_octet_string_base64(const Element& el) {
   if (el.text.empty()) {
     return std::vector<std::uint8_t>{};
@@ -194,6 +282,12 @@ Result<std::vector<std::uint8_t>> decode_octet_string_base64(const Element& el) 
   return decode_base64(el.text);
 }
 
+/**
+ *  Function    : encode_boolean_text
+ *  Description : Computes encode boolean text from (name, value).
+ *  Parameters  : name — const std::string& name; value — bool value
+ *  Returns     : Element
+ */
 Element encode_boolean_text(const std::string& name, bool value) {
   Element el;
   el.name = name;
@@ -201,6 +295,12 @@ Element encode_boolean_text(const std::string& name, bool value) {
   return el;
 }
 
+/**
+ *  Function    : decode_boolean_text
+ *  Description : Returns a boolean result from el.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<bool>
+ */
 Result<bool> decode_boolean_text(const Element& el) {
   const std::string t = trim(el.text);
   if (t == "true") {
@@ -212,6 +312,12 @@ Result<bool> decode_boolean_text(const Element& el) {
   return bad(0, "EXTENDED-XER TEXT BOOLEAN must be true or false");
 }
 
+/**
+ *  Function    : encode_enumerated_text
+ *  Description : Computes encode enumerated text from (name, identifier).
+ *  Parameters  : name — const std::string& name; identifier — const std::string& identifier
+ *  Returns     : Element
+ */
 Element encode_enumerated_text(const std::string& name, const std::string& identifier) {
   Element el;
   el.name = name;
@@ -219,6 +325,12 @@ Element encode_enumerated_text(const std::string& name, const std::string& ident
   return el;
 }
 
+/**
+ *  Function    : decode_enumerated_text
+ *  Description : Builds and returns a string for decode enumerated text.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<std::string>
+ */
 Result<std::string> decode_enumerated_text(const Element& el) {
   const std::string t = trim(el.text);
   if (t.empty()) {
@@ -227,10 +339,22 @@ Result<std::string> decode_enumerated_text(const Element& el) {
   return t;
 }
 
+/**
+ *  Function    : encode_enumerated_number
+ *  Description : Computes encode enumerated number from (name, value).
+ *  Parameters  : name — const std::string& name; value — std::int64_t value
+ *  Returns     : Element
+ */
 Element encode_enumerated_number(const std::string& name, std::int64_t value) {
   return xer::encode_integer(name, value);
 }
 
+/**
+ *  Function    : decode_enumerated_number
+ *  Description : Returns success or an error from decode enumerated number.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_enumerated_number(const Element& el) {
   return xer::decode_integer(el);
 }
@@ -248,6 +372,12 @@ Element encode_list_of_strings(const std::string& name,
   return el;
 }
 
+/**
+ *  Function    : decode_list_of_strings
+ *  Description : Builds and returns a string for decode list of strings.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<std::vector<std::string>>
+ */
 Result<std::vector<std::string>> decode_list_of_strings(const Element& el) {
   std::vector<std::string> out;
   const std::string t = trim(el.text);
@@ -297,6 +427,12 @@ Element encode_list_of_integers(const std::string& name,
   return el;
 }
 
+/**
+ *  Function    : decode_list_of_integers
+ *  Description : Returns success or an error from decode list of integers.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<std::vector<std::int64_t>>
+ */
 Result<std::vector<std::int64_t>> decode_list_of_integers(const Element& el) {
   auto parts = decode_list_of_strings(el);
   if (!parts.ok()) {
@@ -317,6 +453,12 @@ Result<std::vector<std::int64_t>> decode_list_of_integers(const Element& el) {
   return out;
 }
 
+/**
+ *  Function    : decode_list_of_big_integers
+ *  Description : Returns success or an error from decode list of big integers.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<std::vector<BigInteger>>
+ */
 Result<std::vector<BigInteger>> decode_list_of_big_integers(const Element& el) {
   auto parts = decode_list_of_strings(el);
   if (!parts.ok()) {
@@ -344,6 +486,12 @@ Element encode_list_of_booleans(const std::string& name,
   return encode_list_of_strings(name, toks);
 }
 
+/**
+ *  Function    : decode_list_of_booleans
+ *  Description : Returns success or an error from decode list of booleans.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<std::vector<std::uint8_t>>
+ */
 Result<std::vector<std::uint8_t>> decode_list_of_booleans(const Element& el) {
   auto parts = decode_list_of_strings(el);
   if (!parts.ok()) {
@@ -395,6 +543,12 @@ Result<std::vector<std::vector<std::uint64_t>>> decode_list_of_object_identifier
   return out;
 }
 
+/**
+ *  Function    : encode_list_of_reals
+ *  Description : Computes encode list of reals from (name, items).
+ *  Parameters  : name — const std::string& name; items — const std::vector<double>& items
+ *  Returns     : Element
+ */
 Element encode_list_of_reals(const std::string& name, const std::vector<double>& items) {
   std::vector<std::string> toks;
   toks.reserve(items.size());
@@ -411,6 +565,12 @@ Element encode_list_of_reals(const std::string& name, const std::vector<double>&
   return encode_list_of_strings(name, toks);
 }
 
+/**
+ *  Function    : decode_list_of_reals
+ *  Description : Returns success or an error from decode list of reals.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<std::vector<double>>
+ */
 Result<std::vector<double>> decode_list_of_reals(const Element& el) {
   auto parts = decode_list_of_strings(el);
   if (!parts.ok()) {
@@ -480,6 +640,12 @@ Element encode_list_of_bit_strings(const std::string& name,
   return encode_list_of_strings(name, toks);
 }
 
+/**
+ *  Function    : decode_list_of_bit_strings
+ *  Description : Returns success or an error from decode list of bit strings.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<std::vector<xer::BitStringValue>>
+ */
 Result<std::vector<xer::BitStringValue>> decode_list_of_bit_strings(const Element& el) {
   auto parts = decode_list_of_strings(el);
   if (!parts.ok()) {
@@ -500,6 +666,12 @@ Result<std::vector<xer::BitStringValue>> decode_list_of_bit_strings(const Elemen
   return out;
 }
 
+/**
+ *  Function    : append_untagged
+ *  Description : Performs append untagged (definition).
+ *  Parameters  : parent — Element& parent; fragment — Element fragment
+ *  Returns     : void
+ */
 void append_untagged(Element& parent, Element fragment) {
   for (auto& a : fragment.attributes) {
     set_attribute(parent, a.name, a.value);
@@ -512,10 +684,22 @@ void append_untagged(Element& parent, Element fragment) {
   }
 }
 
+/**
+ *  Function    : set_name
+ *  Description : Performs set name (definition).
+ *  Parameters  : el — Element& el; name — const std::string& name
+ *  Returns     : void
+ */
 void set_name(Element& el, const std::string& name) {
   el.name = name;
 }
 
+/**
+ *  Function    : set_nil
+ *  Description : Performs set nil (definition).
+ *  Parameters  : el — Element& el; is_nil — bool is_nil
+ *  Returns     : void
+ */
 void set_nil(Element& el, bool is_nil) {
   if (is_nil) {
     set_attribute(el, "xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
@@ -531,6 +715,12 @@ void set_nil(Element& el, bool is_nil) {
   }
 }
 
+/**
+ *  Function    : is_nil
+ *  Description : Returns whether nil holds for the given inputs.
+ *  Parameters  : el — const Element& el
+ *  Returns     : Result<bool>
+ */
 Result<bool> is_nil(const Element& el) {
   auto v = get_attribute(el, "xsi:nil");
   if (!v.ok()) {

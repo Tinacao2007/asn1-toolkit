@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/ir/type.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   IR type graph helpers and builtin lowering hooks.
+**
+** Specification: Internal type IR (lowering target for X.680/X.681
+**                 constructs; not a wire standard).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/ir/type.hpp>
 
 #include <algorithm>
@@ -8,12 +30,24 @@ namespace asn1 {
 namespace ir {
 namespace {
 
+/**
+ *  Function    : all_digits
+ *  Description : Returns a boolean result from s.
+ *  Parameters  : s — const std::string& s
+ *  Returns     : bool
+ */
 bool all_digits(const std::string& s) {
   return !s.empty() && std::all_of(s.begin(), s.end(), [](char c) {
     return c >= '0' && c <= '9';
   });
 }
 
+/**
+ *  Function    : try_parse_i64
+ *  Description : Computes try parse i64 from (negative, digits).
+ *  Parameters  : negative — bool negative; digits — const std::string& digits
+ *  Returns     : std::optional<std::int64_t>
+ */
 std::optional<std::int64_t> try_parse_i64(bool negative, const std::string& digits) {
   if (digits.size() > 18) {
     return std::nullopt;
@@ -40,6 +74,12 @@ std::optional<std::int64_t> try_parse_i64(bool negative, const std::string& digi
 
 }  // namespace
 
+/**
+ *  Function    : from_decimal
+ *  Description : Computes from decimal from (text, negative).
+ *  Parameters  : text — std::string text; negative — bool negative
+ *  Returns     : BigInt BigInt::
+ */
 BigInt BigInt::from_decimal(std::string text, bool negative) {
   BigInt b;
   b.negative = negative && text != "0";
@@ -60,6 +100,12 @@ BigInt BigInt::from_decimal(std::string text, bool negative) {
   return b;
 }
 
+/**
+ *  Function    : from_i64
+ *  Description : Computes from i64 from (v).
+ *  Parameters  : v — std::int64_t v
+ *  Returns     : BigInt BigInt::
+ */
 BigInt BigInt::from_i64(std::int64_t v) {
   BigInt b;
   b.as_i64 = v;
@@ -75,14 +121,32 @@ BigInt BigInt::from_i64(std::int64_t v) {
   return b;
 }
 
+/**
+ *  Function    : to_string
+ *  Description : Builds and returns a string for to string.
+ *  Parameters  : none
+ *  Returns     : std::string BigInt::
+ */
 std::string BigInt::to_string() const {
   return (negative ? "-" : "") + digits;
 }
 
+/**
+ *  Function    : operator==
+ *  Description : Implements operator== for this type.
+ *  Parameters  : o — const BigInt& o
+ *  Returns     : —
+ */
 bool BigInt::operator==(const BigInt& o) const {
   return negative == o.negative && digits == o.digits;
 }
 
+/**
+ *  Function    : compare
+ *  Description : Computes compare from (o).
+ *  Parameters  : o — const BigInt& o
+ *  Returns     : int BigInt::
+ */
 int BigInt::compare(const BigInt& o) const {
   if (negative != o.negative) {
     return negative ? -1 : 1;
@@ -99,6 +163,12 @@ int BigInt::compare(const BigInt& o) const {
   return negative ? -mag : mag;
 }
 
+/**
+ *  Function    : contains
+ *  Description : Returns a boolean result from v.
+ *  Parameters  : v — const BigInt& v
+ *  Returns     : bool IntegerInterval::
+ */
 bool IntegerInterval::contains(const BigInt& v) const {
   if (lower && v < *lower) {
     return false;
@@ -109,6 +179,12 @@ bool IntegerInterval::contains(const BigInt& v) const {
   return true;
 }
 
+/**
+ *  Function    : overlaps_or_adjacent
+ *  Description : Returns a boolean result from o.
+ *  Parameters  : o — const IntegerInterval& o
+ *  Returns     : bool IntegerInterval::
+ */
 bool IntegerInterval::overlaps_or_adjacent(const IntegerInterval& o) const {
   // Empty if this.upper < o.lower - 1 or o.upper < this.lower - 1
   auto strictly_less_with_gap = [](const std::optional<BigInt>& a,
@@ -161,6 +237,12 @@ bool IntegerInterval::overlaps_or_adjacent(const IntegerInterval& o) const {
   return true;
 }
 
+/**
+ *  Function    : merged_with
+ *  Description : Computes merged with from (o).
+ *  Parameters  : o — const IntegerInterval& o
+ *  Returns     : IntegerInterval IntegerInterval::
+ */
 IntegerInterval IntegerInterval::merged_with(const IntegerInterval& o) const {
   IntegerInterval r;
   if (!lower) {
@@ -203,6 +285,12 @@ std::optional<IntegerInterval> IntegerInterval::intersected_with(
   return r;
 }
 
+/**
+ *  Function    : recompute_envelope
+ *  Description : Performs recompute envelope (definition).
+ *  Parameters  : none
+ *  Returns     : void ConstraintDesc::
+ */
 void ConstraintDesc::recompute_envelope() {
   lower.reset();
   upper.reset();
@@ -244,6 +332,12 @@ PerBoundKind ConstraintDesc::per_kind() const {
   return PerBoundKind::Unconstrained;
 }
 
+/**
+ *  Function    : constrained_span
+ *  Description : Computes constrained span from (none).
+ *  Parameters  : none
+ *  Returns     : std::optional<std::uint64_t> ConstraintDesc::
+ */
 std::optional<std::uint64_t> ConstraintDesc::constrained_span() const {
   if (per_kind() != PerBoundKind::Constrained || !lower || !upper) {
     return std::nullopt;
@@ -259,21 +353,57 @@ std::optional<std::uint64_t> ConstraintDesc::constrained_span() const {
   return static_cast<std::uint64_t>(hi) - static_cast<std::uint64_t>(lo);
 }
 
+/**
+ *  Function    : add
+ *  Description : Computes add from (type).
+ *  Parameters  : type — Type type
+ *  Returns     : TypeId TypeArena::
+ */
 TypeId TypeArena::add(Type type) {
   const TypeId id = static_cast<TypeId>(types_.size());
   types_.push_back(std::move(type));
   return id;
 }
 
+/**
+ *  Function    : add_value
+ *  Description : Computes add value from (value).
+ *  Parameters  : value — Value value
+ *  Returns     : ValueId TypeArena::
+ */
 ValueId TypeArena::add_value(Value value) {
   const ValueId id = static_cast<ValueId>(values_.size());
   values_.push_back(std::move(value));
   return id;
 }
 
+/**
+ *  Function    : at
+ *  Description : Computes at from (types_.at(id).
+ *  Parameters  : types_.at(id — TypeId id) { return types_.at(id
+ *  Returns     : Type& TypeArena::get(TypeId id) { return types_.
+ */
 Type& TypeArena::get(TypeId id) { return types_.at(id); }
+/**
+ *  Function    : at
+ *  Description : Computes at from (types_.at(id).
+ *  Parameters  : types_.at(id — TypeId id) const { return types_.at(id
+ *  Returns     : const Type& TypeArena::get(TypeId id) const { return types_.
+ */
 const Type& TypeArena::get(TypeId id) const { return types_.at(id); }
+/**
+ *  Function    : at
+ *  Description : Computes at from (values_.at(id).
+ *  Parameters  : values_.at(id — ValueId id) { return values_.at(id
+ *  Returns     : Value& TypeArena::get_value(ValueId id) { return values_.
+ */
 Value& TypeArena::get_value(ValueId id) { return values_.at(id); }
+/**
+ *  Function    : at
+ *  Description : Computes at from (values_.at(id).
+ *  Parameters  : values_.at(id — ValueId id) const { return values_.at(id
+ *  Returns     : const Value& TypeArena::get_value(ValueId id) const { return values_.
+ */
 const Value& TypeArena::get_value(ValueId id) const { return values_.at(id); }
 
 }  // namespace ir

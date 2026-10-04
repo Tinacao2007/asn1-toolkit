@@ -1,3 +1,25 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/src/runtime/coer/codec.cpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   COER codec implementation.
+**
+** Specification: ITU-T X.696 — Canonical OER (COER) on octet encoding
+**                 rules.
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #include <asn1/runtime/coer/codec.hpp>
 
 #include <asn1/runtime/ber/codec.hpp>
@@ -8,15 +30,33 @@ namespace asn1 {
 namespace coer {
 namespace {
 
+/**
+ *  Function    : bad
+ *  Description : Computes bad from (offset, message).
+ *  Parameters  : offset — std::size_t offset; message — std::string message
+ *  Returns     : Error
+ */
 Error bad(std::size_t offset, std::string message) {
   return make_error(Error::Code::InvalidArgument, offset, std::move(message));
 }
 
+/**
+ *  Function    : non_canonical
+ *  Description : Computes non canonical from (offset, message).
+ *  Parameters  : offset — std::size_t offset; message — std::string message
+ *  Returns     : Error
+ */
 Error non_canonical(std::size_t offset, std::string message) {
   return make_error(Error::Code::NonCanonical, offset, std::move(message));
 }
 
 /// Fixed-width OER/COER integer: 1/2/4/8 bytes. Returns 0 if variable-length.
+/**
+ *  Function    : fixed_integer_width
+ *  Description : Computes fixed integer width from (c, is_signed).
+ *  Parameters  : c — const IntegerConstraint& c; is_signed — bool& is_signed
+ *  Returns     : std::size_t
+ */
 std::size_t fixed_integer_width(const IntegerConstraint& c, bool& is_signed) {
   is_signed = true;
   if (c.extensible || !c.lower.has_value() || !c.upper.has_value()) {
@@ -50,11 +90,23 @@ std::size_t fixed_integer_width(const IntegerConstraint& c, bool& is_signed) {
   return 8;
 }
 
+/**
+ *  Function    : use_unsigned_variable
+ *  Description : Returns a boolean result from c.
+ *  Parameters  : c — const IntegerConstraint& c
+ *  Returns     : bool
+ */
 bool use_unsigned_variable(const IntegerConstraint& c) {
   return c.lower.has_value() && *c.lower >= 0 &&
          (!c.upper.has_value() || c.extensible);
 }
 
+/**
+ *  Function    : write_be
+ *  Description : Performs write be (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::uint64_t value; width — std::size_t width
+ *  Returns     : void
+ */
 void write_be(ByteWriter& out, std::uint64_t value, std::size_t width) {
   for (std::size_t i = 0; i < width; ++i) {
     const std::size_t shift = 8 * (width - 1 - i);
@@ -62,6 +114,12 @@ void write_be(ByteWriter& out, std::uint64_t value, std::size_t width) {
   }
 }
 
+/**
+ *  Function    : read_be
+ *  Description : Returns success or an error from read be.
+ *  Parameters  : in — ByteReader& in; width — std::size_t width
+ *  Returns     : Result<std::uint64_t>
+ */
 Result<std::uint64_t> read_be(ByteReader& in, std::size_t width) {
   std::uint64_t value = 0;
   for (std::size_t i = 0; i < width; ++i) {
@@ -74,6 +132,12 @@ Result<std::uint64_t> read_be(ByteReader& in, std::size_t width) {
   return value;
 }
 
+/**
+ *  Function    : check_signed_integer_minimal
+ *  Description : Returns success or an error from check signed integer minimal.
+ *  Parameters  : bytes — Span<const std::uint8_t> bytes; offset — std::size_t offset
+ *  Returns     : Result<void>
+ */
 Result<void> check_signed_integer_minimal(Span<const std::uint8_t> bytes, std::size_t offset) {
   if (bytes.empty()) {
     return bad(offset, "COER INTEGER content empty");
@@ -89,6 +153,12 @@ Result<void> check_signed_integer_minimal(Span<const std::uint8_t> bytes, std::s
   return Result<void>::success();
 }
 
+/**
+ *  Function    : check_unsigned_integer_minimal
+ *  Description : Returns success or an error from check unsigned integer minimal.
+ *  Parameters  : bytes — Span<const std::uint8_t> bytes; offset — std::size_t offset
+ *  Returns     : Result<void>
+ */
 Result<void> check_unsigned_integer_minimal(Span<const std::uint8_t> bytes, std::size_t offset) {
   if (bytes.empty()) {
     return bad(offset, "COER unsigned INTEGER content empty");
@@ -99,6 +169,12 @@ Result<void> check_unsigned_integer_minimal(Span<const std::uint8_t> bytes, std:
   return Result<void>::success();
 }
 
+/**
+ *  Function    : check_bit_string_unused_zero
+ *  Description : Returns success or an error from check bit string unused zero.
+ *  Parameters  : v — const BitStringValue& v; offset — std::size_t offset
+ *  Returns     : Result<void>
+ */
 Result<void> check_bit_string_unused_zero(const BitStringValue& v, std::size_t offset) {
   if (v.bit_length % 8 == 0 || v.bits.empty()) {
     return Result<void>::success();
@@ -112,6 +188,12 @@ Result<void> check_bit_string_unused_zero(const BitStringValue& v, std::size_t o
   return Result<void>::success();
 }
 
+/**
+ *  Function    : encode_variable_signed_integer
+ *  Description : Performs encode variable signed integer (definition).
+ *  Parameters  : out — ByteWriter& out; value — const BigInteger& value
+ *  Returns     : void
+ */
 void encode_variable_signed_integer(ByteWriter& out, const BigInteger& value) {
   ByteWriter content;
   ber::encode_integer_content(content, value);
@@ -119,10 +201,22 @@ void encode_variable_signed_integer(ByteWriter& out, const BigInteger& value) {
   out.write(Span<const std::uint8_t>(content.buffer().data(), content.size()));
 }
 
+/**
+ *  Function    : encode_variable_signed_integer
+ *  Description : Performs encode variable signed integer (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::int64_t value
+ *  Returns     : void
+ */
 void encode_variable_signed_integer(ByteWriter& out, std::int64_t value) {
   encode_variable_signed_integer(out, BigInteger::from_i64(value));
 }
 
+/**
+ *  Function    : decode_variable_signed_big_integer
+ *  Description : Returns success or an error from decode variable signed big integer.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<BigInteger>
+ */
 Result<BigInteger> decode_variable_signed_big_integer(ByteReader& in) {
   const std::size_t start = in.offset();
   auto len = decode_length(in);
@@ -139,6 +233,12 @@ Result<BigInteger> decode_variable_signed_big_integer(ByteReader& in) {
   return BigInteger::from_twos_complement(bytes.value());
 }
 
+/**
+ *  Function    : decode_variable_signed_integer
+ *  Description : Returns success or an error from decode variable signed integer.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_variable_signed_integer(ByteReader& in) {
   auto big = decode_variable_signed_big_integer(in);
   if (!big.ok()) {
@@ -151,6 +251,12 @@ Result<std::int64_t> decode_variable_signed_integer(ByteReader& in) {
   return *v;
 }
 
+/**
+ *  Function    : encode_variable_unsigned_integer
+ *  Description : Performs encode variable unsigned integer (definition).
+ *  Parameters  : out — ByteWriter& out; value — const BigInteger& value
+ *  Returns     : void
+ */
 void encode_variable_unsigned_integer(ByteWriter& out, const BigInteger& value) {
   auto bytes = value.to_unsigned_bytes();
   if (!bytes.ok()) {
@@ -162,10 +268,22 @@ void encode_variable_unsigned_integer(ByteWriter& out, const BigInteger& value) 
   out.write(Span<const std::uint8_t>(bytes.value().data(), bytes.value().size()));
 }
 
+/**
+ *  Function    : encode_variable_unsigned_integer
+ *  Description : Performs encode variable unsigned integer (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::uint64_t value
+ *  Returns     : void
+ */
 void encode_variable_unsigned_integer(ByteWriter& out, std::uint64_t value) {
   encode_variable_unsigned_integer(out, BigInteger::from_u64(value));
 }
 
+/**
+ *  Function    : decode_variable_unsigned_big_integer
+ *  Description : Returns success or an error from decode variable unsigned big integer.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<BigInteger>
+ */
 Result<BigInteger> decode_variable_unsigned_big_integer(ByteReader& in) {
   const std::size_t start = in.offset();
   auto len = decode_length(in);
@@ -185,6 +303,12 @@ Result<BigInteger> decode_variable_unsigned_big_integer(ByteReader& in) {
   return BigInteger::from_unsigned_bytes(bytes.value());
 }
 
+/**
+ *  Function    : decode_variable_unsigned_integer
+ *  Description : Returns success or an error from decode variable unsigned integer.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<std::uint64_t>
+ */
 Result<std::uint64_t> decode_variable_unsigned_integer(ByteReader& in) {
   auto big = decode_variable_unsigned_big_integer(in);
   if (!big.ok()) {
@@ -199,11 +323,23 @@ Result<std::uint64_t> decode_variable_unsigned_integer(ByteReader& in) {
 
 }  // namespace
 
+/**
+ *  Function    : encode_length
+ *  Description : Performs encode length (definition).
+ *  Parameters  : out — ByteWriter& out; length — std::size_t length
+ *  Returns     : void
+ */
 void encode_length(ByteWriter& out, std::size_t length) {
   // Already shortest-form (same as BASIC-OER encoder).
   oer::encode_length(out, length);
 }
 
+/**
+ *  Function    : decode_length
+ *  Description : Returns success or an error from decode length.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<std::size_t>
+ */
 Result<std::size_t> decode_length(ByteReader& in) {
   auto first = in.get();
   if (!first.ok()) {
@@ -245,10 +381,22 @@ Result<std::size_t> decode_length(ByteReader& in) {
   return value;
 }
 
+/**
+ *  Function    : encode_boolean
+ *  Description : Performs encode boolean (definition).
+ *  Parameters  : out — ByteWriter& out; value — bool value
+ *  Returns     : void
+ */
 void encode_boolean(ByteWriter& out, bool value) {
   oer::encode_boolean(out, value);
 }
 
+/**
+ *  Function    : decode_boolean
+ *  Description : Returns a boolean result from in.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<bool>
+ */
 Result<bool> decode_boolean(ByteReader& in) {
   auto b = in.get();
   if (!b.ok()) {
@@ -263,14 +411,32 @@ Result<bool> decode_boolean(ByteReader& in) {
   return non_canonical(in.offset(), "COER BOOLEAN TRUE must be 0xFF");
 }
 
+/**
+ *  Function    : encode_null
+ *  Description : Performs encode null (definition).
+ *  Parameters  : out — ByteWriter& out
+ *  Returns     : void
+ */
 void encode_null(ByteWriter& out) {
   oer::encode_null(out);
 }
 
+/**
+ *  Function    : decode_null
+ *  Description : Returns success or an error from decode null.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<void>
+ */
 Result<void> decode_null(ByteReader& in) {
   return oer::decode_null(in);
 }
 
+/**
+ *  Function    : encode_integer
+ *  Description : Performs encode integer (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::int64_t value; constraint — const IntegerConstraint& constraint
+ *  Returns     : void
+ */
 void encode_integer(ByteWriter& out, std::int64_t value, const IntegerConstraint& constraint) {
   bool is_signed = true;
   const std::size_t width = fixed_integer_width(constraint, is_signed);
@@ -299,6 +465,12 @@ void encode_integer(ByteWriter& out, const BigInteger& value,
   encode_variable_signed_integer(out, value);
 }
 
+/**
+ *  Function    : decode_integer
+ *  Description : Returns success or an error from decode integer.
+ *  Parameters  : in — ByteReader& in; constraint — const IntegerConstraint& constraint
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_integer(ByteReader& in, const IntegerConstraint& constraint) {
   bool is_signed = true;
   const std::size_t width = fixed_integer_width(constraint, is_signed);
@@ -330,6 +502,12 @@ Result<std::int64_t> decode_integer(ByteReader& in, const IntegerConstraint& con
   return decode_variable_signed_integer(in);
 }
 
+/**
+ *  Function    : decode_big_integer
+ *  Description : Returns success or an error from decode big integer.
+ *  Parameters  : in — ByteReader& in; constraint — const IntegerConstraint& constraint
+ *  Returns     : Result<BigInteger>
+ */
 Result<BigInteger> decode_big_integer(ByteReader& in, const IntegerConstraint& constraint) {
   bool is_signed = true;
   const std::size_t width = fixed_integer_width(constraint, is_signed);
@@ -381,6 +559,12 @@ void encode_bit_string(ByteWriter& out, Span<const std::uint8_t> bits, std::size
   oer::encode_bit_string(out, bits, bit_length, size);
 }
 
+/**
+ *  Function    : decode_bit_string
+ *  Description : Returns success or an error from decode bit string.
+ *  Parameters  : in — ByteReader& in; size — const SizeConstraint& size
+ *  Returns     : Result<BitStringValue>
+ */
 Result<BitStringValue> decode_bit_string(ByteReader& in, const SizeConstraint& size) {
   const std::size_t start = in.offset();
   BitStringValue out;
@@ -437,6 +621,12 @@ void encode_utf8_string(ByteWriter& out, const std::string& value,
       size);
 }
 
+/**
+ *  Function    : decode_utf8_string
+ *  Description : Builds and returns a string for decode utf8 string.
+ *  Parameters  : in — ByteReader& in; size — const SizeConstraint& size
+ *  Returns     : Result<std::string>
+ */
 Result<std::string> decode_utf8_string(ByteReader& in, const SizeConstraint& size) {
   auto bytes = coer::decode_octet_string(in, size);
   if (!bytes.ok()) {
@@ -445,10 +635,22 @@ Result<std::string> decode_utf8_string(ByteReader& in, const SizeConstraint& siz
   return std::string(reinterpret_cast<const char*>(bytes.value().data()), bytes.value().size());
 }
 
+/**
+ *  Function    : encode_enumerated
+ *  Description : Performs encode enumerated (definition).
+ *  Parameters  : out — ByteWriter& out; value — std::int64_t value
+ *  Returns     : void
+ */
 void encode_enumerated(ByteWriter& out, std::int64_t value) {
   oer::encode_enumerated(out, value);
 }
 
+/**
+ *  Function    : decode_enumerated
+ *  Description : Returns success or an error from decode enumerated.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<std::int64_t>
+ */
 Result<std::int64_t> decode_enumerated(ByteReader& in) {
   auto peek = in.peek();
   if (!peek.ok()) {
@@ -491,6 +693,12 @@ Result<std::int64_t> decode_enumerated(ByteReader& in) {
   return value;
 }
 
+/**
+ *  Function    : encode_object_identifier
+ *  Description : Performs encode object identifier (definition).
+ *  Parameters  : out — ByteWriter& out; arcs — Span<const std::uint64_t> arcs; relative — bool relative
+ *  Returns     : void
+ */
 void encode_object_identifier(ByteWriter& out, Span<const std::uint64_t> arcs, bool relative) {
   ByteWriter content;
   if (relative) {
@@ -502,6 +710,12 @@ void encode_object_identifier(ByteWriter& out, Span<const std::uint64_t> arcs, b
   out.write(Span<const std::uint8_t>(content.buffer().data(), content.size()));
 }
 
+/**
+ *  Function    : decode_object_identifier
+ *  Description : Returns success or an error from decode object identifier.
+ *  Parameters  : in — ByteReader& in; relative — bool relative
+ *  Returns     : Result<std::vector<std::uint64_t>>
+ */
 Result<std::vector<std::uint64_t>> decode_object_identifier(ByteReader& in, bool relative) {
   auto len = decode_length(in);
   if (!len.ok()) {
@@ -518,11 +732,23 @@ Result<std::vector<std::uint64_t>> decode_object_identifier(ByteReader& in, bool
   return ber::decode_object_identifier_content(cr, len.value());
 }
 
+/**
+ *  Function    : encode_real
+ *  Description : Returns success or an error from encode real.
+ *  Parameters  : out — ByteWriter& out; value — double value; form — RealIeeeForm form
+ *  Returns     : Result<void>
+ */
 Result<void> encode_real(ByteWriter& out, double value, RealIeeeForm form) {
   // Unconstrained REAL uses DER content octets; IEEE forms are already canonical.
   return oer::encode_real(out, value, form);
 }
 
+/**
+ *  Function    : decode_real
+ *  Description : Returns success or an error from decode real.
+ *  Parameters  : in — ByteReader& in; form — RealIeeeForm form
+ *  Returns     : Result<double>
+ */
 Result<double> decode_real(ByteReader& in, RealIeeeForm form) {
   return oer::decode_real(in, form);
 }
@@ -571,23 +797,53 @@ Result<SequencePreamble> decode_sequence_preamble(ByteReader& in, bool extensibl
   return out;
 }
 
+/**
+ *  Function    : encode_choice_tag
+ *  Description : Performs encode choice tag (definition).
+ *  Parameters  : out — ByteWriter& out; tag_number — std::uint64_t tag_number; constructed — bool constructed
+ *  Returns     : void
+ */
 void encode_choice_tag(ByteWriter& out, std::uint64_t tag_number, bool constructed) {
   oer::encode_choice_tag(out, tag_number, constructed);
 }
 
+/**
+ *  Function    : decode_choice_tag
+ *  Description : Returns success or an error from decode choice tag.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<std::uint64_t>
+ */
 Result<std::uint64_t> decode_choice_tag(ByteReader& in) {
   // Tag encodings from BASIC-OER encoder are already canonical (minimal).
   return oer::decode_choice_tag(in);
 }
 
+/**
+ *  Function    : encode_sequence_of_length
+ *  Description : Performs encode sequence of length (definition).
+ *  Parameters  : out — ByteWriter& out; count — std::size_t count
+ *  Returns     : void
+ */
 void encode_sequence_of_length(ByteWriter& out, std::size_t count) {
   oer::encode_sequence_of_length(out, count);
 }
 
+/**
+ *  Function    : decode_sequence_of_length
+ *  Description : Returns success or an error from decode sequence of length.
+ *  Parameters  : in — ByteReader& in
+ *  Returns     : Result<std::size_t>
+ */
 Result<std::size_t> decode_sequence_of_length(ByteReader& in) {
   return oer::decode_sequence_of_length(in);
 }
 
+/**
+ *  Function    : encode_set_of
+ *  Description : Performs encode set of (definition).
+ *  Parameters  : out — ByteWriter& out; components — std::vector<std::vector<std::uint8_t>> components
+ *  Returns     : void
+ */
 void encode_set_of(ByteWriter& out, std::vector<std::vector<std::uint8_t>> components) {
   std::sort(components.begin(), components.end());
   encode_length(out, components.size());
@@ -596,6 +852,12 @@ void encode_set_of(ByteWriter& out, std::vector<std::vector<std::uint8_t>> compo
   }
 }
 
+/**
+ *  Function    : require_set_of_order
+ *  Description : Returns success or an error from require set of order.
+ *  Parameters  : components — Span<const std::vector<std::uint8_t>> components
+ *  Returns     : Result<void>
+ */
 Result<void> require_set_of_order(Span<const std::vector<std::uint8_t>> components) {
   for (std::size_t i = 1; i < components.size(); ++i) {
     if (components[i] < components[i - 1]) {

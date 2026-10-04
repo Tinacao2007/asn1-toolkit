@@ -1,3 +1,26 @@
+/***************************************************************************
+** Copyright (C)  2026-2031 PROCODEC All rights reserved.
+** -------------------------------------------------------------------------
+** This document contains proprietary information belonging to PROCODEC.
+** Passing on and copying of this document, use and communication of its
+** contents is not permitted without prior written authorisation.
+** -------------------------------------------------------------------------
+** Revision Information :
+**   $Filename: asn1-toolkit/include/asn1/ast/ioc.hpp
+**   $Version: 0.1
+**   $Date:   2026-10-03
+**   $Author: tina.cao
+***************************************************************************
+**  File Description:
+**
+**   AST for information object classes, objects, sets, and field specs.
+**
+** Specification: ITU-T X.680 — abstract syntax;
+**                 ITU-T X.681 — Information object specification
+**                 (classes, objects, object sets).
+** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+**                 asn1-toolkit/README.md
+***************************************************************************/
 #pragma once
 
 #include <asn1/ast/module.hpp>
@@ -29,12 +52,42 @@ class FieldSpec final : public Node {
         default_value_(std::move(default_value)) {}
 
   FieldSpecKind kind() const noexcept { return kind_; }
+  /**
+   *  Function    : name
+   *  Description : Builds and returns a string for name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& name() const noexcept { return name_; }
   /// Null for TypeField; set for FixedTypeValueField.
+  /**
+   *  Function    : get
+   *  Description : Computes get from (field_type_.get().
+   *  Parameters  : field_type_.get( — ) const { return field_type_.get(
+   *  Returns     : const Type* field_type() const { return field_type_.
+   */
   const Type* field_type() const { return field_type_.get(); }
+  /**
+   *  Function    : unique
+   *  Description : Returns a boolean result from none.
+   *  Parameters  : none
+   *  Returns     : bool
+   */
   bool unique() const noexcept { return unique_; }
   Presence presence() const noexcept { return presence_; }
+  /**
+   *  Function    : get
+   *  Description : Computes get from (default_value_.get().
+   *  Parameters  : default_value_.get( — ) const { return default_value_.get(
+   *  Returns     : const Value* default_value() const { return default_value_.
+   */
   const Value* default_value() const { return default_value_.get(); }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -61,8 +114,26 @@ class ObjectClassDefn final : public Node {
         fields_(std::move(fields)),
         with_syntax_(std::move(with_syntax)) {}
 
+  /**
+   *  Function    : fields
+   *  Description : Computes fields from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<NodePtr<FieldSpec>>&
+   */
   const std::vector<NodePtr<FieldSpec>>& fields() const noexcept { return fields_; }
+  /**
+   *  Function    : with_syntax
+   *  Description : Computes with syntax from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<SyntaxToken>&
+   */
   const std::vector<SyntaxToken>& with_syntax() const noexcept { return with_syntax_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -75,8 +146,26 @@ class ObjectClassAssignment final : public Assignment {
   ObjectClassAssignment(SourceRange range, std::string name, NodePtr<ObjectClassDefn> defn)
       : Assignment(std::move(range)), name_(std::move(name)), defn_(std::move(defn)) {}
 
+  /**
+   *  Function    : name
+   *  Description : Builds and returns a string for name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& name() const noexcept { return name_; }
+  /**
+   *  Function    : defn
+   *  Description : Computes defn from (none).
+   *  Parameters  : none
+   *  Returns     : const ObjectClassDefn&
+   */
   const ObjectClassDefn& defn() const { return *defn_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -97,7 +186,19 @@ class ObjectDefn final : public Node {
   ObjectDefn(SourceRange range, std::vector<FieldSetting> settings)
       : Node(std::move(range)), settings_(std::move(settings)) {}
 
+  /**
+   *  Function    : settings
+   *  Description : Computes settings from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<FieldSetting>&
+   */
   const std::vector<FieldSetting>& settings() const noexcept { return settings_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -113,9 +214,33 @@ class ObjectAssignment final : public Assignment {
         class_name_(std::move(class_name)),
         defn_(std::move(defn)) {}
 
+  /**
+   *  Function    : name
+   *  Description : Builds and returns a string for name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& name() const noexcept { return name_; }
+  /**
+   *  Function    : class_name
+   *  Description : Builds and returns a string for class name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& class_name() const noexcept { return class_name_; }
+  /**
+   *  Function    : defn
+   *  Description : Computes defn from (none).
+   *  Parameters  : none
+   *  Returns     : const ObjectDefn&
+   */
   const ObjectDefn& defn() const { return *defn_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -136,8 +261,26 @@ class ObjectSetDefn final : public Node {
   ObjectSetDefn(SourceRange range, std::vector<ObjectSetElement> elements, bool extensible)
       : Node(std::move(range)), elements_(std::move(elements)), extensible_(extensible) {}
 
+  /**
+   *  Function    : elements
+   *  Description : Computes elements from (none).
+   *  Parameters  : none
+   *  Returns     : const std::vector<ObjectSetElement>&
+   */
   const std::vector<ObjectSetElement>& elements() const noexcept { return elements_; }
+  /**
+   *  Function    : extensible
+   *  Description : Returns a boolean result from none.
+   *  Parameters  : none
+   *  Returns     : bool
+   */
   bool extensible() const noexcept { return extensible_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -154,9 +297,33 @@ class ObjectSetAssignment final : public Assignment {
         class_name_(std::move(class_name)),
         defn_(std::move(defn)) {}
 
+  /**
+   *  Function    : name
+   *  Description : Builds and returns a string for name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& name() const noexcept { return name_; }
+  /**
+   *  Function    : class_name
+   *  Description : Builds and returns a string for class name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& class_name() const noexcept { return class_name_; }
+  /**
+   *  Function    : defn
+   *  Description : Computes defn from (none).
+   *  Parameters  : none
+   *  Returns     : const ObjectSetDefn&
+   */
   const ObjectSetDefn& defn() const { return *defn_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -174,8 +341,26 @@ class ObjectClassFieldType final : public Type {
         class_name_(std::move(class_name)),
         field_name_(std::move(field_name)) {}
 
+  /**
+   *  Function    : class_name
+   *  Description : Builds and returns a string for class name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& class_name() const noexcept { return class_name_; }
+  /**
+   *  Function    : field_name
+   *  Description : Builds and returns a string for field name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& field_name() const noexcept { return field_name_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -192,8 +377,26 @@ class TableConstraint final : public Constraint {
         object_set_name_(std::move(object_set_name)),
         inline_set_(std::move(inline_set)) {}
 
+  /**
+   *  Function    : object_set_name
+   *  Description : Builds and returns a string for object set name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& object_set_name() const noexcept { return object_set_name_; }
+  /**
+   *  Function    : get
+   *  Description : Computes get from (inline_set_.get().
+   *  Parameters  : inline_set_.get( — ) const { return inline_set_.get(
+   *  Returns     : const ObjectSetDefn* inline_set() const { return inline_set_.
+   */
   const ObjectSetDefn* inline_set() const { return inline_set_.get(); }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
@@ -212,9 +415,33 @@ class ComponentRelationConstraint final : public Constraint {
         inline_set_(std::move(inline_set)),
         at_components_(std::move(at_components)) {}
 
+  /**
+   *  Function    : object_set_name
+   *  Description : Builds and returns a string for object set name.
+   *  Parameters  : none
+   *  Returns     : const std::string&
+   */
   const std::string& object_set_name() const noexcept { return object_set_name_; }
+  /**
+   *  Function    : get
+   *  Description : Computes get from (inline_set_.get().
+   *  Parameters  : inline_set_.get( — ) const { return inline_set_.get(
+   *  Returns     : const ObjectSetDefn* inline_set() const { return inline_set_.
+   */
   const ObjectSetDefn* inline_set() const { return inline_set_.get(); }
+  /**
+   *  Function    : at_components
+   *  Description : Builds and returns a string for at components.
+   *  Parameters  : none
+   *  Returns     : const std::vector<std::string>&
+   */
   const std::vector<std::string>& at_components() const noexcept { return at_components_; }
+  /**
+   *  Function    : visit
+   *  Description : Performs visit (definition).
+   *  Parameters  : this — Visitor& v) const override { v.visit(*this
+   *  Returns     : void accept(Visitor& v) const override { v.
+   */
   void accept(Visitor& v) const override { v.visit(*this); }
 
  private:
