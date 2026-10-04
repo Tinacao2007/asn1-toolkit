@@ -18,6 +18,11 @@
 /*.suo
 *~
 
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+
 # Compiled artifacts
 *.o
 *.obj
