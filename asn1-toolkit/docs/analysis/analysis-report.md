@@ -1,5 +1,9 @@
 ================================================================================
-全面分析报告 - asn1-toolkit (WIFI_Codec2024 / ASN.1 编译器与编解码运行时)
+# 全面分析报告 - asn1-toolkit (WIFI_Codec2024 / ASN.1 编译器与编解码运行时)
+
+> **历史归档快照**（分析时间 2026-10-08，Phase 41 时点）。本文为历史记录，不作为
+> 项目现状依据。现状见 [../status.md](../status.md)，历史变更见
+> [../changelog.md](../changelog.md)，文档目录见 [../README.md](../README.md)。
 ================================================================================
 路径: /mnt/f/ASN_1/asn1-toolkit/asn1-toolkit
 分支: asn1-toolkit-phase-39-validation (clean)
@@ -48,7 +52,7 @@
     asn1_semantic -> symbol_table, analyzer
     asn1_runtime -> byte_io, bit_io, bigint
     asn1_ber / der / per / oer / coer / xer / cxer / exer / jer / jeri
-    asn1_codegen -> emit.cpp
+    asn1_codegen -> emit_core, emit_per, emit_oer, emit_tlv, emit_jer, emit_xer
 - 链接规则严格分离: asn1cxx 不链接 runtime; codegen 不链接 runtime; runtime 无 ast/ir 头文件
 - 测试: option ASN1_BUILD_TESTS ON
 
@@ -85,7 +89,7 @@ Phase 41 (Review Hardening) 完成 (最新提交 d57dd96):
 --------------------------------------------------------------------------------
 6. 编译器接口 (asn1cxx)
 --------------------------------------------------------------------------------
-命令: --dump-ast, --dump-ir, --emit-dir, --codec {uper|aper|both|jer|xer|exer|ber|der|oer|coer|cxer}
+命令: --dump-ast, --dump-ir, --emit-dir, --codec {uper|aper|per|cer|jer|xer|exer|ber|der|oer|coer|cxer}
 
 --------------------------------------------------------------------------------
 7. 测试覆盖
@@ -143,6 +147,5 @@ Phase 41 已完成核心规则、代码生成、电信 fixture 发射、对象�
 建议关注: 完成许可证文件添加、后续表约束实现、完整编解码对等验证。
 
 报告文件:
-  /home/administrator/analysis_report.md
-(可复制到 /mnt/f/ASN_1/asn1-toolkit/asn1-toolkit/ 用于归档)
+  docs/analysis/analysis_report.md (本文件)
 ================================================================================

@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.691 — ASN.1 encoding rules: Packed Encoding
 **                 Rules (PER); UPER/APER variants.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once
@@ -203,6 +203,34 @@ void encode_utf8_string(BitWriter& out, Variant variant, const std::string& valu
                         const SizeConstraint& size = {});
 Result<std::string> decode_utf8_string(BitReader& in, Variant variant,
                                        const SizeConstraint& size = {});
+
+/// Restricted character-string kinds whose PER encoding packs characters with
+/// an alphabet bit-width (X.691 27). The octet-based kinds (UTF8String and the
+/// UTCTime / GeneralizedTime / T61 / Videotex / Graphic / General family) use
+/// encode_utf8_string instead — their SIZE constraint is not PER-visible.
+enum class CharStringKind {
+  NumericString,    ///< 4 bits per char: ' ' -> 0, '0'..'9' -> 1..10
+  PrintableString,  ///< 7 bits per char: index into the 74-char alphabet
+  VisibleString,    ///< 7 bits per char: ASCII 0x20..0x7E
+  IA5String,        ///< 7 bits per char: ASCII 0x00..0x7F
+  BMPString,        ///< 16 bits per char: UTF-16BE code unit
+  UniversalString,  ///< 32 bits per char: UTF-32BE code unit
+};
+
+/// Bits per character for `kind`: B, the minimum bit count (X.691 30.5.2);
+/// the ALIGNED variant rounds up to B2, the smallest power of two not
+/// smaller than B (e.g. the 7-bit ASCII family becomes 8 bits).
+std::size_t char_string_bits(CharStringKind kind, Variant variant);
+
+/// Encode a restricted character string: length determinant constrained over
+/// the SIZE range (in characters) followed by the alphabet-coded characters.
+/// Returns InvalidArgument for characters outside the kind's alphabet.
+Result<void> encode_restricted_string(BitWriter& out, Variant variant,
+                                      const std::string& value, CharStringKind kind,
+                                      const SizeConstraint& size = {});
+Result<std::string> decode_restricted_string(BitReader& in, Variant variant,
+                                             CharStringKind kind,
+                                             const SizeConstraint& size = {});
 
 // ---- Constructed scaffolding ----
 
@@ -482,6 +510,16 @@ inline Result<std::string> decode_utf8_string(BitReader& in,
    *  Returns     : return per::
    */
   return per::decode_utf8_string(in, kVariant, size);
+}
+
+inline Result<void> encode_restricted_string(
+    BitWriter& out, const std::string& value, per::CharStringKind kind,
+    const per::SizeConstraint& size = {}) {
+  return per::encode_restricted_string(out, kVariant, value, kind, size);
+}
+inline Result<std::string> decode_restricted_string(
+    BitReader& in, per::CharStringKind kind, const per::SizeConstraint& size = {}) {
+  return per::decode_restricted_string(in, kVariant, kind, size);
 }
 
 inline void encode_sequence_preamble(BitWriter& out, bool extensible,
@@ -898,6 +936,16 @@ inline Result<std::string> decode_utf8_string(BitReader& in,
    *  Returns     : return per::
    */
   return per::decode_utf8_string(in, kVariant, size);
+}
+
+inline Result<void> encode_restricted_string(
+    BitWriter& out, const std::string& value, per::CharStringKind kind,
+    const per::SizeConstraint& size = {}) {
+  return per::encode_restricted_string(out, kVariant, value, kind, size);
+}
+inline Result<std::string> decode_restricted_string(
+    BitReader& in, per::CharStringKind kind, const per::SizeConstraint& size = {}) {
+  return per::decode_restricted_string(in, kVariant, kind, size);
 }
 
 inline void encode_sequence_preamble(BitWriter& out, bool extensible,

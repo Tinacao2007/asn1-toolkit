@@ -220,7 +220,7 @@ def spec_for(rel_posix: str) -> list[str]:
         return ["ITU-T X.680 (and X.681 where covered) — front-end behaviour under test."]
     if p.startswith("tests/common/"):
         return ["No external protocol; tests for shared C++ helpers."]
-    return ["See asn1-toolkit/docs/ARCHITECTURE.md for mapping to ITU-T encoding rules."]
+    return ["See asn1-toolkit/docs/architecture.md for mapping to ITU-T encoding rules."]
 
 
 def wrap_desc_paragraph(paragraph: str) -> list[str]:
@@ -272,7 +272,7 @@ def make_header(rel_posix: str) -> str:
         *desc_lines,
         "**",
         *spec_formatted,
-        "** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md",
+        "** Design Spec:   asn1-toolkit/docs/architecture.md",
         "**                 asn1-toolkit/README.md",
         "***************************************************************************/",
         "",

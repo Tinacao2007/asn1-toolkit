@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.691 — ASN.1 encoding rules: Packed Encoding
 **                 Rules (PER); UPER/APER variants.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once

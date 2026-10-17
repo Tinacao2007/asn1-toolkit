@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.690 — Distinguished Encoding Rules (DER),
 **                 canonical BER subset.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once
@@ -237,6 +237,13 @@ Result<std::vector<std::uint8_t>> decode_sequence(
      *  Returns     : ByteReader& in, ber::Tag expected = ber::
      */
     ByteReader& in, ber::Tag expected = ber::universal(ber::kTagSequence, true));
+
+/// Generic constructed wrapper (EXPLICIT tags, INSTANCE OF bodies, ...):
+/// definite form under DER (X.690 10.1).
+void encode_constructed(ByteWriter& out, ber::Tag tag, Span<const std::uint8_t> components);
+
+/// Decode a definite constructed wrapper; rejects the indefinite form (DER).
+Result<std::vector<std::uint8_t>> decode_constructed(ByteReader& in, ber::Tag expected);
 
 /// SET: sorts component TLVs by ascending tag encoding before wrap.
 /// `components` are complete TLV encodings of each SET member.

@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.691 — ASN.1 encoding rules: Packed Encoding
 **                 Rules (PER); UPER/APER variants.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/runtime/per/primitives.hpp>
@@ -514,9 +514,8 @@ Result<std::size_t> decode_choice_index(BitReader& in, Variant variant,
  *  Returns     : void
  */
 void encode_bitmap(BitWriter& out, Span<const std::uint8_t> bits) {
-  for (std::size_t i = 0; i < bits.size(); ++i) {
-    out.put_bit(bits[i] != 0);
-  }
+  // Bulk-packed write (P2-1): identical bytes to a per-bit loop.
+  out.put_bitmap(bits);
 }
 
 /**

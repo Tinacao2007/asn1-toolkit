@@ -19,7 +19,7 @@
 **
 ** Specification: Invokes X.680/X.681 front end; optional codecs per
 **                 X.690/X.691/X.696/X.693/X.697.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/ast/print.hpp>
@@ -38,6 +38,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -45,6 +46,52 @@
 namespace {
 
 constexpr std::string_view kVersion = "0.1.0";
+
+/**
+ *  Function    : parse_codec_item
+ *  Description : Parses one codec name from a --codec list item.
+ *  Parameters  : v — std::string_view v
+ *  Returns     : std::optional<asn1::codegen::CodecKind>
+ */
+std::optional<asn1::codegen::CodecKind> parse_codec_item(std::string_view v) {
+  if (v == "uper") {
+    return asn1::codegen::CodecKind::Uper;
+  }
+  if (v == "aper") {
+    return asn1::codegen::CodecKind::Aper;
+  }
+  if (v == "per") {
+    return asn1::codegen::CodecKind::Per;
+  }
+  if (v == "jer") {
+    return asn1::codegen::CodecKind::Jer;
+  }
+  if (v == "xer") {
+    return asn1::codegen::CodecKind::Xer;
+  }
+  if (v == "exer") {
+    return asn1::codegen::CodecKind::Exer;
+  }
+  if (v == "ber") {
+    return asn1::codegen::CodecKind::Ber;
+  }
+  if (v == "der") {
+    return asn1::codegen::CodecKind::Der;
+  }
+  if (v == "oer") {
+    return asn1::codegen::CodecKind::Oer;
+  }
+  if (v == "coer") {
+    return asn1::codegen::CodecKind::Coer;
+  }
+  if (v == "cxer") {
+    return asn1::codegen::CodecKind::Cxer;
+  }
+  if (v == "cer") {
+    return asn1::codegen::CodecKind::Cer;
+  }
+  return std::nullopt;
+}
 
 /**
  *  Function    : print_usage
@@ -65,11 +112,25 @@ void print_usage(std::ostream& out) {
       << "  --dump-ast              Parse each file and print the AST\n"
       << "  --dump-ir               Parse + analyze and print the type IR\n"
       << "  --emit-dir <dir>        Emit generated.hpp / generated.cpp into <dir>\n"
-      << "  --codec <uper|aper|both|jer|xer|exer|ber|der|oer|coer|cxer>\n"
+      << "  --codec <uper|aper|per|ber|der|cer|jer|xer|exer|oer|coer|cxer>\n"
+      << "                         Comma-separated combination (e.g. uper,ber)\n"
       << "                         Codec for --emit-dir (default: uper)\n"
       << "  --namespace <id>        C++ namespace for generated types (default: asn1_gen)\n"
+      << "  --emit-inline           Emit codec functions inline in the header\n"
+      << "                         (default: definitions live in generated.cpp)\n"
+      << "  --emit-split            Emit one <Module>.hpp/.cpp pair per ASN.1\n"
+      << "                         module (types namespaced per module) plus\n"
+      << "                         the aggregate <basename>.hpp\n"
+      << "  --emit-cache / --no-emit-cache\n"
+      << "                         Toggle the content-hash cache stored in\n"
+      << "                         <dir>/.asn1cxx-cache/ (default: on; CI\n"
+      << "                         golden diffs typically pass --no-emit-cache\n"
+      << "                         to disable)\n"
+      << "  --parallel <N>          Run declare + resolve passes in parallel\n"
+      << "                         with N worker threads (0 = serial baseline,\n"
+      << "                         default: 0). lower + tag remain serial.\n"
       << "\n"
-      << "See docs/ARCHITECTURE.md.\n";
+      << "See docs/README.md.\n";
 }
 
 /**
@@ -133,7 +194,7 @@ int dump_ast(const std::string& path) {
 }
 
 asn1::ir::Model analyze_files(const std::vector<std::string>& paths, asn1::Diagnostics& diag,
-                              std::vector<asn1::SourceFile>& files) {
+                              std::vector<asn1::SourceFile>& files, int parallelism) {
   std::vector<std::unique_ptr<asn1::ast::Module>> modules;
   files.reserve(paths.size());
   for (const std::string& path : paths) {
@@ -146,7 +207,7 @@ asn1::ir::Model analyze_files(const std::vector<std::string>& paths, asn1::Diagn
     }
   }
   asn1::Analyzer analyzer(diag);
-  return analyzer.analyze(std::move(modules));
+  return analyzer.analyze(std::move(modules), parallelism);
 }
 
 /**
@@ -155,10 +216,10 @@ asn1::ir::Model analyze_files(const std::vector<std::string>& paths, asn1::Diagn
  *  Parameters  : paths — const std::vector<std::string>& paths
  *  Returns     : int
  */
-int dump_ir(const std::vector<std::string>& paths) {
+int dump_ir(const std::vector<std::string>& paths, int parallelism) {
   asn1::Diagnostics diag;
   std::vector<asn1::SourceFile> files;
-  asn1::ir::Model model = analyze_files(paths, diag, files);
+  asn1::ir::Model model = analyze_files(paths, diag, files, parallelism);
   std::cout << "; IR\n";
   asn1::ir::print(std::cout, model);
   if (!diag.ok()) {
@@ -168,39 +229,92 @@ int dump_ir(const std::vector<std::string>& paths) {
   return EXIT_SUCCESS;
 }
 
+// P2-3: walk the diagnostics for the most recent "emit cache:" note and
+// extract its `<hits>/<total>` ratio. Returns {0,0} when no note exists
+// (e.g. the CLI passed `--no-emit-cache` or no emit ran).
+struct HitMiss { std::size_t hits; std::size_t total; };
+HitMiss latest_cache_stats(const asn1::Diagnostics& diag) {
+  for (auto it = diag.items().rbegin(); it != diag.items().rend(); ++it) {
+    const std::string& msg = it->message;
+    const auto pos = msg.find("emit cache:");
+    if (pos == std::string::npos) continue;
+    // "emit cache: <hits>/<total> units hit (...)"
+    const auto slash = msg.find('/', pos);
+    const auto space = msg.find(' ', slash);
+    if (slash == std::string::npos || space == std::string::npos) return {0, 0};
+    return {static_cast<std::size_t>(std::stoul(msg.substr(pos + 12, slash - pos - 12))),
+            static_cast<std::size_t>(std::stoul(msg.substr(slash + 1, space - slash - 1)))};
+  }
+  return {0, 0};
+}
+
 int emit_code(const std::vector<std::string>& paths, const std::string& dir,
-              asn1::codegen::CodecKind codec, const std::string& namespace_name) {
+              asn1::codegen::CodecKind codec, const std::string& namespace_name,
+              bool emit_inline, bool emit_split, bool emit_cache, int parallelism) {
   asn1::Diagnostics diag;
   std::vector<asn1::SourceFile> files;
-  asn1::ir::Model model = analyze_files(paths, diag, files);
+  asn1::ir::Model model = analyze_files(paths, diag, files, parallelism);
   if (!diag.ok()) {
     diag.print(std::cerr);
     return EXIT_FAILURE;
   }
 
   std::filesystem::create_directories(dir);
-  const auto header_path = std::filesystem::path(dir) / "generated.hpp";
-  const auto source_path = std::filesystem::path(dir) / "generated.cpp";
-
-  std::ofstream header(header_path);
-  std::ofstream source(source_path);
-  if (!header || !source) {
-    std::cerr << "asn1cxx: failed to open emit outputs in " << dir << '\n';
-    return EXIT_FAILURE;
-  }
-
   asn1::codegen::EmitOptions opt;
   opt.codec = codec;
   opt.basename = "generated";
   opt.namespace_name = namespace_name;
+  opt.emit_inline = emit_inline;
+  opt.emit_split = emit_split;
+  opt.emit_cache = emit_cache;
+  // Absolute paths to the .asn inputs; the content-hash cache folds these
+  // into the unit key so a source edit naturally invalidates the entry.
+  opt.source_paths.reserve(paths.size());
+  for (const std::string& p : paths) {
+    opt.source_paths.push_back(std::filesystem::absolute(p));
+  }
+
+  if (emit_split) {
+    asn1::codegen::CppGenerator gen;
+    gen.emit_split(model, opt, diag, dir);
+    if (!diag.ok()) {
+      diag.print(std::cerr);
+      return EXIT_FAILURE;
+    }
+    diag.print(std::cerr);
+    // Tell apart a 100% cache hit (the aggregate header is always
+    // rewritten because it just `#include`s every unit) from a partial hit
+    // that actually opened some emit unit's streams.
+    const HitMiss hm2 = latest_cache_stats(diag);
+    if (hm2.total > 0 && hm2.hits == hm2.total) {
+      std::cerr << "asn1cxx: reused (cached) split emit into " << dir
+                << " (<Module>.hpp/.cpp per module + generated.hpp aggregate)\n";
+    } else {
+      std::cerr << "asn1cxx: wrote split emit into " << dir
+                << " (<Module>.hpp/.cpp per module + generated.hpp aggregate)\n";
+    }
+    return EXIT_SUCCESS;
+  }
+
   asn1::codegen::CppGenerator gen;
-  gen.emit(model, opt, diag, header, &source);
+  gen.emit_to_dir(model, opt, diag, dir);
   if (!diag.ok()) {
     diag.print(std::cerr);
     return EXIT_FAILURE;
   }
-  std::cerr << "asn1cxx: wrote " << header_path.string() << " and " << source_path.string()
-            << '\n';
+  // Emit diagnostics (the cache note lives here) and a per-mode status line.
+  // A 100% cache hit leaves the on-disk files untouched; the user wants to
+  // know whether they got "wrote" or "reused". We tell apart by looking at
+  // the most recent cache note: if every unit hit, nothing was written.
+  diag.print(std::cerr);
+  const HitMiss hm = latest_cache_stats(diag);
+  if (hm.total > 0 && hm.hits == hm.total) {
+    std::cerr << "asn1cxx: reused (cached) " << (std::filesystem::path(dir) / "generated.hpp")
+              << " and " << (std::filesystem::path(dir) / "generated.cpp") << '\n';
+  } else {
+    std::cerr << "asn1cxx: wrote " << (std::filesystem::path(dir) / "generated.hpp") << " and "
+              << (std::filesystem::path(dir) / "generated.cpp") << '\n';
+  }
   return EXIT_SUCCESS;
 }
 
@@ -223,7 +337,24 @@ int main(int argc, char** argv) {
   bool dump_ir_flag = false;
   std::string emit_dir;
   std::string namespace_name = "asn1_gen";
-  asn1::codegen::CodecKind codec = asn1::codegen::CodecKind::Uper;
+  // CLI default is out-of-line (declarations in the .hpp, definitions in the
+  // companion .cpp); --emit-inline restores the all-inline header for small
+  // single-TU modules where a zero-link setup is worth more.
+  bool emit_inline = false;
+  // --emit-split: per-module <Module>.hpp/.cpp pairs + aggregate header
+  // (types namespaced per module; out-of-line regardless of --emit-inline).
+  bool emit_split = false;
+  // P2-3: --no-emit-cache disables the content-hash cache; the default
+  // (`emit_cache = true`) skips emit when the unit's source + options are
+  // unchanged since the last successful run.
+  bool emit_cache = true;
+  // P3-1: parallel frontend analysis (declare + resolve passes). 0 keeps the
+  // original serial baseline (default — preserves byte-identical diagnostics).
+  int parallelism = 0;
+  // None until the first --codec flag; falls back to Uper afterwards so an
+  // unset --codec keeps the historical default while --codec uper,ber-style
+  // combinations accumulate by OR.
+  asn1::codegen::CodecKind codec = asn1::codegen::CodecKind::None;
   std::vector<std::string> files;
 
   for (int i = 1; i < argc; ++i) {
@@ -264,37 +395,68 @@ int main(int argc, char** argv) {
       namespace_name = argv[++i];
       continue;
     }
+    if (arg == "--emit-inline") {
+      emit_inline = true;
+      continue;
+    }
+    if (arg == "--emit-split") {
+      emit_split = true;
+      continue;
+    }
+    if (arg == "--emit-cache") {
+      emit_cache = true;
+      continue;
+    }
+    if (arg == "--no-emit-cache") {
+      emit_cache = false;
+      continue;
+    }
+    if (arg == "--parallel") {
+      if (i + 1 >= argc) {
+        std::cerr << "asn1cxx: --parallel requires a worker count (0 = serial)\n";
+        return EXIT_FAILURE;
+      }
+      const std::string v = argv[++i];
+      try {
+        const long n = std::stol(v);
+        if (n < 0 || n > 1024) {
+          std::cerr << "asn1cxx: --parallel must be 0..1024\n";
+          return EXIT_FAILURE;
+        }
+        parallelism = static_cast<int>(n);
+      } catch (const std::exception&) {
+        std::cerr << "asn1cxx: --parallel requires an integer (got '" << v << "')\n";
+        return EXIT_FAILURE;
+      }
+      continue;
+    }
     if (arg == "--codec") {
       if (i + 1 >= argc) {
-        std::cerr << "asn1cxx: --codec requires uper|aper|both|jer|xer|exer|ber|der|oer|coer|cxer\n";
+        std::cerr << "asn1cxx: --codec requires a comma-separated list of "
+                     "uper|aper|per|ber|der|cer|jer|xer|exer|oer|coer|cxer\n";
         return EXIT_FAILURE;
       }
       const std::string_view v = argv[++i];
-      if (v == "uper") {
-        codec = asn1::codegen::CodecKind::Uper;
-      } else if (v == "aper") {
-        codec = asn1::codegen::CodecKind::Aper;
-      } else if (v == "both") {
-        codec = asn1::codegen::CodecKind::Both;
-      } else if (v == "jer") {
-        codec = asn1::codegen::CodecKind::Jer;
-      } else if (v == "xer") {
-        codec = asn1::codegen::CodecKind::Xer;
-      } else if (v == "exer") {
-        codec = asn1::codegen::CodecKind::Exer;
-      } else if (v == "ber") {
-        codec = asn1::codegen::CodecKind::Ber;
-      } else if (v == "der") {
-        codec = asn1::codegen::CodecKind::Der;
-      } else if (v == "oer") {
-        codec = asn1::codegen::CodecKind::Oer;
-      } else if (v == "coer") {
-        codec = asn1::codegen::CodecKind::Coer;
-      } else if (v == "cxer") {
-        codec = asn1::codegen::CodecKind::Cxer;
-      } else {
-        std::cerr << "asn1cxx: unknown codec '" << v << "'\n";
-        return EXIT_FAILURE;
+      // Comma-separated combination (e.g. --codec uper,ber) OR/OR repeated
+      // --codec flags accumulate into one bitmask.
+      std::size_t pos = 0;
+      while (pos <= v.size()) {
+        const std::size_t comma = v.find(',', pos);
+        const std::string_view item =
+            v.substr(pos, comma == std::string_view::npos
+                               ? std::string_view::npos
+                               : comma - pos);
+        pos = (comma == std::string_view::npos) ? v.size() + 1 : comma + 1;
+        if (item.empty()) {
+          std::cerr << "asn1cxx: empty codec name in '--codec " << v << "'\n";
+          return EXIT_FAILURE;
+        }
+        std::optional<asn1::codegen::CodecKind> one = parse_codec_item(item);
+        if (!one) {
+          std::cerr << "asn1cxx: unknown codec '" << item << "'\n";
+          return EXIT_FAILURE;
+        }
+        codec = codec | *one;
       }
       continue;
     }
@@ -318,12 +480,16 @@ int main(int argc, char** argv) {
   int status = EXIT_SUCCESS;
   try {
     if (dump_ir_flag) {
-      if (dump_ir(files) != EXIT_SUCCESS) {
+      if (dump_ir(files, parallelism) != EXIT_SUCCESS) {
         status = EXIT_FAILURE;
       }
     }
     if (!emit_dir.empty()) {
-      if (emit_code(files, emit_dir, codec, namespace_name) != EXIT_SUCCESS) {
+      // No --codec given at all: keep the historical UPER default.
+      if (codec == asn1::codegen::CodecKind::None) {
+        codec = asn1::codegen::CodecKind::Uper;
+      }
+      if (emit_code(files, emit_dir, codec, namespace_name, emit_inline, emit_split, emit_cache, parallelism) != EXIT_SUCCESS) {
         status = EXIT_FAILURE;
       }
     }

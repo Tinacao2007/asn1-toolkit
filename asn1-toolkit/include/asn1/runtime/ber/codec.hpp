@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.690 — ASN.1 encoding rules: Basic Encoding
 **                 Rules (BER).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once

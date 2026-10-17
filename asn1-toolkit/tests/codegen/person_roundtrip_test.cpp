@@ -17,7 +17,7 @@
 **
 ** Specification: Validates toolchain output against internal IR/codegen
 **                 contracts (X.680 type model).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include "per/generated.hpp"

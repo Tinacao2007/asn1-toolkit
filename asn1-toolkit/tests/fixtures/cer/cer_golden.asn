@@ -1,0 +1,60 @@
+CerGolden DEFINITIONS ::=
+BEGIN
+
+  -- No AUTOMATIC TAGS: components keep their natural universal tags.
+  -- `second` is declared BEFORE `first` so the encoded order (BOOLEAN 01
+  -- before INTEGER 02) exercises the X.680 8.6 tag ordering of SETs.
+
+  SetS ::= SET {
+    second  INTEGER,
+    first   BOOLEAN
+  }
+
+  -- Small constructed value: the indefinite wrapper (X.690 9.1).
+  Small ::= SEQUENCE {
+    i INTEGER,
+    b BOOLEAN
+  }
+
+  -- CHOICE with a primitive and a constructed alternative. Under CER the
+  -- constructed alternative arrives in the indefinite form, so the CHOICE
+  -- decoder must dispatch on the tag without consuming the header.
+  C ::= CHOICE {
+    num  INTEGER,
+    seq  SEQUENCE { x INTEGER }
+  }
+
+  -- OCTET STRING over 1000 contents octets: fragmented into primitive
+  -- fragments of at most 1000 octets each, wrapped indefinite
+  -- (X.690 9.2).
+  Frag ::= SEQUENCE {
+    n INTEGER,
+    s OCTET STRING
+  }
+
+  -- BIT STRING over 1000 contents octets: each fragment carries its own
+  -- initial (unused-bits) octet inside its 1000 contents octets
+  -- (X.690 8.6.4 + 9.2).
+  BitFrag ::= SEQUENCE {
+    n INTEGER,
+    b BIT STRING
+  }
+
+  -- SET OF: components ordered by encoding compared as octet strings
+  -- (X.690 9.3), which for equal-tag elements is plain ascending order.
+  SetOfI ::= SET OF INTEGER
+
+  -- A SET with an untagged CHOICE component: X.690 9.3 orders the CHOICE
+  -- as though it carried the SMALLEST tag in the choice (BOOLEAN, 01), not
+  -- the selected alternative's tag. Selecting the BIT STRING (03)
+  -- alternative must still place the CHOICE ahead of the INTEGER (02).
+  SetC ::= SET {
+    small INTEGER,
+    ch    ChoiceB
+  }
+
+  ChoiceB ::= CHOICE {
+    bo BOOLEAN,
+    bi BIT STRING
+  }
+END

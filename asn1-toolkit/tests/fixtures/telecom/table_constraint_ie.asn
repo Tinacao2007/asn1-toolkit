@@ -1,0 +1,35 @@
+TCMod DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+  ProtocolIE-ID ::= INTEGER (0..65535)
+
+  id-MME-UE-S1AP-ID ProtocolIE-ID ::= 0
+  id-eNB-UE-S1AP-ID ProtocolIE-ID ::= 1
+
+  MME-UE-S1AP-ID ::= INTEGER (0..4294967295)
+  ENB-UE-S1AP-ID ::= INTEGER (0..16777215)
+
+  Criticality ::= ENUMERATED { reject, ignore, notify }
+
+  S1AP-PROTOCOL-IES ::= CLASS {
+    &id          ProtocolIE-ID UNIQUE,
+    &criticality Criticality,
+    &Value
+  } WITH SYNTAX {
+    ID &id
+    CRITICALITY &criticality
+    TYPE &Value
+  }
+
+  HandoverRequiredIEs S1AP-PROTOCOL-IES ::= {
+    { ID id-MME-UE-S1AP-ID CRITICALITY ignore TYPE MME-UE-S1AP-ID } |
+    { ID id-eNB-UE-S1AP-ID CRITICALITY reject TYPE ENB-UE-S1AP-ID }
+  }
+
+  ProtocolIE-Field {S1AP-PROTOCOL-IES : IEsSetParam} ::= SEQUENCE {
+    id          S1AP-PROTOCOL-IES.&id          ({IEsSetParam}),
+    criticality S1AP-PROTOCOL-IES.&criticality ({IEsSetParam}{@id}),
+    value       S1AP-PROTOCOL-IES.&Value       ({IEsSetParam}{@id})
+  }
+
+  HandoverIE ::= ProtocolIE-Field {{HandoverRequiredIEs}}
+END

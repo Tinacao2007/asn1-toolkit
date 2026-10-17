@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.680 — ASN.1 abstract syntax (lexical and
 **                 syntactic notation).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/frontend/parser.hpp>

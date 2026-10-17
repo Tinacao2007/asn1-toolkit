@@ -1,0 +1,95 @@
+-- Differential golden-vector spec for PER external cross-validation.
+-- Deliberately restricted to the syntax subset supported by the independent
+-- oracle (asn1tools): no CLASS, no parameterization, no EMBEDDED PDV.
+-- The X.691 A.1 PersonnelRecord example is included verbatim-ish as the
+-- canonical worked case.
+PerGolden DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+
+  -- X.691 A.1 canonical example (constrained UTF8String name + optional
+  -- children list exercises constrained length determinants and the
+  -- SEQUENCE presence bitmap).
+  Date ::= VisibleString (SIZE (8))
+
+  Name ::= UTF8String (SIZE (1..16))
+
+  ChildInformation ::= SEQUENCE {
+    name Name,
+    dateOfBirth Date
+  }
+
+  PersonnelRecord ::= SEQUENCE {
+    name Name,
+    title VisibleString (SIZE (1..16)),
+    employeeNumber INTEGER (0..250),
+    dateOfHire Date,
+    nameOfSpouse Name OPTIONAL,
+    children SEQUENCE (SIZE (0..4)) OF ChildInformation OPTIONAL
+  }
+
+  -- Primitive coverage: every PER integer form plus the standard
+  -- non-integer primitives with fixed and variable sizes.
+  Color ::= ENUMERATED { red, green, blue }
+
+  ExtColor ::= ENUMERATED { one, two, ..., three, four }
+
+  Prim ::= SEQUENCE {
+    flag BOOLEAN,
+    small INTEGER (0..15),
+    med INTEGER (0..255),
+    wide INTEGER (0..65535),
+    -- Semi-constrained wire format (X.691 11.9.3.1c): a constrained integer
+    -- with ub >= 64K encodes identically to a semi-constrained one (offset
+    -- from lb + length determinant). The finite upper bound keeps external
+    -- oracles that mishandle MAX on the correct wire format.
+    semi INTEGER (1000..70000000),
+    unb INTEGER,
+    neg INTEGER (-1000..1000),
+    en Color,
+    extEn ExtColor,
+    bits BIT STRING (SIZE (10)),
+    varBits BIT STRING (SIZE (0..32)),
+    octs OCTET STRING (SIZE (4)),
+    varOcts OCTET STRING (SIZE (0..16)),
+    oid OBJECT IDENTIFIER,
+    n NULL,
+    txt VisibleString,
+    ps PrintableString (SIZE (1..8)),
+    ns NumericString (SIZE (1..8)),
+    u8 UTF8String
+  }
+
+  -- Extension coverage: root SEQUENCE / CHOICE / ENUMERATED additions.
+  ExtSeq ::= SEQUENCE {
+    a INTEGER (0..255),
+    b BOOLEAN,
+    ...,
+    c INTEGER (0..255) OPTIONAL
+  }
+
+  ExtChoice ::= CHOICE {
+    a INTEGER (0..255),
+    b VisibleString (SIZE (1..4)),
+    ...,
+    c BOOLEAN
+  }
+
+  -- Version-bracket group: the whole group is ONE extension addition (one
+  -- bitmap bit); a fully-absent group sets that bit to 0. The group itself is
+  -- encoded as a nested SEQUENCE (preamble included, X.691 19.9 NOTE 1).
+  ExtSeqVB ::= SEQUENCE {
+    a INTEGER (0..255),
+    b BOOLEAN,
+    ...,
+    [[
+      c INTEGER (0..255) OPTIONAL,
+      d VisibleString (SIZE (1..4)) OPTIONAL
+    ]]
+  }
+
+  -- Fragmentation: SEQUENCE OF longer than one 64K chunk is encoded as
+  -- a 16K-count fragment with the continuation bit set. BOOLEAN elements
+  -- keep the checked-in vector compact.
+  Frag ::= SEQUENCE (SIZE (0..70000)) OF BOOLEAN
+
+END

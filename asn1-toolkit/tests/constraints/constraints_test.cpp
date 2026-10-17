@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.680 — subtyping and constraint notation (X.682
 **                 constraint application).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/constraints/normalize.hpp>

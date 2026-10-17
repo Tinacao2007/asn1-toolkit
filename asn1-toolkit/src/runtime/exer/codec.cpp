@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.693 — Extended XER (E-XER) and encoding
 **                 instructions.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/runtime/exer/codec.hpp>

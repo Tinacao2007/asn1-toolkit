@@ -18,7 +18,7 @@
 ** Specification: ITU-T X.680 — name and module semantics;
 **                 ITU-T X.681 / X.683 — object and parameterization
 **                 semantics where implemented.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/semantic/analyzer.hpp>
@@ -28,9 +28,14 @@
 #include <asn1/ast/type.hpp>
 #include <asn1/constraints/normalize.hpp>
 
+#include <algorithm>
 #include <cstdint>
+#include <execution>
 #include <functional>
+#include <future>
+#include <mutex>
 #include <optional>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -411,15 +416,41 @@ ir::Tag make_ast_tag(const ast::Tag& t, ast::TagDefault module_default, bool for
 }
 
 ir::Tag component_tag(const ast::Type& field_type, ast::TagDefault module_default,
-                      std::uint64_t auto_index) {
+                      std::uint64_t auto_index, bool auto_tags) {
   const bool is_choice = dynamic_cast<const ast::ChoiceType*>(&field_type) != nullptr;
   if (field_type.tag()) {
     return make_ast_tag(*field_type.tag(), module_default, is_choice);
   }
-  if (module_default == ast::TagDefault::Automatic) {
+  if (auto_tags) {
     return ir::Tag{ir::TagClass::Context, auto_index, is_choice};
   }
   return builtin_tag_for(field_type);
+}
+
+// X.680 25.3 (SEQUENCE/SET) and 29.2 (CHOICE): automatic tagging applies to
+// a component list only when NO component is textually tagged — one manual
+// tag anywhere in the list disables automatic numbering for the whole list,
+// and untagged components keep their natural universal tags. Version
+// brackets are not "ComponentType" occurrences, so their manual tags do not
+// count (25.3 covers the first three ComponentType alternatives only).
+bool any_textual_component_tag(const std::vector<asn1::ast::NodePtr<asn1::ast::ComponentItem>>& items) {
+  for (const auto& item : items) {
+    if (dynamic_cast<const ast::VersionAdditionGroup*>(item.get())) {
+      continue;
+    }
+    if (const auto* comp = dynamic_cast<const ast::Component*>(item.get())) {
+      if (comp->type().tag()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool automatic_tags_selected(const ast::Module& mod,
+                             const std::vector<asn1::ast::NodePtr<asn1::ast::ComponentItem>>& items) {
+  return mod.tag_default() == ast::TagDefault::Automatic &&
+         !any_textual_component_tag(items);
 }
 
 struct LowerCtx {
@@ -1239,6 +1270,9 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
     out.string.size = constraints::normalize_size(str->constraint(), ctx.diagnostics, val_resolver);
   } else if (const auto* seq = dynamic_cast<const ast::SequenceType*>(&type)) {
     out.kind = ir::TypeKind::Sequence;
+    // X.680 25.3: a single textual tag in the list disables automatic
+    // tagging for the whole list.
+    const bool auto_ok = automatic_tags_selected(ctx.mod, seq->items());
     std::uint64_t auto_index = 0;
     bool in_extensions = false;
     bool in_trailing_root = false;
@@ -1246,7 +1280,7 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       ir::Field field;
       field.name = comp.name();
       field.presence = map_presence(comp.presence());
-      field.tag = component_tag(comp.type(), ctx.mod.tag_default(), auto_index);
+      field.tag = component_tag(comp.type(), ctx.mod.tag_default(), auto_index, auto_ok);
       ++auto_index;
       field.type = lower_type(
           ctx, comp.type(),
@@ -1297,10 +1331,11 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
             if (in_extensions) {
               out.sequence.extension_groups.emplace_back();
               auto& dest = out.sequence.extension_groups.back();
+              dest.version_bracket = true;
               for (const auto& child : grp->items()) {
                 const auto* comp = dynamic_cast<const ast::Component*>(child.get());
                 if (comp) {
-                  dest.push_back(make_field(*comp));
+                  dest.fields.push_back(make_field(*comp));
                 }
               }
             }
@@ -1313,7 +1348,8 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
           ir::Field field = make_field(*comp);
           if (in_extensions) {
             // Each ComponentType after "..." is its own extension addition.
-            out.sequence.extension_groups.push_back({std::move(field)});
+            out.sequence.extension_groups.push_back(
+                ir::ExtensionGroup{{std::move(field)}, false});
           } else if (in_trailing_root) {
             out.sequence.trailing_root.push_back(std::move(field));
           } else {
@@ -1325,6 +1361,8 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
     }
   } else if (const auto* ch = dynamic_cast<const ast::ChoiceType*>(&type)) {
     out.kind = ir::TypeKind::Choice;
+    // X.680 29.2 mirrors 25.3 for choice alternative lists.
+    const bool auto_ok = automatic_tags_selected(ctx.mod, ch->alternatives());
     std::uint64_t auto_index = 0;
     bool in_extensions = false;
     std::function<void(const ast::ComponentItem&)> process =
@@ -1347,7 +1385,7 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
           ir::Field field;
           field.name = comp->name();
           field.presence = ir::Presence::Mandatory;
-          field.tag = component_tag(comp->type(), ctx.mod.tag_default(), auto_index);
+          field.tag = component_tag(comp->type(), ctx.mod.tag_default(), auto_index, auto_ok);
           ++auto_index;
           field.type = lower_type(
               ctx, comp->type(),
@@ -1373,6 +1411,8 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
         constraints::normalize_size(of->constraint(), ctx.diagnostics, val_resolver);
   } else if (const auto* set = dynamic_cast<const ast::SetType*>(&type)) {
     out.kind = ir::TypeKind::Set;
+    // X.680 25.3 also governs set component lists.
+    const bool auto_ok = automatic_tags_selected(ctx.mod, set->items());
     std::uint64_t auto_index = 0;
     bool in_extensions = false;
     bool in_trailing_root = false;
@@ -1380,7 +1420,7 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
       ir::Field field;
       field.name = comp.name();
       field.presence = map_presence(comp.presence());
-      field.tag = component_tag(comp.type(), ctx.mod.tag_default(), auto_index);
+      field.tag = component_tag(comp.type(), ctx.mod.tag_default(), auto_index, auto_ok);
       ++auto_index;
       field.type = lower_type(
           ctx, comp.type(),
@@ -1430,10 +1470,11 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
             if (in_extensions) {
               out.set.extension_groups.emplace_back();
               auto& dest = out.set.extension_groups.back();
+              dest.version_bracket = true;
               for (const auto& child : grp->items()) {
                 const auto* comp = dynamic_cast<const ast::Component*>(child.get());
                 if (comp) {
-                  dest.push_back(make_field(*comp));
+                  dest.fields.push_back(make_field(*comp));
                 }
               }
             }
@@ -1445,7 +1486,8 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
           }
           ir::Field field = make_field(*comp);
           if (in_extensions) {
-            out.set.extension_groups.push_back({std::move(field)});
+            out.set.extension_groups.push_back(
+                ir::ExtensionGroup{{std::move(field)}, false});
           } else if (in_trailing_root) {
             out.set.trailing_root.push_back(std::move(field));
           } else {
@@ -1465,8 +1507,8 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
   } else if (const auto* en = dynamic_cast<const ast::EnumeratedType*>(&type)) {
     out.kind = ir::TypeKind::Enumerated;
     auto assign_enum = [](const std::vector<ast::NamedNumber>& in,
-                          std::vector<ir::NamedNumber>& dest) {
-      std::int64_t next = 0;
+                          std::vector<ir::NamedNumber>& dest, std::int64_t start) {
+      std::int64_t next = start;
       bool have_next = true;
       for (const auto& nn : in) {
         ir::NamedNumber out_nn;
@@ -1488,9 +1530,16 @@ ir::TypeId lower_type(LowerCtx& ctx, const ast::Type& type, const std::string& a
         dest.push_back(std::move(out_nn));
       }
     };
-    assign_enum(en->root(), out.enumerated.root);
+    assign_enum(en->root(), out.enumerated.root, 0);
     out.enumerated.extensible = en->extensible();
-    assign_enum(en->extensions(), out.enumerated.extensions);
+    // Extension additions without explicit numbers continue the root numbering
+    // (X.680 numbering used by asn1c and 3GPP specs); restarting at 0 would
+    // collide with root values in the emitted value->index switch.
+    std::int64_t ext_start = 0;
+    if (!out.enumerated.root.empty() && out.enumerated.root.back().value.as_i64) {
+      ext_start = *out.enumerated.root.back().value.as_i64 + 1;
+    }
+    assign_enum(en->extensions(), out.enumerated.extensions, ext_start);
   } else if (dynamic_cast<const ast::ObjectIdentifierType*>(&type)) {
     out.kind = ir::TypeKind::ObjectIdentifier;
     out.object_identifier.size =
@@ -1672,128 +1721,194 @@ Analyzer::Analyzer(Diagnostics& diagnostics) : diagnostics_(diagnostics) {}
  *  Parameters  : modules — std::vector<std::unique_ptr<ast::Module>> modules
  *  Returns     : ir::Model Analyzer::
  */
-ir::Model Analyzer::analyze(std::vector<std::unique_ptr<ast::Module>> modules) {
+ir::Model Analyzer::analyze(std::vector<std::unique_ptr<ast::Module>> modules,
+                            int parallelism) {
   modules_ = std::move(modules);
   model_ = ir::Model{};
   symbols_ = SymbolTable{};
 
-  declare_pass();
-  resolve_pass();
-  lower_pass();
+  declare_pass(parallelism);
+  resolve_pass(parallelism);
+  lower_pass(parallelism);
   tag_pass();
 
   return std::move(model_);
 }
 
 /**
- *  Function    : declare_pass
- *  Description : Performs declare pass (definition).
- *  Parameters  : none
- *  Returns     : void Analyzer::
+ *  Function    : declare_module_into
+ *  Description : Helper used by `declare_pass`. Walks one module's imports and
+ *                assignments, declaring each into `out_syms`. Records
+ *                diagnostics locally — the parallel orchestrator merges the
+ *                per-worker results in module index order so the byte sequence
+ *                matches the serial pass.
+ *  Parameters  : mod — const ast::Module& mod
+ *                out_syms — SymbolTable& out_syms
+ *                out_diag — Diagnostics& out_diag
+ *  Returns     : void
  */
-void Analyzer::declare_pass() {
-  for (auto& mod_ptr : modules_) {
-    if (!mod_ptr) {
-      continue;
-    }
-    ast::Module& mod = *mod_ptr;
+void declare_module_into(const ast::Module& mod, SymbolTable& out_syms, Diagnostics& out_diag) {
+  Symbol mod_sym;
+  mod_sym.kind = SymbolKind::Module;
+  mod_sym.module = mod.name();
+  mod_sym.name = mod.name();
+  mod_sym.range = mod.range();
+  mod_sym.ast = &mod;
+  out_syms.declare(std::move(mod_sym), out_diag);
 
-    Symbol mod_sym;
-    mod_sym.kind = SymbolKind::Module;
-    mod_sym.module = mod.name();
-    mod_sym.name = mod.name();
-    mod_sym.range = mod.range();
-    mod_sym.ast = &mod;
-    symbols_.declare(std::move(mod_sym), diagnostics_);
-
-    for (const auto& imp : mod.imports()) {
-      for (const auto& sym : imp.symbols) {
-        Symbol s;
-        const bool is_type = !sym.name.empty() && sym.name[0] >= 'A' && sym.name[0] <= 'Z';
-        s.kind = is_type ? SymbolKind::Type : SymbolKind::Value;
-        s.module = mod.name();
-        s.name = sym.name;
-        s.range = sym.range;
-        s.is_import = true;
-        s.import_from_module = imp.module;
-        symbols_.declare(std::move(s), diagnostics_);
-      }
-    }
-
-    for (const auto& assignment : mod.assignments()) {
-      if (const auto* ta = dynamic_cast<const ast::TypeAssignment*>(assignment.get())) {
-        Symbol s;
-        s.kind = SymbolKind::Type;
-        s.module = mod.name();
-        s.name = ta->name();
-        s.range = ta->range();
-        s.ast = ta;
-        symbols_.declare(std::move(s), diagnostics_);
-      } else if (const auto* va =
-                     /**
-                      *  Function    : get
-                      *  Description : Computes get from (none).
-                      *  Parameters  : none
-                      *  Returns     : dynamic_cast<const ast::ValueAssignment*>(assignment.
-                      */
-                     dynamic_cast<const ast::ValueAssignment*>(assignment.get())) {
-        Symbol s;
-        s.kind = SymbolKind::Value;
-        s.module = mod.name();
-        s.name = va->name();
-        s.range = va->range();
-        s.ast = va;
-        symbols_.declare(std::move(s), diagnostics_);
-      } else if (const auto* oc =
-                     /**
-                      *  Function    : get
-                      *  Description : Computes get from (none).
-                      *  Parameters  : none
-                      *  Returns     : dynamic_cast<const ast::ObjectClassAssignment*>(assignment.
-                      */
-                     dynamic_cast<const ast::ObjectClassAssignment*>(assignment.get())) {
-        Symbol s;
-        s.kind = SymbolKind::ObjectClass;
-        s.module = mod.name();
-        s.name = oc->name();
-        s.range = oc->range();
-        s.ast = oc;
-        symbols_.declare(std::move(s), diagnostics_);
-      } else if (const auto* obj =
-                     /**
-                      *  Function    : get
-                      *  Description : Computes get from (none).
-                      *  Parameters  : none
-                      *  Returns     : dynamic_cast<const ast::ObjectAssignment*>(assignment.
-                      */
-                     dynamic_cast<const ast::ObjectAssignment*>(assignment.get())) {
-        Symbol s;
-        s.kind = SymbolKind::Object;
-        s.module = mod.name();
-        s.name = obj->name();
-        s.range = obj->range();
-        s.ast = obj;
-        symbols_.declare(std::move(s), diagnostics_);
-      } else if (const auto* oset =
-                     /**
-                      *  Function    : get
-                      *  Description : Computes get from (none).
-                      *  Parameters  : none
-                      *  Returns     : dynamic_cast<const ast::ObjectSetAssignment*>(assignment.
-                      */
-                     dynamic_cast<const ast::ObjectSetAssignment*>(assignment.get())) {
-        Symbol s;
-        s.kind = SymbolKind::ObjectSet;
-        s.module = mod.name();
-        s.name = oset->name();
-        s.range = oset->range();
-        s.ast = oset;
-        symbols_.declare(std::move(s), diagnostics_);
-      }
+  for (const auto& imp : mod.imports()) {
+    for (const auto& sym : imp.symbols) {
+      Symbol s;
+      const bool is_type = !sym.name.empty() && sym.name[0] >= 'A' && sym.name[0] <= 'Z';
+      s.kind = is_type ? SymbolKind::Type : SymbolKind::Value;
+      s.module = mod.name();
+      s.name = sym.name;
+      s.range = sym.range;
+      s.is_import = true;
+      s.import_from_module = imp.module;
+      out_syms.declare(std::move(s), out_diag);
     }
   }
 
-  // Builtin useful object classes (X.681) available in every module scope.
+  for (const auto& assignment : mod.assignments()) {
+    if (const auto* ta = dynamic_cast<const ast::TypeAssignment*>(assignment.get())) {
+      Symbol s;
+      s.kind = SymbolKind::Type;
+      s.module = mod.name();
+      s.name = ta->name();
+      s.range = ta->range();
+      s.ast = ta;
+      out_syms.declare(std::move(s), out_diag);
+    } else if (const auto* va =
+                   /**
+                    *  Function    : get
+                    *  Description : Computes get from (none).
+                    *  Parameters  : none
+                    *  Returns     : dynamic_cast<const ast::ValueAssignment*>(assignment.
+                    */
+                   dynamic_cast<const ast::ValueAssignment*>(assignment.get())) {
+      Symbol s;
+      s.kind = SymbolKind::Value;
+      s.module = mod.name();
+      s.name = va->name();
+      s.range = va->range();
+      s.ast = va;
+      out_syms.declare(std::move(s), out_diag);
+    } else if (const auto* oc =
+                   /**
+                    *  Function    : get
+                    *  Description : Computes get from (none).
+                    *  Parameters  : none
+                    *  Returns     : dynamic_cast<const ast::ObjectClassAssignment*>(assignment.
+                    */
+                   dynamic_cast<const ast::ObjectClassAssignment*>(assignment.get())) {
+      Symbol s;
+      s.kind = SymbolKind::ObjectClass;
+      s.module = mod.name();
+      s.name = oc->name();
+      s.range = oc->range();
+      s.ast = oc;
+      out_syms.declare(std::move(s), out_diag);
+    } else if (const auto* obj =
+                   /**
+                    *  Function    : get
+                    *  Description : Computes get from (none).
+                    *  Parameters  : none
+                    *  Returns     : dynamic_cast<const ast::ObjectAssignment*>(assignment.
+                    */
+                   dynamic_cast<const ast::ObjectAssignment*>(assignment.get())) {
+      Symbol s;
+      s.kind = SymbolKind::Object;
+      s.module = mod.name();
+      s.name = obj->name();
+      s.range = obj->range();
+      s.ast = obj;
+      out_syms.declare(std::move(s), out_diag);
+    } else if (const auto* oset =
+                   /**
+                    *  Function    : get
+                    *  Description : Computes get from (none).
+                    *  Parameters  : none
+                    *  Returns     : dynamic_cast<const ast::ObjectSetAssignment*>(assignment.
+                    */
+                   dynamic_cast<const ast::ObjectSetAssignment*>(assignment.get())) {
+      Symbol s;
+      s.kind = SymbolKind::ObjectSet;
+      s.module = mod.name();
+      s.name = oset->name();
+      s.range = oset->range();
+      s.ast = oset;
+      out_syms.declare(std::move(s), out_diag);
+    }
+  }
+}
+
+/**
+ *  Function    : declare_pass
+ *  Description : Performs declare pass (definition). parallelism=0 keeps the
+ *                original serial walk; parallelism>0 spawns one async task per
+ *                module and merges results in module index order.
+ *  Parameters  : parallelism — int parallelism
+ *  Returns     : void Analyzer::
+ */
+void Analyzer::declare_pass(int parallelism) {
+  if (parallelism <= 1 || modules_.size() < 2) {
+    for (auto& mod_ptr : modules_) {
+      if (!mod_ptr) {
+        continue;
+      }
+      declare_module_into(*mod_ptr, symbols_, diagnostics_);
+    }
+    // Builtin useful object classes — kept serial because they touch the
+    // shared SymbolTable and are cheap.
+    for (auto& mod_ptr : modules_) {
+      if (!mod_ptr) {
+        continue;
+      }
+      for (const char* useful : {"TYPE-IDENTIFIER", "ABSTRACT-SYNTAX"}) {
+        if (symbols_.find(mod_ptr->name(), useful)) {
+          continue;
+        }
+        Symbol s;
+        s.kind = SymbolKind::ObjectClass;
+        s.module = mod_ptr->name();
+        s.name = useful;
+        s.range = mod_ptr->range();
+        s.ast = nullptr;
+        symbols_.declare(std::move(s), diagnostics_);
+      }
+    }
+    return;
+  }
+
+  // Parallel path: each worker declares into a private SymbolTable + private
+  // Diagnostics. The orchestrator then merges per-module tables (in module
+  // index order) and the diagnostics stream (also in module index order).
+  const std::size_t n = modules_.size();
+  const std::size_t workers = std::min<std::size_t>(
+      static_cast<std::size_t>(parallelism), n);
+  struct WorkerResult {
+    SymbolTable syms;
+    Diagnostics diag;
+  };
+  std::vector<std::future<WorkerResult>> futs;
+  futs.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    futs.emplace_back(std::async(std::launch::async, [this, i]() -> WorkerResult {
+      WorkerResult r;
+      if (modules_[i]) {
+        declare_module_into(*modules_[i], r.syms, r.diag);
+      }
+      return r;
+    }));
+  }
+  for (auto& f : futs) {
+    WorkerResult r = f.get();
+    symbols_.merge(std::move(r.syms));
+    diagnostics_.merge(std::move(r.diag));
+  }
+
+  // Useful object classes — serial; cross-module visibility needed.
   for (auto& mod_ptr : modules_) {
     if (!mod_ptr) {
       continue;
@@ -1811,15 +1926,24 @@ void Analyzer::declare_pass() {
       symbols_.declare(std::move(s), diagnostics_);
     }
   }
+  (void)workers;  // future: chunked scheduling
 }
 
 /**
  *  Function    : resolve_pass
- *  Description : Performs resolve pass (definition).
- *  Parameters  : none
+ *  Description : Performs resolve pass (definition). Each module's type-
+ *                reference checks read a complete SymbolTable but never
+ *                mutate it, so per-module type-ref checks are safely
+ *                parallelizable. Import visibility (which depends on the
+ *                full `modules_` list) stays serial to keep "imported
+ *                module is not present" warnings in the original order.
+ *  Parameters  : parallelism — int parallelism
  *  Returns     : void Analyzer::
  */
-void Analyzer::resolve_pass() {
+void Analyzer::resolve_pass(int parallelism) {
+  // Per-module import visibility: done serially because it walks `modules_`.
+  // Cheap and deterministic; the order here MUST match the serial pass's
+  // module iteration order to keep diagnostics byte-equal.
   for (const auto& mod_ptr : modules_) {
     if (!mod_ptr) {
       continue;
@@ -1845,36 +1969,90 @@ void Analyzer::resolve_pass() {
                                             "' is not among the analyzed modules");
       }
     }
+  }
 
-    for (const auto& assignment : mod.assignments()) {
-      if (const auto* ta = dynamic_cast<const ast::TypeAssignment*>(assignment.get())) {
-        std::unordered_set<std::string> formals;
-        for (const auto& p : ta->parameters()) {
-          formals.insert(p.name);
+  if (parallelism <= 1 || modules_.size() < 2) {
+    for (const auto& mod_ptr : modules_) {
+      if (!mod_ptr) {
+        continue;
+      }
+      const ast::Module& mod = *mod_ptr;
+      for (const auto& assignment : mod.assignments()) {
+        if (const auto* ta = dynamic_cast<const ast::TypeAssignment*>(assignment.get())) {
+          std::unordered_set<std::string> formals;
+          for (const auto& p : ta->parameters()) {
+            formals.insert(p.name);
+          }
+          check_type_refs(ta->type(), mod.name(), symbols_, diagnostics_,
+                          formals.empty() ? nullptr : &formals);
+        } else if (const auto* va =
+                       /**
+                        *  Function    : get
+                        *  Description : Computes get from (none).
+                        *  Parameters  : none
+                        *  Returns     : dynamic_cast<const ast::ValueAssignment*>(assignment.
+                        */
+                       dynamic_cast<const ast::ValueAssignment*>(assignment.get())) {
+          check_type_refs(va->type(), mod.name(), symbols_, diagnostics_);
         }
-        check_type_refs(ta->type(), mod.name(), symbols_, diagnostics_,
-                        formals.empty() ? nullptr : &formals);
-      } else if (const auto* va =
-                     /**
-                      *  Function    : get
-                      *  Description : Computes get from (none).
-                      *  Parameters  : none
-                      *  Returns     : dynamic_cast<const ast::ValueAssignment*>(assignment.
-                      */
-                     dynamic_cast<const ast::ValueAssignment*>(assignment.get())) {
-        check_type_refs(va->type(), mod.name(), symbols_, diagnostics_);
       }
     }
+    return;
+  }
+
+  // Parallel path: each worker checks type refs against the read-only
+  // master SymbolTable. `check_type_refs` only calls `symbols.lookup`
+  // (read-only), so multiple workers can share the table. Diagnostics land
+  // locally and the orchestrator merges in module index order.
+  const std::size_t n = modules_.size();
+  std::vector<std::future<Diagnostics>> futs;
+  futs.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    futs.emplace_back(std::async(std::launch::async, [this, i]() -> Diagnostics {
+      Diagnostics d;
+      if (modules_[i]) {
+        const ast::Module& mod = *modules_[i];
+        for (const auto& assignment : mod.assignments()) {
+          if (const auto* ta =
+                  dynamic_cast<const ast::TypeAssignment*>(assignment.get())) {
+            std::unordered_set<std::string> formals;
+            for (const auto& p : ta->parameters()) {
+              formals.insert(p.name);
+            }
+            check_type_refs(ta->type(), mod.name(), symbols_, d,
+                            formals.empty() ? nullptr : &formals);
+          } else if (const auto* va =
+                         /**
+                          *  Function    : get
+                          *  Description : Computes get from (none).
+                          *  Parameters  : none
+                          *  Returns     : dynamic_cast<const ast::ValueAssignment*>(assignment.
+                          */
+                         dynamic_cast<const ast::ValueAssignment*>(assignment.get())) {
+            check_type_refs(va->type(), mod.name(), symbols_, d);
+          }
+        }
+      }
+      return d;
+    }));
+  }
+  for (auto& f : futs) {
+    diagnostics_.merge(f.get());
   }
 }
 
 /**
  *  Function    : lower_pass
  *  Description : Performs lower pass (definition).
- *  Parameters  : none
+ *  Parameters  : parallelism — int parallelism (currently a no-op — lower_pass
+ *                remains serial because the per-module IR arena shares its
+ *                TypeId space with cross-module `Referenced.resolved` links.
+ *                Decoupling the per-module arenas would require rebuilding the
+ *                cross-module link graph and was deferred to a follow-up
+ *                (P3-1 only parallelizes `declare_pass` and `resolve_pass`).
  *  Returns     : void Analyzer::
  */
-void Analyzer::lower_pass() {
+void Analyzer::lower_pass(int /*parallelism*/) {
   for (auto& mod_ptr : modules_) {
     if (!mod_ptr) {
       continue;
@@ -2099,7 +2277,7 @@ void Analyzer::lower_pass() {
                 rew(f.type);
               }
               for (auto& g : t.sequence.extension_groups) {
-                for (auto& f : g) {
+                for (auto& f : g.fields) {
                   rew(f.type);
                 }
               }
@@ -2111,7 +2289,7 @@ void Analyzer::lower_pass() {
                 rew(f.type);
               }
               for (auto& g : t.set.extension_groups) {
-                for (auto& f : g) {
+                for (auto& f : g.fields) {
                   rew(f.type);
                 }
               }
@@ -2231,6 +2409,21 @@ void resolve_table_constraints(ir::Model& model, const SymbolTable& symbols) {
     if (!f.table_constraint || f.table_constraint->object_set_name.empty()) {
       return;
     }
+    // Typed table constraints only specialize an open-type (&Value) field.
+    // A fixed-type field (e.g. &criticality) carries the same {ObjectSet}{@id}
+    // component-relation constraint, but its type is fixed; entries there are
+    // meaningless and would emit undecodable variants.
+    if (f.type != ir::kInvalidType) {
+      const ir::Type& ft = model.arena.get(f.type);
+      const ir::Type& frt = (ft.kind == ir::TypeKind::Referenced &&
+                             ft.referenced.resolved != ir::kInvalidType)
+                                ? model.arena.get(ft.referenced.resolved)
+                                : ft;
+      if (!(frt.kind == ir::TypeKind::ObjectClassField && frt.object_class_field.open_type)) {
+        f.table_constraint.reset();
+        return;
+      }
+    }
     const auto os_it = os_by_name.find(f.table_constraint->object_set_name);
     if (os_it == os_by_name.end() || !os_it->second) {
       return;
@@ -2317,7 +2510,7 @@ void resolve_table_constraints(ir::Model& model, const SymbolTable& symbols) {
         resolve_field_constraint(f, t.module);
       }
       for (auto& g : t.sequence.extension_groups) {
-        for (auto& f : g) {
+        for (auto& f : g.fields) {
           resolve_field_constraint(f, t.module);
         }
       }
@@ -2329,7 +2522,7 @@ void resolve_table_constraints(ir::Model& model, const SymbolTable& symbols) {
         resolve_field_constraint(f, t.module);
       }
       for (auto& g : t.set.extension_groups) {
-        for (auto& f : g) {
+        for (auto& f : g.fields) {
           resolve_field_constraint(f, t.module);
         }
       }
@@ -2389,7 +2582,7 @@ void Analyzer::tag_pass() {
         rewrite_field(f);
       }
       for (auto& group : t.sequence.extension_groups) {
-        for (auto& f : group) {
+        for (auto& f : group.fields) {
           rewrite_field(f);
         }
       }
@@ -2401,7 +2594,7 @@ void Analyzer::tag_pass() {
         rewrite_field(f);
       }
       for (auto& group : t.set.extension_groups) {
-        for (auto& f : group) {
+        for (auto& f : group.fields) {
           rewrite_field(f);
         }
       }

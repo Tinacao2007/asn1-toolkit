@@ -17,7 +17,7 @@
 **
 ** Specification: No external protocol; C++ infrastructure shared by
 **                 compiler and runtime.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once
@@ -99,6 +99,20 @@ class Diagnostics {
    *  Returns     : std::string
    */
   std::string format(const Diagnostic& d) const;
+
+  /// Move-append another Diagnostics into this one, preserving `error_count_`.
+  /**
+   *  Function    : merge
+   *  Description : Performs merge (declaration).
+   *  Parameters  : other — Diagnostics&& other
+   *  Returns     : void
+   *
+   *  Used by the parallel frontend (P3-1) to combine per-worker Diagnostics
+   *  in the order of caller-determined module indexes. The caller is
+   *  responsible for the order of merge calls — items end up appended in
+   *  that order so the serial baseline and parallel output are byte-equal.
+   */
+  void merge(Diagnostics&& other) noexcept;
 
  private:
   /**

@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.696 — ASN.1 encoding rules: Octet Encoding
 **                 Rules (OER).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/runtime/oer/codec.hpp>

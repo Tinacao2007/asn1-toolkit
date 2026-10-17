@@ -16,7 +16,7 @@
 **   GoogleTest exercising result span behaviour.
 **
 ** Specification: No external protocol; tests for shared C++ helpers.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/common/result.hpp>

@@ -19,7 +19,7 @@
 **                 (S1AP) ASN.1 modules (fixtures);
 **                 compiler front-end only in this file (ITU-T X.680
 **                 module syntax).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include "generated.hpp"

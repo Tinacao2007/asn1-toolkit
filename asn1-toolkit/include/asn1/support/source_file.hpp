@@ -17,7 +17,7 @@
 **
 ** Specification: No external protocol; C++ infrastructure shared by
 **                 compiler and runtime.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once

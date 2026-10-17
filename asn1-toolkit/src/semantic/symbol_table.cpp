@@ -18,7 +18,7 @@
 ** Specification: ITU-T X.680 — name and module semantics;
 **                 ITU-T X.681 / X.683 — object and parameterization
 **                 semantics where implemented.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/semantic/symbol_table.hpp>
@@ -89,6 +89,34 @@ Symbol* SymbolTable::lookup(const std::string& current_module, const std::string
 const Symbol* SymbolTable::lookup(const std::string& current_module,
                                   const std::string& name) const {
   return find(current_module, name);
+}
+
+/**
+ *  Function    : merge
+ *  Description : Move the entries of `other` into self. Used by the parallel
+ *                `declare_pass` (P3-1) — each worker collects one module's
+ *                declarations into a private SymbolTable, and the orchestrator
+ *                merges them serially in module index order. Errors for
+ *                cross-module duplicates (which `declare` itself surfaces) are
+ *                not retried: the orchestrator passes its own Diagnostics to
+ *                the merge-time conflict check so the final error sequence is
+ *                deterministic.
+ *  Parameters  : other — SymbolTable&& other
+ *  Returns     : void SymbolTable::
+ */
+void SymbolTable::merge(SymbolTable&& other) {
+  if (other.entries_.empty()) {
+    return;
+  }
+  if (entries_.empty()) {
+    entries_ = std::move(other.entries_);
+    return;
+  }
+  entries_.reserve(entries_.size() + other.entries_.size());
+  for (auto& kv : other.entries_) {
+    entries_.insert(std::move(kv));
+  }
+  other.entries_.clear();
 }
 
 }  // namespace asn1

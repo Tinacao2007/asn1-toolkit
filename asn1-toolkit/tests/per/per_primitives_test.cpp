@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.691 — Packed Encoding Rules (PER); test vectors
 **                 for UPER/APER/primitives.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/runtime/bit_io.hpp>

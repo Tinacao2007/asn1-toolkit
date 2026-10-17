@@ -18,7 +18,7 @@
 **
 ** Specification: Internal type IR (lowering target for X.680/X.681
 **                 constructs; not a wire standard).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/ir/print.hpp>
@@ -377,7 +377,7 @@ void print_type(std::ostream& out, const TypeArena& arena, TypeId id, int depth)
         }
         out << "...\n";
         for (const auto& group : t.sequence.extension_groups) {
-          for (const auto& f : group) {
+          for (const auto& f : group.fields) {
             print_field(out, f, depth + 1);
           }
         }
@@ -417,7 +417,7 @@ void print_type(std::ostream& out, const TypeArena& arena, TypeId id, int depth)
         }
         out << "...\n";
         for (const auto& group : t.set.extension_groups) {
-          for (const auto& f : group) {
+          for (const auto& f : group.fields) {
             print_field(out, f, depth + 1);
           }
         }

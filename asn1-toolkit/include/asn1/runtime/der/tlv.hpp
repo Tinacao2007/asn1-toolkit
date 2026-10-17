@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.690 — Distinguished Encoding Rules (DER),
 **                 canonical BER subset.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once

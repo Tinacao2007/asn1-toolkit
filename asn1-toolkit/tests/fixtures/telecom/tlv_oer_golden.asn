@@ -1,0 +1,48 @@
+TlvOer DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+
+  -- AUTOMATIC TAGS assigns context tags [0], [1], ... per component:
+  -- context-class tagging plus implicit/explicit variants.
+  Tagged ::= SEQUENCE {
+    plain  INTEGER,
+    ctx    [1] INTEGER OPTIONAL,
+    impl   [2] IMPLICIT UTF8String OPTIONAL,
+    expl   [3] EXPLICIT BOOLEAN OPTIONAL
+  }
+
+  Misc ::= SEQUENCE {
+    r     REAL OPTIONAL,
+    nul   NULL OPTIONAL,
+    neg   INTEGER (-1000..1000),
+    big   INTEGER,
+    en    ENUMERATED { red, green, blue },
+    extEn ENUMERATED { one, two, three, ... } OPTIONAL,
+    bstr  BIT STRING,
+    ostr  OCTET STRING
+  }
+
+  -- SET ordering (tag order), SET OF canonical ordering (DER: by encoding),
+  -- DEFAULT omission (DER).
+  Coll ::= SEQUENCE {
+    s     SET { x INTEGER, y BOOLEAN } OPTIONAL,
+    sof   SET OF INTEGER,
+    sqof  SEQUENCE OF UTF8String,
+    def   INTEGER DEFAULT 42,
+    defS  UTF8String DEFAULT "hi"
+  }
+
+  Nested ::= CHOICE {
+    rec   SEQUENCE { p INTEGER, q CHOICE { m NULL, n OCTET STRING } },
+    flag  BOOLEAN,
+    list  SEQUENCE OF INTEGER
+  }
+
+  -- Extension additions: BER has no bitmap (plain extra components);
+  -- OER carries an extension bit in the preamble (X.696 16).
+  Ext ::= SEQUENCE {
+    a INTEGER,
+    b BOOLEAN OPTIONAL,
+    ...,
+    c INTEGER OPTIONAL
+  }
+END

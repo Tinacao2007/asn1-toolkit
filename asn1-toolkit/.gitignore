@@ -1,5 +1,6 @@
 # Build
 /build/
+/build-san/
 /build-vs/
 /cmake-build-*/
 /out/
@@ -41,6 +42,17 @@ cmake_install.cmake
 CTestTestfile.cmake
 _deps/
 Testing/
+# CMake-generated per-target build wiring (one Makefile per CMakeLists.txt
+# plus the `[1]_include.cmake` / `[1]_tests.cmake` files
+# gtest_discover_tests emits at build time).
+/Makefile
+/tests/Makefile
+# `gtest_discover_tests` writes one <exe>[1]_include.cmake and one
+# <exe>[1]_tests.cmake per test target at configure time; these are
+# cmake's internal cross-TU wiring and never belong in source control.
+# Backslash-escape the brackets so gitignore doesn't treat them as a char class.
+**/*\[1\]_include.cmake
+**/*\[1\]_tests.cmake
 
 # OS
 .DS_Store

@@ -16,7 +16,7 @@
 **   JSON value AST for JER/JERI codecs.
 **
 ** Specification: ITU-T X.697 — JSON-related helpers for JER/JERI codecs.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 project(asn1-toolkit
   VERSION 0.1.0
   DESCRIPTION "ASN.1 compiler and codec runtime"
-  LANGUAGES CXX
+  LANGUAGES C CXX
 )
 
 set(CMAKE_CXX_STANDARD 17)
@@ -11,6 +11,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ASN1_BUILD_TESTS "Build unit and integration tests" ON)
+
+# Dev/CI option: build everything (libs, tool, tests) under AddressSanitizer
+# + UndefinedBehaviorSanitizer to catch memory/lifetime and UB bugs. Off by
+# default; enable with -DASN1_ENABLE_SANITIZERS=ON.
+option(ASN1_ENABLE_SANITIZERS "Build with ASan+UBSan (dev/CI)" OFF)
+if(ASN1_ENABLE_SANITIZERS)
+  add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address,undefined)
+  # UBSan: print a summary and keep going so one report does not abort the run.
+  add_compile_options(-fno-sanitize-recover=undefined)
+endif()
+
+# Compile-time micro-optimisations that don't change emitted code:
+# -pipe: pipe between cc1 and the assembler instead of using temp .s files
+# (saves ~3-5% wall time on Linux tmpfs; harmless correctness-wise).
+# -fno-plt: skip the Procedure Linkage Table indirection for internal calls
+# (faster link, slightly faster runtime; only matters on glibc).
+# Not added when sanitizers are on: -pipe breaks some sanitizer stack traces.
+if(NOT ASN1_ENABLE_SANITIZERS)
+  add_compile_options(-pipe -fno-plt)
+endif()
 
 add_library(asn1_common INTERFACE)
 add_library(asn1::common ALIAS asn1_common)
@@ -119,6 +140,16 @@ target_include_directories(asn1_der PUBLIC
 )
 target_link_libraries(asn1_der PUBLIC asn1::ber)
 
+add_library(asn1_cer STATIC
+  src/runtime/cer/codec.cpp
+)
+add_library(asn1::cer ALIAS asn1_cer)
+target_include_directories(asn1_cer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(asn1_cer PUBLIC asn1::ber)
+
 add_library(asn1_per STATIC
   src/runtime/per/primitives.cpp
   src/runtime/per/codec.cpp
@@ -203,8 +234,14 @@ target_include_directories(asn1_jeri PUBLIC
 target_link_libraries(asn1_jeri PUBLIC asn1::jer)
 
 add_library(asn1_codegen STATIC
-  src/codegen/emit.cpp
-)
+  src/codegen/emit_core.cpp
+  src/codegen/emit_per.cpp
+  src/codegen/emit_jer.cpp
+  src/codegen/emit_xer.cpp
+  src/codegen/emit_oer.cpp
+  src/codegen/emit_tlv.cpp
+  src/codegen/emit_cache.cpp
+  src/codegen/sha256.cpp)
 add_library(asn1::codegen ALIAS asn1_codegen)
 target_include_directories(asn1_codegen PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

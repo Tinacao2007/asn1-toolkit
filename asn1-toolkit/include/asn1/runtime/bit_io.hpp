@@ -17,7 +17,7 @@
 **
 ** Specification: Internal I/O and safety limits serving ITU encoding
 **                 implementations in this codebase.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once
@@ -58,6 +58,16 @@ class BitWriter {
    *  Returns     : void
    */
   void put_bits(Span<const std::uint8_t> bytes, std::size_t nbits);
+  /// Write a presence bitmap given as one byte per bit (0/1). Packs into
+  /// octets and writes them in bulk (P2-1 fast path; byte-identical output
+  /// to a per-bit loop).
+  /**
+   *  Function    : put_bitmap
+   *  Description : Performs put bitmap (declaration).
+   *  Parameters  : bits — Span<const std::uint8_t> bits
+   *  Returns     : void
+   */
+  void put_bitmap(Span<const std::uint8_t> bits);
   /**
    *  Function    : put_octet
    *  Description : Performs put octet (declaration).
@@ -129,12 +139,12 @@ class BitWriter {
 
  private:
   /**
-   *  Function    : ensure_byte
-   *  Description : Performs ensure byte (declaration).
-   *  Parameters  : none
+   *  Function    : ensure_bits
+   *  Description : Performs ensure bits (declaration).
+   *  Parameters  : nbits — std::size_t nbits
    *  Returns     : void
    */
-  void ensure_byte();
+  void ensure_bits(std::size_t nbits);
 
   std::vector<std::uint8_t> buf_;
   std::size_t bit_count_ = 0;  // total bits written

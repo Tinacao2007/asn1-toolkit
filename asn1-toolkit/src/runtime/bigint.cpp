@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.680 INTEGER type; unconstrained encoding as
 **                 used by BER/PER/OER callers.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/runtime/bigint.hpp>

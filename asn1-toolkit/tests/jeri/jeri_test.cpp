@@ -15,9 +15,9 @@
 **
 **   GoogleTest exercising jeri behaviour.
 **
-** Specification: See asn1-toolkit/docs/ARCHITECTURE.md for mapping to
+** Specification: See asn1-toolkit/docs/architecture.md for mapping to
 **                 ITU-T encoding rules.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/runtime/jeri/codec.hpp>

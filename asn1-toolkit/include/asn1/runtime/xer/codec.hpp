@@ -16,7 +16,7 @@
 **   Basic XER encode/decode API.
 **
 ** Specification: ITU-T X.693 — Basic XML Encoding Rules (XER).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once

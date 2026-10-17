@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.691 — ASN.1 encoding rules: Packed Encoding
 **                 Rules (PER); UPER/APER variants.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/runtime/per/codec.hpp>
@@ -97,13 +97,12 @@ void encode_bit_length_chunks(BitWriter& out, Variant variant, std::size_t bit_l
   std::size_t bit_offset = 0;
   for (;;) {
     const std::size_t chunk = encode_length_determinant(out, variant, remaining);
-    // Write `chunk` bits starting at bit_offset from `bits`.
-    for (std::size_t i = 0; i < chunk; ++i) {
-      const std::size_t abs = bit_offset + i;
-      const std::uint8_t byte = bits[abs / 8];
-      const bool bit = ((byte >> (7 - (abs % 8))) & 1u) != 0;
-      out.put_bit(bit);
-    }
+    // Write `chunk` bits starting at bit_offset from `bits`. put_bits takes
+    // a bulk path when the stream is octet-aligned (P2-1).
+    const std::size_t byte_off = bit_offset / 8;
+    out.put_bits(Span<const std::uint8_t>(bits.data() + byte_off,
+                                          bits.size() - byte_off),
+                 chunk);
     bit_offset += chunk;
     remaining -= chunk;
     if (chunk < 16384) {
@@ -528,22 +527,316 @@ Result<BitStringValue> decode_bit_string(BitReader& in, Variant variant,
 }
 
 void encode_utf8_string(BitWriter& out, Variant variant, const std::string& value,
-                        const SizeConstraint& size) {
-  // UTF8String SIZE constrains characters; Phase 9 treats SIZE as octet length when set,
-  // matching common runtime usage for unconstrained UTF8 (length in octets).
+                        const SizeConstraint& /*size*/) {
+  // X.691 30.5.4: a UTF8String's PER length determinant is the octet count
+  // with the general (unconstrained) length determinant. A SIZE constraint
+  // counts characters, and UTF-8 is variable-width, so the constraint is not
+  // PER-visible for the determinant — both asn1c and asn1tools emit the
+  // 8-bit form even for SIZE(1..3). The parameter is kept for signature
+  // compatibility with the other string codecs but is ignored here.
   const auto bytes = Span<const std::uint8_t>(
       reinterpret_cast<const std::uint8_t*>(value.data()), value.size());
-  encode_octet_string(out, variant, bytes, size);
+  encode_octet_string(out, variant, bytes, SizeConstraint{});
 }
 
 Result<std::string> decode_utf8_string(BitReader& in, Variant variant,
-                                       const SizeConstraint& size) {
-  auto bytes = decode_octet_string(in, variant, size);
+                                       const SizeConstraint& /*size*/) {
+  // See encode_utf8_string: the SIZE constraint is not PER-visible.
+  auto bytes = decode_octet_string(in, variant, SizeConstraint{});
   if (!bytes) {
     return bytes.error();
   }
   return std::string(reinterpret_cast<const char*>(bytes.value().data()),
                      bytes.value().size());
+}
+
+namespace {
+
+/// X.680 PrintableString alphabet, in PER code order (74 characters).
+constexpr char kPrintableAlphabet[] =
+    " '()+,/-0123456789:=?"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "abcdefghijklmnopqrstuvwxyz";
+
+int printable_code(char c) {
+  for (int i = 0; kPrintableAlphabet[i] != '\0'; ++i) {
+    if (kPrintableAlphabet[i] == c) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/// Decode one UTF-8 code point from `s` at `i`, advancing `i`. Returns -1 on
+/// malformed input.
+std::int64_t utf8_next(const std::string& s, std::size_t& i) {
+  const auto byte = [&](std::size_t k) -> int {
+    return k < s.size() ? static_cast<unsigned char>(s[k]) : -1;
+  };
+  const int b0 = byte(i);
+  if (b0 < 0) {
+    return -1;
+  }
+  if (b0 < 0x80) {
+    ++i;
+    return b0;
+  }
+  if ((b0 & 0xE0) == 0xC0) {
+    const int b1 = byte(i + 1);
+    if ((b1 & 0xC0) != 0x80) return -1;
+    i += 2;
+    return static_cast<std::int64_t>(((b0 & 0x1F) << 6) | (b1 & 0x3F));
+  }
+  if ((b0 & 0xF0) == 0xE0) {
+    const int b1 = byte(i + 1);
+    const int b2 = byte(i + 2);
+    if ((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80) return -1;
+    i += 3;
+    return static_cast<std::int64_t>(((b0 & 0x0F) << 12) | ((b1 & 0x3F) << 6) |
+                                     (b2 & 0x3F));
+  }
+  if ((b0 & 0xF8) == 0xF0) {
+    const int b1 = byte(i + 1);
+    const int b2 = byte(i + 2);
+    const int b3 = byte(i + 3);
+    if ((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80) {
+      return -1;
+    }
+    i += 4;
+    return static_cast<std::int64_t>(((b0 & 0x07) << 18) | ((b1 & 0x3F) << 12) |
+                                     ((b2 & 0x3F) << 6) | (b3 & 0x3F));
+  }
+  return -1;
+}
+
+void utf8_append(std::string& out, std::int64_t cp) {
+  if (cp < 0x80) {
+    out.push_back(static_cast<char>(cp));
+  } else if (cp < 0x800) {
+    out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+    out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+  } else if (cp < 0x10000) {
+    out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+    out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+    out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+  } else {
+    out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+    out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+    out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+    out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+  }
+}
+
+/// Map a code point to its PER character code for `kind`; -1 if outside the
+/// alphabet. BMPString / UniversalString map the code point directly.
+int char_code(std::int64_t cp, CharStringKind kind) {
+  if (cp < 0) {
+    return -1;
+  }
+  switch (kind) {
+    case CharStringKind::NumericString:
+      if (cp == ' ') return 0;
+      if (cp >= '0' && cp <= '9') return static_cast<int>(cp - '0' + 1);
+      return -1;
+    case CharStringKind::PrintableString:
+      // X.691 30.5.4a: the full PrintableString alphabet (32..122) fits in
+      // b bits, so each character carries its ISO 646 (ASCII) value.
+      if (cp < 0x20 || cp > 0x7A) return -1;
+      if (printable_code(static_cast<char>(cp)) < 0) return -1;
+      return static_cast<int>(cp);
+    case CharStringKind::VisibleString:
+      if (cp >= 0x20 && cp <= 0x7E) return static_cast<int>(cp);
+      return -1;
+    case CharStringKind::IA5String:
+      if (cp <= 0x7F) return static_cast<int>(cp);
+      return -1;
+    case CharStringKind::BMPString:
+      if (cp > 0xFFFF) return -1;  // handled via surrogate pairs by the caller
+      return static_cast<int>(cp);
+    case CharStringKind::UniversalString:
+      if (cp > 0x7FFFFFFFLL) return -1;
+      return static_cast<int>(cp);
+  }
+  return -1;
+}
+
+/// Map a PER character code back to a code point; -1 if invalid.
+std::int64_t code_to_cp(int code, CharStringKind kind) {
+  switch (kind) {
+    case CharStringKind::NumericString:
+      if (code == 0) return ' ';
+      if (code >= 1 && code <= 10) return '0' + code - 1;
+      return -1;
+    case CharStringKind::PrintableString:
+      if (code < 0x20 || code > 0x7A) return -1;
+      if (printable_code(static_cast<char>(code)) < 0) return -1;
+      return code;
+    case CharStringKind::VisibleString:
+      if (code >= 0x20 && code <= 0x7E) return code;
+      return -1;
+    case CharStringKind::IA5String:
+      if (code >= 0 && code <= 0x7F) return code;
+      return -1;
+    case CharStringKind::BMPString:
+      return code >= 0 && code <= 0xFFFF ? code : -1;
+    case CharStringKind::UniversalString:
+      return code >= 0 ? code : -1;
+  }
+  return -1;
+}
+
+}  // namespace
+
+std::size_t char_string_bits(CharStringKind kind, Variant variant) {
+  std::size_t bits = 0;
+  switch (kind) {
+    case CharStringKind::NumericString:
+      bits = 4;
+      break;
+    case CharStringKind::PrintableString:
+    case CharStringKind::VisibleString:
+    case CharStringKind::IA5String:
+      bits = 7;
+      break;
+    case CharStringKind::BMPString:
+      bits = 16;
+      break;
+    case CharStringKind::UniversalString:
+      bits = 32;
+      break;
+  }
+  if (variant == Variant::Aligned) {
+    // X.691 30.5.2: the ALIGNED variant uses B2, the smallest power of two
+    // that is not smaller than B (the 7-bit ASCII family becomes 8 bits).
+    std::size_t b2 = 1;
+    while (b2 < bits) {
+      b2 <<= 1;
+    }
+    return b2;
+  }
+  return bits;
+}
+
+/// X.691 30 NOTE 1: fixed-length strings whose encoding is at most two
+/// octets, and variable-length strings whose maximum encoding is less than
+/// two octets, are not octet-aligned; all other character strings are.
+bool char_data_needs_align(Variant variant, CharStringKind kind,
+                           const SizeConstraint& size) {
+  if (variant != Variant::Aligned) {
+    return false;
+  }
+  const std::size_t bits = char_string_bits(kind, variant);
+  if (size.lower && size.lower == size.upper) {
+    return *size.lower * bits > 16;
+  }
+  if (size.upper) {
+    return *size.upper * bits >= 16;
+  }
+  return true;  // unconstrained or semi-constrained size
+}
+
+Result<void> encode_restricted_string(BitWriter& out, Variant variant,
+                                      const std::string& value,
+                                      CharStringKind kind,
+                                      const SizeConstraint& size) {
+  // Collect the PER character codes (BMPString/UniversalString work in code
+  // points; astral BMP chars expand to UTF-16 surrogate pairs).
+  std::vector<std::uint32_t> codes;
+  std::size_t i = 0;
+  while (i < value.size()) {
+    const std::int64_t cp = utf8_next(value, i);
+    if (cp < 0) {
+      return make_error(Error::Code::InvalidArgument, out.bit_size(),
+                        "malformed UTF-8 in restricted character string");
+    }
+    if (kind == CharStringKind::BMPString && cp > 0xFFFF) {
+      const std::uint64_t v = static_cast<std::uint64_t>(cp) - 0x10000;
+      codes.push_back(static_cast<std::uint32_t>(0xD800 + (v >> 10)));
+      codes.push_back(static_cast<std::uint32_t>(0xDC00 + (v & 0x3FF)));
+      continue;
+    }
+    const int code = char_code(cp, kind);
+    if (code < 0) {
+      return make_error(Error::Code::InvalidArgument, out.bit_size(),
+                        "character outside the alphabet of this string type");
+    }
+    codes.push_back(static_cast<std::uint32_t>(code));
+  }
+
+  // Length determinant counts code units: for BMP content one unit per
+  // character; astral characters expand to surrogate pairs (two units),
+  // matching asn1c's code-unit counting.
+  const std::size_t char_count = codes.size();
+  encode_size(out, variant, char_count, size);
+  if (char_data_needs_align(variant, kind, size)) {
+    maybe_align(out, variant);
+  }
+
+  const std::size_t bits = char_string_bits(kind, variant);
+  for (const std::uint32_t code : codes) {
+    out.put_bits(code, bits);
+  }
+  return Result<void>::success();
+}
+
+Result<std::string> decode_restricted_string(BitReader& in, Variant variant,
+                                             CharStringKind kind,
+                                             const SizeConstraint& size) {
+  auto count = decode_size(in, variant, size);
+  if (!count) {
+    return count.error();
+  }
+  if (char_data_needs_align(variant, kind, size)) {
+    if (auto a = maybe_align(in, variant); !a) {
+      return a.error();
+    }
+  }
+
+  const std::size_t bits = char_string_bits(kind, variant);
+  std::string out;
+  if (kind == CharStringKind::BMPString) {
+    // Read UTF-16 code units, combining surrogate pairs.
+    std::uint32_t high = 0;
+    for (std::size_t i = 0; i < count.value(); ++i) {
+      auto unit = in.get_bits(bits);
+      if (!unit) {
+        return unit.error();
+      }
+      const std::uint32_t u = static_cast<std::uint32_t>(unit.value());
+      if (high != 0) {
+        if (u >= 0xDC00 && u <= 0xDFFF) {
+          utf8_append(out, 0x10000 + ((high - 0xD800) << 10) + (u - 0xDC00));
+          high = 0;
+          continue;
+        }
+        utf8_append(out, high);  // unpaired high surrogate
+        high = 0;
+      }
+      if (u >= 0xD800 && u <= 0xDBFF) {
+        high = u;
+      } else {
+        utf8_append(out, u);
+      }
+    }
+    if (high != 0) {
+      utf8_append(out, high);
+    }
+    return out;
+  }
+
+  for (std::size_t i = 0; i < count.value(); ++i) {
+    auto code_bits = in.get_bits(bits);
+    if (!code_bits) {
+      return code_bits.error();
+    }
+    const std::int64_t cp = code_to_cp(static_cast<int>(code_bits.value()), kind);
+    if (cp < 0) {
+      return make_error(Error::Code::InvalidArgument, in.bit_offset(),
+                        "invalid character code for this string type");
+    }
+    utf8_append(out, cp);
+  }
+  return out;
 }
 
 void encode_sequence_preamble(BitWriter& out, Variant /*variant*/, bool extensible,

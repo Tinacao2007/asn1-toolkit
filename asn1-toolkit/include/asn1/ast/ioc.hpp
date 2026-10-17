@@ -18,7 +18,7 @@
 ** Specification: ITU-T X.680 — abstract syntax;
 **                 ITU-T X.681 — Information object specification
 **                 (classes, objects, object sets).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once

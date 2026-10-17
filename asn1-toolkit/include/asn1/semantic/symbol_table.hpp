@@ -18,7 +18,7 @@
 ** Specification: ITU-T X.680 — name and module semantics;
 **                 ITU-T X.681 / X.683 — object and parameterization
 **                 semantics where implemented.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once
@@ -106,6 +106,21 @@ class SymbolTable {
    *  Returns     : const std::unordered_map<Key, Symbol>&
    */
   const std::unordered_map<Key, Symbol>& entries() const noexcept { return entries_; }
+
+  /// Merge another SymbolTable's entries into self. Used by the parallel
+  /// `declare_pass` (P3-1): each worker accumulates per-module declarations
+  /// into a private SymbolTable, then the orchestrator merges them in module
+  /// index order. The merged table is byte-equivalent to the serial result
+  /// because `SymbolTable::declare` already detects duplicates; serial and
+  /// parallel paths therefore produce the same final entries plus the same
+  /// duplicate-symbol error sequence.
+  /**
+   *  Function    : merge
+   *  Description : Performs merge (declaration).
+   *  Parameters  : other — SymbolTable&& other
+   *  Returns     : void
+   */
+  void merge(SymbolTable&& other);
 
  private:
   std::unordered_map<Key, Symbol> entries_;

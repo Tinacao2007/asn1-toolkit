@@ -16,7 +16,7 @@
 **   JSON Encoding Rules (JER) codec API.
 **
 ** Specification: ITU-T X.697 — JSON Encoding Rules (JER).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once

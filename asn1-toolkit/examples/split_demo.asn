@@ -1,0 +1,32 @@
+-- Two-module demo for the split emit mode: Demo-Base carries the shared
+-- types, Demo-App references them across the module boundary (the shape a
+-- real multi-module 3GPP spec takes).
+
+Demo-Base DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+
+  Colour ::= ENUMERATED { red, green, blue }
+
+  Point ::= SEQUENCE {
+    x  INTEGER (0..100),
+    y  INTEGER (0..100)
+  }
+
+END
+
+Demo-App DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+
+  IMPORTS
+    Point,
+    Colour
+
+  FROM Demo-Base;
+
+  Shape ::= SEQUENCE {
+    name   UTF8String (SIZE (1..16)),
+    origin Point,
+    tint   Colour
+  }
+
+END

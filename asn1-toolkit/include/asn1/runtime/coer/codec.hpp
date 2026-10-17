@@ -17,7 +17,7 @@
 **
 ** Specification: ITU-T X.696 — Canonical OER (COER) on octet encoding
 **                 rules.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once

@@ -16,7 +16,7 @@
 **   CXER canonicalization rules on top of XER.
 **
 ** Specification: ITU-T X.693 — Canonical XML Encoding Rules (CXER).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/runtime/cxer/codec.hpp>

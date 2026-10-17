@@ -17,7 +17,7 @@
 **
 ** Specification: Validates toolchain output against internal IR/codegen
 **                 contracts (X.680 type model).
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/codegen/emit.hpp>
@@ -684,7 +684,8 @@ END
 
   // Check automatic encode dispatch
   EXPECT_NE(header.find("value.decoded_value.has_value()"), std::string::npos);
-  EXPECT_NE(header.find("std::visit([&](const auto& alt) -> asn1::Result<void>"), std::string::npos);
+  EXPECT_NE(header.find("std::visit([&](const auto& tc_alt) -> asn1::Result<void>"),
+            std::string::npos);
 }
 
 

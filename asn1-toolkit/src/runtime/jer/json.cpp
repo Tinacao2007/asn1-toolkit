@@ -16,7 +16,7 @@
 **   JSON text lexer/parser for JER.
 **
 ** Specification: ITU-T X.697 — JSON-related helpers for JER/JERI codecs.
-** Design Spec:   asn1-toolkit/docs/ARCHITECTURE.md
+** Design Spec:   asn1-toolkit/docs/architecture.md
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include <asn1/runtime/jer/json.hpp>

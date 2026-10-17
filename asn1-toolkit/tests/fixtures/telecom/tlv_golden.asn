@@ -1,0 +1,70 @@
+-- Byte-level golden fixture for the BER/DER/OER differential suite
+-- (scripts/gen_tlv_golden.py). The constructs are chosen where byte-level
+-- encoder bugs actually live:
+--   - context-class tags with IMPLICIT and EXPLICIT variants (X.690 8.14);
+--   - SET / SET OF with out-of-declaration-order tags (X.690 9.3/11.6,
+--     X.680 8.6 — one textual tag disables automatic numbering);
+--   - DEFAULT values (omitted under DER, X.690 11.5);
+--   - NULL, negative and unconstrained INTEGER, REAL;
+--   - ENUMERATED with an extension marker;
+--   - nested CHOICE with a constructed alternative;
+--   - extensible SEQUENCE with an extension addition.
+-- AUTOMATIC TAGS keeps the untagged components' context tags compact; the
+-- manually tagged components below disable auto-numbering for their lists.
+-- No inline SIZE constraints on lists: our parser rejects them and the
+-- oracle set does not need them here.
+
+TlvGolden DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+
+  -- IMPLICIT vs EXPLICIT context tags on primitives: EXPLICIT wraps the
+  -- natural encoding, IMPLICIT replaces the tag only (X.690 8.14).
+  Tagged ::= SEQUENCE {
+    plain INTEGER,
+    impl  [0] IMPLICIT INTEGER,
+    expl  [1] EXPLICIT INTEGER
+  }
+
+  -- SET with components declared OUT of tag order: the wire order is the
+  -- tag order (X.680 8.6). The textual tags disable automatic numbering
+  -- for the whole list (X.680 25.3).
+  TaggedSet ::= SET {
+    second [1] INTEGER,
+    first  [0] BOOLEAN
+  }
+
+  -- SET OF: components ordered by encoding as octet strings (X.690 11.6).
+  IntSet ::= SET OF INTEGER
+
+  -- DEFAULT values: omitted under DER when equal to the default (X.690
+  -- 11.5); carried when different.
+  WithDefault ::= SEQUENCE {
+    kind INTEGER DEFAULT 42,
+    name UTF8String DEFAULT "anon"
+  }
+
+  -- NULL, negative and REAL primitives.
+  Prims ::= SEQUENCE {
+    n   NULL,
+    neg INTEGER,
+    r   REAL
+  }
+
+  -- ENUMERATED with an extension marker: root values encode small; an
+  -- extension value needs the extension bit + open-style index.
+  Color ::= ENUMERATED { red, green, blue, ..., yellow }
+
+  -- Nested CHOICE: a primitive and a constructed alternative.
+  Inner ::= CHOICE {
+    num INTEGER,
+    seq SEQUENCE { x INTEGER }
+  }
+
+  -- Extensible SEQUENCE with an extension addition.
+  Ext ::= SEQUENCE {
+    a INTEGER,
+    b BOOLEAN OPTIONAL,
+    ...,
+    c INTEGER OPTIONAL
+  }
+END
