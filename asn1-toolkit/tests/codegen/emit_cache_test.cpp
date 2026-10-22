@@ -334,7 +334,7 @@ TEST(EmitCacheFlat, DifferentBasenameInvalidatesCache) {
   {
     // Re-emit with a different basename. The cache key differs (basename
     // is part of `cache_extra_inputs()`) so this is a miss; the old
-    // first.hpp file remains untouched on disk.
+    // first.hpp file is now removed only if the owned hash still matches.
     asn1::Diagnostics diag;
     asn1::codegen::EmitOptions opt;
     opt.codec = asn1::codegen::CodecKind::Uper;
@@ -347,7 +347,7 @@ TEST(EmitCacheFlat, DifferentBasenameInvalidatesCache) {
     const HitMiss hm = latest_cache_stats(diag);
     EXPECT_EQ(hm.hits, 0u);
     EXPECT_EQ(hm.total, 1u);
-    EXPECT_TRUE(fs::exists(tmp / "first.hpp"));
+    EXPECT_FALSE(fs::exists(tmp / "first.hpp"));
     EXPECT_TRUE(fs::exists(tmp / "second.hpp"));
   }
 
@@ -520,5 +520,129 @@ TEST(EmitCacheFlat, InputOrderMustMatchUncachedOutput) {
   asn1::codegen::CppGenerator{}.emit_to_dir(ba, options, same, tmp / "cached");
   EXPECT_TRUE(same.ok());
   EXPECT_EQ(latest_cache_stats(same).hits, 1u);
+  fs::remove_all(tmp);
+}
+
+TEST(EmitOutput, PortableNamesAndDirectoryOwnership) {
+  auto tmp = make_tmpdir("output_contract");
+  auto asn = tmp / "input.asn";
+  write_file(asn, "M DEFINITIONS ::= BEGIN N ::= INTEGER (0..255) END");
+  asn1::Diagnostics parsed;
+  auto model = build_model(asn, parsed);
+  ASSERT_TRUE(parsed.ok());
+  asn1::codegen::EmitOptions options;
+  options.emit_cache = false;
+  for (const auto* name : {"../escape", "CON", "lpt1", "bad.name", "a/b", "a\\b", ""}) {
+    options.basename = name;
+    asn1::Diagnostics diag;
+    asn1::codegen::CppGenerator{}.emit_to_dir(model,options,diag,tmp/"invalid");
+    EXPECT_FALSE(diag.ok()) << name;
+    EXPECT_FALSE(fs::exists(tmp/"invalid"));
+  }
+  options.basename = "generated";
+  for (const auto* name : {"class", "std::nested", "7bad", "_reserved", "a__b"}) {
+    options.namespace_name = name;
+    asn1::Diagnostics diag;
+    EXPECT_TRUE(asn1::codegen::CppGenerator{}.emit_header_string(model,options,diag).empty());
+    EXPECT_FALSE(diag.ok());
+  }
+  options.namespace_name = "asn1_gen";
+  const auto unicode_dir = tmp / fs::u8path(u8"目录 with spaces");
+  asn1::Diagnostics unicode;
+  asn1::codegen::CppGenerator{}.emit_to_dir(model,options,unicode,unicode_dir);
+  EXPECT_TRUE(unicode.ok());
+  EXPECT_TRUE(fs::exists(unicode_dir/"generated.hpp"));
+  EXPECT_TRUE(fs::exists(unicode_dir/".asn1cxx-manifest"));
+  fs::create_directory(tmp/"output");
+  write_file(tmp/"output/generated.hpp", "user-owned\n");
+  asn1::Diagnostics unowned;
+  asn1::codegen::CppGenerator{}.emit_to_dir(model,options,unowned,tmp/"output");
+  EXPECT_FALSE(unowned.ok());
+  EXPECT_EQ(read_file(tmp/"output/generated.hpp"), "user-owned\n");
+  EXPECT_FALSE(fs::exists(tmp/"output/generated.cpp"));
+  EXPECT_FALSE(fs::exists(tmp/"output/.asn1cxx-manifest"));
+  fs::remove_all(tmp);
+}
+
+TEST(EmitOutput, ModeSwitchCleansOnlyUnmodifiedOwnedFiles) {
+  auto tmp = make_tmpdir("output_modes");
+  auto asn = tmp/"input.asn";
+  write_file(asn,"M DEFINITIONS ::= BEGIN N ::= INTEGER (0..255) END");
+  asn1::Diagnostics parsed;
+  auto model = build_model(asn,parsed);
+  ASSERT_TRUE(parsed.ok());
+  asn1::codegen::EmitOptions options;
+  options.source_paths = {asn};
+  asn1::Diagnostics first;
+  asn1::codegen::CppGenerator{}.emit_to_dir(model,options,first,tmp/"out");
+  ASSERT_TRUE(first.ok());
+  EXPECT_NE(read_file(tmp/"out/.asn1cxx-manifest").find("dependencies"),std::string::npos);
+  write_file(tmp/"out/notes.hpp","user file");
+  asn1::Diagnostics split;
+  asn1::codegen::CppGenerator{}.emit_split(model,options,split,tmp/"out");
+  ASSERT_TRUE(split.ok());
+  EXPECT_FALSE(fs::exists(tmp/"out/generated.cpp"));
+  EXPECT_TRUE(fs::exists(tmp/"out/M.cpp"));
+  write_file(tmp/"out/M.cpp","edited owned file");
+  asn1::Diagnostics flat;
+  asn1::codegen::CppGenerator{}.emit_to_dir(model,options,flat,tmp/"out");
+  ASSERT_TRUE(flat.ok());
+  EXPECT_EQ(read_file(tmp/"out/M.cpp"),"edited owned file");
+  EXPECT_EQ(read_file(tmp/"out/notes.hpp"),"user file");
+  EXPECT_FALSE(fs::exists(tmp/"out/M.hpp"));
+  fs::remove_all(tmp);
+}
+
+TEST(EmitOutput, BusyDirectoryAndSplitCollisionPreservePreviousOutput) {
+  auto tmp = make_tmpdir("output_busy");
+  auto asn = tmp/"input.asn";
+  write_file(asn,"M DEFINITIONS ::= BEGIN N ::= INTEGER (0..255) END");
+  asn1::Diagnostics parsed;
+  auto model = build_model(asn,parsed);
+  asn1::codegen::EmitOptions options;
+  asn1::Diagnostics first;
+  asn1::codegen::CppGenerator{}.emit_to_dir(model,options,first,tmp/"out");
+  ASSERT_TRUE(first.ok());
+  const auto old = read_file(tmp/"out/generated.hpp");
+  fs::create_directory(tmp/"out/.asn1cxx-emitting");
+  asn1::Diagnostics busy;
+  asn1::codegen::CppGenerator{}.emit_to_dir(model,options,busy,tmp/"out");
+  EXPECT_FALSE(busy.ok());
+  EXPECT_EQ(read_file(tmp/"out/generated.hpp"),old);
+  fs::remove(tmp/"out/.asn1cxx-emitting");
+  options.basename="m"; // case insensitive aggregate vs M module collision
+  asn1::Diagnostics collision;
+  asn1::codegen::CppGenerator{}.emit_split(model,options,collision,tmp/"out");
+  EXPECT_FALSE(collision.ok());
+  EXPECT_EQ(read_file(tmp/"out/generated.hpp"),old);
+  EXPECT_FALSE(fs::exists(tmp/"out/m.hpp"));
+  EXPECT_FALSE(fs::exists(tmp/"out/.asn1cxx-emitting"));
+  fs::remove_all(tmp);
+}
+
+TEST(EmitOutput, InvalidManifestAndSymlinkNeverReplaceForeignFiles) {
+  auto tmp = make_tmpdir("output_foreign");
+  auto asn=tmp/"input.asn";
+  write_file(asn,"M DEFINITIONS ::= BEGIN N ::= INTEGER (0..255) END");
+  asn1::Diagnostics parsed;
+  auto model=build_model(asn,parsed);
+  asn1::codegen::EmitOptions options;
+  fs::create_directory(tmp/"out");
+  write_file(tmp/"out/.asn1cxx-manifest","corrupted\n");
+  asn1::Diagnostics invalid;
+  asn1::codegen::CppGenerator{}.emit_to_dir(model,options,invalid,tmp/"out");
+  EXPECT_FALSE(invalid.ok());
+  EXPECT_FALSE(fs::exists(tmp/"out/generated.hpp"));
+  fs::remove(tmp/"out/.asn1cxx-manifest");
+  write_file(tmp/"foreign.hpp","foreign content");
+  std::error_code ec;
+  fs::create_symlink(tmp/"foreign.hpp",tmp/"out/generated.hpp",ec);
+  if (!ec) {
+    asn1::Diagnostics symlink;
+    asn1::codegen::CppGenerator{}.emit_to_dir(model,options,symlink,tmp/"out");
+    EXPECT_FALSE(symlink.ok());
+    EXPECT_EQ(read_file(tmp/"foreign.hpp"),"foreign content");
+    EXPECT_TRUE(fs::is_symlink(tmp/"out/generated.hpp"));
+  }
   fs::remove_all(tmp);
 }

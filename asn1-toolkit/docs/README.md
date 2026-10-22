@@ -33,6 +33,10 @@
 | [real-and-string-profile.md](real-and-string-profile.md) | REAL 数值 profile、字符 repertoire 与时间能力边界 | 集成方、贡献者 |
 | [rev20-24-validation.md](rev20-24-validation.md) | 第五批约束/规范策略修复、独立对验与 fuzz 证据 | 贡献者、评审者 |
 
+| [generated-artifacts.md](generated-artifacts.md) | 生成目录、manifest、ODR、ABI、所有权及发布边界 | 集成方、贡献者 |
+| [emission-planning.md](emission-planning.md) | 最小语言无关规划与 C emitter 后续接入边界 | 后端贡献者 |
+| [rev25-28-validation.md](rev25-28-validation.md) | 第六批实际门禁及阶段验收记录 | 评审者 |
+
 ## 阅读路径
 
 **新用户 / 集成方**

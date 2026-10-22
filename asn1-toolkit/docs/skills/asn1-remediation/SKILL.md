@@ -29,6 +29,8 @@ description: 执行 asn1-toolkit 的 REV 修正任务，并同步代码、验证
 - 标准语义与独立对验：[能力矩阵](../../standard-capabilities.md)、
   [REAL/字符/时间 profile](../../real-and-string-profile.md)、
   [REV-20..24](../../rev20-24-validation.md)。
+- 产物/分层/后端规划：[产物契约](../../generated-artifacts.md)、
+  [规划边界](../../emission-planning.md)、[REV-25..28](../../rev25-28-validation.md)。
 
 ## 必须保留的设计
 
@@ -70,6 +72,23 @@ PER 改动同时验证两种 Variant，覆盖非零起始位、整数符号/补�
   验证峰值与确定性，不能仅比较运行时间。
 - codec 改动核查 CLI、位掩码、include、runtime 依赖与函数名；比较单入口和组合
   的实际编码结果。用 CodecEntry 测试覆盖真实链接/调用，保留三种产物验证。
+
+### 目录产物、分层与后端规划
+
+目录发射使用 stage/manifest；一个目录只拥有一套当前产物，同目录并发拒绝。
+切换形态/basename 只清理 hash 未变的旧归属；保留用户文件和已修改的过时文件。
+不要 glob 所有历史 `.cpp` 当成本次输出，按 manifest 注册产物。
+强杀遗留 `.asn1cxx-emitting` 时先确认无活动写入者并核查 backup，再恢复/重跑，
+不能自动删除仍被其他生成进程使用的目录。
+
+生成相关回归包含三形态双 TU 链接/调用、模块 SCC、名称/Windows 路径及失败归属保护；
+单 TU 或语法检查不能证明 ODR。保持 `Architecture.Layering` 和 `Architecture.PublicHeaders`，
+新增模块/目标或 include 根时同步两种分层门禁，不将 emitter 打印的 include 当实际依赖。
+独立验证 compiler-only/runtime-only；组件开关不能只在全量构建里测试。
+
+规划只依赖 IR，借用计划不能比 descriptor 活得久，IR 在消费期间不可修改。
+C emitter 后续调用同一规划，不能复制 presence/标签/约束/扩展/selector 判定。
+计划模型和 C++ 接入通过不等于 C emitter 通过，真实生成 C PDU 验收留给对应子任务。
 
 ### 标准语义与独立验证
 
@@ -129,7 +148,7 @@ Release 与 ASan+UBSan 全量门禁，以及 7 fixture ×12 实际入口语法�
 历史验收和分析快照保留原数字；只同步当前状态数字。
 
 每批完成时检查本 skill：把已验证且可复用的流程变化同步到对应段落，详细证据
-链接到验收文档，不复制整个任务清单。后续 REV-25..28 及能力矩阵中的延期项不能写成已实现能力，
+链接到验收文档，不复制整个任务清单。REV-27 的 C 接入及能力矩阵延期项不能写成已实现能力，
 尤其不能把 C11 原语与 smoke 通过表述为 Phase49 C emitter 已完成。
 
 该文件是仓库内的 skill 源文件；置于 docs 不代表已安装到 Codex 的技能发现目录。

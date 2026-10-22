@@ -388,7 +388,7 @@
 
 ### REV-25 【重要】三种生成形态的 ODR、命名和输出可靠性
 
-- [ ] 状态：待办；依据：现有编译门禁不能覆盖多 TU 链接与全部输出管理问题。
+- [x] 状态：完成（2026-10-21）；三形态双 TU/线路相等、split SCC、可移植命名、stage/manifest、并发拒绝及归属清理已验证，见 [第六批验收](rev25-28-validation.md)。
 
 - 范围：emit_core、emit_cache、CLI、生成产物测试。
 
@@ -400,7 +400,7 @@
 
 ### REV-26 【优化】分层和公共头自动门禁
 
-- [ ] 状态：待办；依据：当前分层正确，但公共 include 根可使未来越界。
+- [x] 状态：完成（2026-10-21）；include/实际传递链接正反例、88 个独立公共头编译及 compiler-only/runtime-only 构建通过，见 [第六批验收](rev25-28-validation.md)。
 
 - 范围：CI/脚本、CMake、公共头。
 
@@ -412,7 +412,7 @@
 
 ### REV-27 【优化】C/C++ emitter 复用语义规划
 
-- [ ] 状态：待办；依据：后续 C emitter 若复制语义决策，修复成本加倍。
+- [ ] 状态：阶段完成，C 接入待办（2026-10-21）；最小借用规划、C++ PER/整数首批消费及回归已完成；真实 C emitter 消费同一规划的验收依赖 P2-4 sub-task 3+，保留未勾选。见 [规划设计](emission-planning.md) 和 [第六批验收](rev25-28-validation.md)。
 
 - 范围：IR 到 codegen 的标签、presence、约束、扩展组及 selector 规划。
 
@@ -424,7 +424,7 @@
 
 ### REV-28 【重要】文档收口与 Phase49 继续条件
 
-- [ ] 状态：待办；依据：库数、12 codec、无异常、C reader、端序和阶段说明均有过期或过强表述。
+- [x] 状态：完成（2026-10-21）；统一桥梁/支持口径，修正旧功能规划与 C 头注释，补输出/ABI/所有权/线程安全/资源及许可证边界，更新项目 skill；见 [第六批验收](rev25-28-validation.md)。
 
 - 范围：README、docs/README、architecture、status、usage-guide、development、todo、changelog、C 头注释。
 

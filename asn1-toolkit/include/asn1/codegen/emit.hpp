@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <ostream>
 #include <string>
+#include <vector>
 
 namespace asn1 {
 namespace codegen {
@@ -174,6 +175,11 @@ class CppGenerator {
   void emit_split(const ir::Model& model, const EmitOptions& options,
                   Diagnostics& diag, const std::filesystem::path& dir);
 
+  /// Directory emission uses a staging area and rejects concurrent writers to
+  /// the same directory. A hash manifest owns this invocation's output set;
+  /// obsolete unmodified owned artifacts are removed on successful publication.
+  /// Existing unowned files and symlinks are not overwritten. Legacy generated
+  /// banners may be adopted during migration. See docs/generated-artifacts.md.
   /// Flat single-namespace emit into a directory: writes
   /// `<options.basename>.hpp` (and `.cpp` when `emit_inline` is false) to
   /// `dir`. Identical to `emit(stream, stream)` when `options.emit_cache`

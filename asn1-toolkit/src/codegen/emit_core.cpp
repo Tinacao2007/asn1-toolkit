@@ -24,6 +24,8 @@
 ***************************************************************************/
 #include "generator_revision.hpp"
 #include "emit_internal.hpp"
+#include "emit_output.hpp"
+#include <asn1/codegen/plan.hpp>
 
 #include <asn1/codegen/sha256.hpp>
 
@@ -163,10 +165,12 @@ void Emitter::emit_native_integer_guard(std::ostream& out, const ir::IntegerDesc
     out << ind << "return asn1::make_error(asn1::Error::Code::ConstraintViolation, 0, \"empty INTEGER subtype\");\n";
     return;
   }
-  if (desc.constraint.root_ranges.empty()) return;
+  const auto plan = planning::constraint(desc.constraint);
+  if (!plan.requires_membership) return;
+  const auto& ranges = plan.descriptor->root_ranges;
   std::ostringstream membership;
-  for (std::size_t i = 0; i < desc.constraint.root_ranges.size(); ++i) {
-    const auto& range = desc.constraint.root_ranges[i];
+  for (std::size_t i = 0; i < ranges.size(); ++i) {
+    const auto& range = ranges[i];
     if ((range.lower && !range.lower->as_i64) || (range.upper && !range.upper->as_i64)) return;
     if (i) membership << " || ";
     membership << "(";
@@ -277,6 +281,7 @@ void Emitter::run_to_dir(const std::filesystem::path& dir) {
     const std::filesystem::path cpp_path = dir / (options_.basename + ".cpp");
     const std::vector<std::filesystem::path> outputs{hpp_path.filename(),
                                                      cpp_path.filename()};
+    if (output_files_) for (const auto& path : outputs) output_files_->insert(path.string());
     // Cache check: if the unit is in cache and outputs are byte-identical,
     // skip emit entirely. Note `expected_outputs` carry paths relative to
     // `dir` so hash_output_file can resolve them under emit_dir.
@@ -298,6 +303,8 @@ void Emitter::run_to_dir(const std::filesystem::path& dir) {
       run(header, &source);
       header.flush();
       source.flush();
+      header.close();
+      source.close();
       if (!header || !source) { diag_.error({}, "failed to write emit outputs in " + dir.string()); return; }
       auto t1 = std::chrono::steady_clock::now();
       cache_miss_wall_ += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0);
@@ -1032,7 +1039,7 @@ std::vector<const ir::Field*> Emitter::choice_all_fields(const ir::ChoiceDesc& c
    *  Returns     : static bool
    */
 bool Emitter::field_has_presence_bit(const ir::Field& f) {
-    return f.presence == ir::Presence::Optional || f.presence == ir::Presence::Default;
+    return planning::has_presence_bit(f);
   }
 
   /**
@@ -1368,6 +1375,14 @@ void Emitter::run_split(const std::filesystem::path& dir) {
     const std::string ns = cpp_ident(options_.namespace_name);
     const std::string base = cpp_ident(options_.basename);
 
+    std::unordered_set<std::string> output_names;
+    output_names.insert(portable_output_key(options_.basename));
+    for (const auto& name : unit_files_) {
+      if (!portable_output_name(name) || !output_names.insert(portable_output_key(name)).second) {
+        diag_.error({}, "split output filename collision or reserved name: " + name);
+        return;
+      }
+    }
     for (std::size_t u = 0; u < unit_modules_.size(); ++u) {
       const std::vector<std::string>& members = unit_modules_[u];
       const std::string& file_base = unit_files_[u];
@@ -1395,6 +1410,7 @@ void Emitter::run_split(const std::filesystem::path& dir) {
       const std::filesystem::path cpp_path = dir / (file_base + ".cpp");
       const std::vector<std::filesystem::path> unit_outputs{hpp_path.filename(),
                                                             cpp_path.filename()};
+      if (output_files_) for (const auto& path : unit_outputs) output_files_->insert(path.string());
       if (cache_check_unit(file_base, unit_outputs)) {
         continue;
       }
@@ -1519,12 +1535,15 @@ void Emitter::run_split(const std::filesystem::path& dir) {
       // the cache entry (P2-3 first iteration regression).
       header.flush();
       source.flush();
+      header.close();
+      source.close();
       if (!header || !source) { diag_.error({}, "failed to write emit outputs in " + dir.string()); return; }
       cache_record_unit(file_base, unit_outputs);
     }
 
     // Aggregate header: one include pulls in every unit.
     const std::filesystem::path agg_path = dir / (base + ".hpp");
+    if (output_files_) output_files_->insert(agg_path.filename().string());
     std::ofstream agg(agg_path);
     if (!agg) {
       diag_.error({}, "failed to open aggregate header " + agg_path.string());
@@ -1540,14 +1559,18 @@ void Emitter::run_split(const std::filesystem::path& dir) {
     }
     agg << "\n#endif  // " << aguard << "\n";
     agg.flush();
+    agg.close();
     if (!agg) { diag_.error({}, "failed to write aggregate header " + agg_path.string()); return; }
     cache_finalise();
   }
 
 void CppGenerator::emit(const ir::Model& model, const EmitOptions& options, Diagnostics& diag,
                         std::ostream& header, std::ostream* source) try {
+  if (!validate_emit_options(options, diag)) return;
   Emitter emitter(model, options, diag);
   emitter.run(header, source);
+} catch (const std::filesystem::filesystem_error& ex) {
+  diag.error({}, std::string("code generation filesystem failure: ") + ex.what());
 } catch (const std::length_error& ex) {
   diag.error({}, std::string("code generation capacity exceeded: ") + ex.what());
 }
@@ -1557,9 +1580,9 @@ void CppGenerator::emit_split(const ir::Model& model, const EmitOptions& options
   // Copy options so we can attach the dir without mutating the caller's
   // struct (caller might pass a temporary, const-ref, or reused instance).
   EmitOptions opts = options;
-  opts.emit_dir = dir;
-  Emitter emitter(model, opts, diag);
-  emitter.run_split(dir);
+  emit_directory(model, opts, diag, dir, true);
+} catch (const std::filesystem::filesystem_error& ex) {
+  diag.error({}, std::string("code generation filesystem failure: ") + ex.what());
 } catch (const std::length_error& ex) {
   diag.error({}, std::string("code generation capacity exceeded: ") + ex.what());
 }
@@ -1567,9 +1590,9 @@ void CppGenerator::emit_split(const ir::Model& model, const EmitOptions& options
 void CppGenerator::emit_to_dir(const ir::Model& model, const EmitOptions& options,
                                 Diagnostics& diag, const std::filesystem::path& dir) try {
   EmitOptions opts = options;
-  opts.emit_dir = dir;
-  Emitter emitter(model, opts, diag);
-  emitter.run_to_dir(dir);
+  emit_directory(model, opts, diag, dir, false);
+} catch (const std::filesystem::filesystem_error& ex) {
+  diag.error({}, std::string("code generation filesystem failure: ") + ex.what());
 } catch (const std::length_error& ex) {
   diag.error({}, std::string("code generation capacity exceeded: ") + ex.what());
 }

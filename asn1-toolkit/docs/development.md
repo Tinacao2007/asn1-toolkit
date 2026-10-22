@@ -245,3 +245,19 @@ python3 scripts/validate_generator_revision.py --build build-compiler
 
 它临时修改该构建的私有生成头并重建，验证相同 ASN.1 从 hit 变为 miss，最后
 恢复原头并重建。它不修改仓库源码，不能和该目录的其他构建并发运行。
+
+
+## 分层、头文件与产物门禁（REV-25..28）
+
+- `python3 scripts/validate_layering.py --cmake cmake`：只检查实际 include 指令，
+  emitter 打印的 runtime include 字符串是合法桥梁；脚本自测包含反向依赖负例。
+- `cmake/Layering.cmake` 在配置时检查 compiler/runtime 传递链接；测试通过 helper
+  间接越界也必须失败。源码检查覆盖当前直接 include 拼写，不是完整预处理器，
+  引入宏 include 或新 include 根须同步扩展门禁，不能据此豁免分层铁律。
+- `python3 scripts/validate_public_headers.py --cxx g++ --cc gcc`：每个 C++ 头独立
+  C++17、每个 C 头独立 C11/C++17；GCC/Clang 的 CTest 默认注册，MSVC 使用其专用
+  编译门禁，不向 MSVC 传 `-std`。源码分层已加入 CI。
+- 产物变化运行三形态双 TU、split 模块环、12 入口线路相等和输出保护测试；
+  `-fsyntax-only` 不代替链接调用。compiler-only/runtime-only 继续可独立构建。
+- 后端语义修改先查 [规划边界](emission-planning.md)；目录生成失败保护、manifest
+  与旧文件归属规则见 [产物契约](generated-artifacts.md)。全量门禁结果另存验收文档。

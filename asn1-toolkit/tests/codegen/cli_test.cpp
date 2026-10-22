@@ -123,7 +123,9 @@ TEST(CliErrors, WriteFailureIsReportedBeforeSuccess) {
   auto result = run_asn1cxx({"--emit-dir", dir.string(), "--no-emit-cache",
       std::string(ASN1_EXAMPLES_DIR) + "/person.asn"});
   EXPECT_NE(result.code, 0);
-  EXPECT_NE(result.err.find("failed to write emit outputs"), std::string::npos);
+  EXPECT_NE(result.err.find("refusing to replace unowned or non-regular output"), std::string::npos);
+  EXPECT_EQ(result.err.find("asn1cxx: wrote"),std::string::npos);
+  EXPECT_TRUE(fs::is_symlink(dir / "generated.hpp"));
   fs::remove_all(dir, ec);
 }
 

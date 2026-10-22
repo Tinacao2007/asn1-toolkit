@@ -294,6 +294,7 @@ string(SHA256 ASN1_GENERATOR_REVISION "${_generator_identity}")
 configure_file(cmake/generator_revision.hpp.in generated/generator_revision.hpp @ONLY)
 
 add_library(asn1_codegen STATIC
+  src/codegen/emit_output.cpp
   src/codegen/emit_core.cpp
   src/codegen/emit_per.cpp
   src/codegen/emit_jer.cpp
@@ -359,4 +360,5 @@ if(ASN1_BUILD_TESTS)
     endif()
   endforeach()
 endif()
+include(cmake/Layering.cmake)
 include(cmake/Install.cmake)

@@ -28,7 +28,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure   # 预期 320/320 通过
 ```
 
-产物：`build/asn1cxx`（编译器驱动）、各运行时静态库、31 个测试可执行。
+产物：`build/asn1cxx`（编译器驱动）、各运行时静态库和测试可执行。
 
 ### 诊断构建（ASan + UBSan）
 
@@ -270,3 +270,15 @@ PROCODEC 版权 2026–2031。
 新增稳定入口 `encode_exer/decode_exer`；E-XER 选择且未选择 XER 时保留旧
 `encode_xer/decode_xer` 兼容别名。组合中 XER、CXER、E-XER 各自生成，
 OER 与 COER 也各自生成，不再由掩码里的规范策略覆盖同族入口。
+
+
+## 输出目录与 SDK 集成（REV-25/28）
+
+`--namespace` 必须是单个非保留 C++17 标识符；API basename 限制为可移植 stem。
+每套 schema/选项使用独立输出目录；同目录并发调用报错。
+切换形态或 basename 会清理 hash 未变的旧归属产物，手改的过时文件和用户文件保留。
+`.asn1cxx-manifest` 登记本次生成的文件与源依赖；集成构建应使用其中 `.cpp` 清单，
+而非 glob 目录中所有历史 `.cpp`。失败返回非零，不输出写入成功消息。
+异常终止后的 stage/backup 恢复、inline 的多 TU 用法、ABI、线程安全及发布许可
+见 [产物契约](generated-artifacts.md)。`--lang c` 仍未实现，规划前置见
+[Phase49 接续](emission-planning.md)。

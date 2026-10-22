@@ -39,14 +39,16 @@
         does not define wire endianness. See each codec's specification.
 
     Why a parallel runtime (not extern "C" wrapping the C++ one):
-    the C++ runtime uses std::optional, std::span, std::variant, and a
+    the C++ runtime uses std::optional, project Span, std::variant, and a
     self-defined BigInteger backed by std::vector<uint32_t> — none of
     which can be exposed across a C ABI without forcing every C user to
     pull in a C++ stdlib symbol or carry a C++ exception personality.
-    A clean C11 rewrite is small enough (~1k LOC across all 5 codec
-    families per the existing per-family files) and gives us a true
-    `gcc -std=c11 -Wall -Wextra -c` build that any C consumer can drop
-    into their project.
+    The pure C11 implementation links without a C++ standard library.
+    Primitive and reader coverage is registered in
+    docs/c-runtime-test-coverage.md; this is not a complete C emitter.
+    Public structs have no frozen ABI yet. Distinct objects can be used
+    concurrently; shared mutable readers/writers need caller synchronization.
+    Ownership and configured resource limits: docs/c-runtime-contracts.md.
 
     Layout of the rest of asn1/c_runtime/:
 

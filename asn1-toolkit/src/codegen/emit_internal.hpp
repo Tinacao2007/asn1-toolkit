@@ -36,6 +36,7 @@
 #include <optional>
 #include <ostream>
 #include <sstream>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -124,6 +125,7 @@ std::string opt_size_expr(const std::optional<ir::BigInt>& b);
 
 class Emitter {
  public:
+  std::set<std::string>* output_files_ = nullptr;
   Emitter(const ir::Model& model, EmitOptions options, Diagnostics& diag)
       : model_(model), options_(std::move(options)), diag_(diag) {}
 

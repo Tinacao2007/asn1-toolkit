@@ -7,7 +7,7 @@ C++17 ASN.1 编译器与编解码运行时：将 ASN.1 规范（X.680 系列）�
 | 项目    | 值                                                                                                                                                                                     |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 当前阶段  | Phase 49 — C 语言代码生成器 P2-4（sub-task 1 `include/asn1/c_runtime/*` 头骨架 + sub-task 2 `src/c_runtime/*.c` 纯 C11 runtime + `Asn1CRuntimeSmoke` 链接+运行门禁；详见 [docs/status.md](docs/status.md)） |
-| 测试状态 | GCC Release、ASan+UBSan 各 **430/430**；7×12 实际入口语法矩阵 **84/84**，Clang sanitizer fuzz 20,000 次、MSVC 针对性 59/59；见 [验收记录](docs/rev20-24-validation.md) |
+| 测试状态 | GCC Release、ASan+UBSan 各 **442/442**；7×12 实际入口语法矩阵 **84/84**，本批 MSVC 针对性 **37/37**；见 [第六批验收](docs/rev25-28-validation.md)。历史 live oracle/fuzz 见第五批记录 |
 | 编码入口  | BER / DER / CER / UPER / APER / OER / COER / XER / CXER / E-XER / JER / JERI                                                                                                          |
 | 语言/构建 | C++17（GCC / Clang；MSVC 本地可用）+ CMake 3.16+                                                                                                                                             |
 | 依赖    | 零第三方运行时依赖（BigInt 自研，无 Boost、无 multiprecision）                                                                                                                                         |
@@ -23,7 +23,7 @@ C++17 ASN.1 编译器与编解码运行时：将 ASN.1 规范（X.680 系列）�
 | 三种生成产物形态   | 默认 out-of-line（声明在头、定义在 `.cpp`）、`--emit-inline` 全 inline 单头、`--emit-split` 按 ASN.1 模块分文件                                   |
 | 编译门禁       | 7 个 fixture × 12 codec 全量 emit 产物 `-fsyntax-only` 零错误（emit 成功 ≠ 可编译）                                                       |
 | 无异常错误模型    | 业务错误用 `Result<T>` / 编译诊断（仅 `std::bad_alloc` 可传播）；源范围与线路偏移单位见 [错误契约](docs/cpp-error-contracts.md)                                                           |
-| 严格分层       | 编译器链（lexer/parser/IR/codegen）不链接运行时；运行时不包含 AST/IR 头；生成的 `.cpp` 是唯一桥梁                                                       |
+| 严格分层       | 编译器链（lexer/parser/IR/codegen）不链接运行时；运行时不包含 AST/IR 头；生成产物是唯一桥梁（inline 模式为生成 `.hpp`）                                                       |
 
 ## 环境要求
 

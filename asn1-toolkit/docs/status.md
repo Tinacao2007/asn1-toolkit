@@ -8,6 +8,8 @@
 
 **Phase 49 — C 语言代码生成器（P2-4，sub-task 1 + sub-task 2 已落地；sub-task 3+ 未排期）。**
 
+- **2026-10-21，第六批**：REV-25/26/28 完成产物事务、ODR/命名/归属回归、自动分层/公共头门禁及文档收口。REV-27 完成最小共享规划和 C++ 首批接入；真实 C emitter 消费验收仍待 P2-4 sub-task 3+。GCC Release/ASan+UBSan 各 **442/442**，实际矩阵 **84/84**，MSVC 针对性 **37/37**；组件独立构建与安装消费者通过。见 [第六批验收](rev25-28-validation.md)、[产物契约](generated-artifacts.md)、[规划边界](emission-planning.md)。
+
 - **2026-10-21，REV-20..24**：补标准能力与 REAL/字符/时间 profile；修复约束保真、常量/值参数解析、整数窄化及规范策略缺口。GCC Release/ASan+UBSan 各 **430/430**，实际矩阵 **84/84**，MSVC 针对性 **59/59**；外部对验、Clang sanitizer fuzz 与后续能力项见 [第五批验收](rev20-24-validation.md) 和 [能力矩阵](standard-capabilities.md)。
 
 - **2026-10-21，REV-13..19**：修复缓存生成器指纹/输入顺序及有界并发；补 JERI 产品入口与控制段错误诊断，隔离 OER/XML 组合策略；落地离线、宿主/目标构建和安装包。GCC/Clang Release、ASan+UBSan 四轮各 **392/392**，实际入口矩阵 **84/84**；MSVC、最低 CMake 3.16.8 与 AArch64 链接证据见 [第四批验收](rev13-19-validation.md)。设备运行与完整标准语义审计仍未宣称完成。
@@ -17,7 +19,7 @@
   nodiscard 与访问前置条件、线路偏移单位和字段路径。Release / ASan+UBSan
   各 **370/370**；公共 C++17 头 47/47 严格编译、历史语法矩阵 84/84。
   C++ API/布局变化及验证边界见 [第三批验收](rev10-12-validation.md) 和
-  [C++ 错误契约](cpp-error-contracts.md)。REV-13/14 与 JERI 入口仍待后续。
+  [C++ 错误契约](cpp-error-contracts.md)。当时 REV-13/14 与 JERI 入口待后续，现已在第四批落地。
 
 - **2026-10-20，REV-04..09**：C PER 原语修复 MSB-first 尾位、有符号大整数、
   长度片段链与变长/扩展约束；统一 `per_core.c` 以 Variant 参数化，旧 ABI
@@ -107,8 +109,8 @@
 
 | 门禁 | 结果 |
 |------|------|
-| Release 构建 ctest | GCC 13.3 **430/430**（2026-10-21，WSL）；完整 Clang 历史轮次见第四批记录 |
-| Sanitizer 构建 ctest（ASan+UBSan，Debug） | GCC **430/430**；启用 leak detection / halt_on_error；本批 Clang 为独立受限 fuzz 验证 |
+| Release 构建 ctest | GCC 13.3 **442/442**（2026-10-21，WSL）；完整 Clang 历史轮次见第四批记录 |
+| Sanitizer 构建 ctest（ASan+UBSan，Debug） | GCC **442/442**；启用 leak detection / halt_on_error；第五批 Clang 为独立受限 fuzz 验证，本批未重跑 |
 | `-Wall -Wextra` | 无新增警告 |
 
 ## 编译门禁状态
@@ -140,7 +142,7 @@
 1. **emit 成功 ≠ 可编译 / 正确** —— 全部门禁定义见
    [development.md](development.md#验证门禁纪律)；
 2. **组合门禁掩盖单 codec 缺口** —— 全 codec 位掩码单次发射会把其他分支的
-   include 带进产物；单 codec 场景必须单独验证（XML 家族缺口即由此暴露）；
+   include 带进产物；历史 XML 家族 include 缺口曾由此暴露，当前保持 12 个实际入口逐项检查，不能仅跑组合；
 3. **电信 fixture 测试不等于 3GPP 完整对等** —— 当前覆盖 parse + analyze +
    emit 编译门禁 + 字节级金标准差分，协议级逐消息 PDU 对验见
    [todo.md](todo.md#p1-3--3gpp-协议消息级金标准向量对验)；

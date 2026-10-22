@@ -95,3 +95,8 @@ TEST(GeneratedPolicy, NativeIntegerCannotTruncateOrEscapeSubtype) {
   asn1::ByteReader limited(outside);
   EXPECT_FALSE(gen::decode_ber(limited, small));
 }
+
+std::vector<std::uint8_t> generated_second_tu();
+TEST(GeneratedPolicy, MultipleTranslationUnitsLinkAndCallSameCodecs) {
+  EXPECT_EQ(generated_second_tu(), (std::vector<std::uint8_t>{0xc0}));
+}

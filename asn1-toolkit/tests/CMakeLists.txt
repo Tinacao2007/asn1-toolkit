@@ -32,7 +32,7 @@ foreach(_mode IN ITEMS outline inline split)
     COMMAND "${ASN1_GENERATOR}" --no-emit-cache --codec ber,der,cer,uper,aper,oer,coer,xer,cxer,exer,jer,jeri
       ${_flags} --emit-dir "${_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/standards.asn"
     DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/standards.asn" VERBATIM)
-  add_executable(asn1_standard_${_mode}_tests codegen/standard_generated_test.cpp "${_cpp}")
+  add_executable(asn1_standard_${_mode}_tests codegen/standard_generated_test.cpp codegen/standard_second_tu.cpp "${_cpp}")
   target_include_directories(asn1_standard_${_mode}_tests PRIVATE "${_dir}")
   target_link_libraries(asn1_standard_${_mode}_tests PRIVATE asn1::per asn1::cer asn1::coer asn1::exer asn1::cxer asn1::jeri GTest::gtest_main)
   if(_mode STREQUAL "split")
@@ -565,6 +565,7 @@ gtest_discover_tests(asn1_codec_benchmark_tests)
 # split-mode tests can locate `tests/fixtures/telecom/{lpp,s1ap}_*/...`
 # without baking an absolute path into the source.
 add_executable(asn1_emit_cache_tests
+  codegen/emission_plan_test.cpp
   codegen/emit_cache_test.cpp
 )
 target_compile_definitions(asn1_emit_cache_tests PRIVATE
@@ -658,6 +659,10 @@ foreach(_entry IN LISTS _gate_names ITEMS combined combined_inline combined_spli
 endforeach()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 if(Python3_Interpreter_FOUND)
+  add_test(NAME Architecture.Layering COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/validate_layering.py" --cmake "${CMAKE_COMMAND}")
+  if(NOT MSVC)
+    add_test(NAME Architecture.PublicHeaders COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/validate_public_headers.py" --cxx "${CMAKE_CXX_COMPILER}" --cc "${CMAKE_C_COMPILER}")
+  endif()
   add_test(NAME StandardOracle.FrozenReplay COMMAND "${Python3_EXECUTABLE}"
     "${PROJECT_SOURCE_DIR}/scripts/validate_standard_oracles.py"
     --driver "$<TARGET_FILE:asn1_standard_oracle_driver>")
@@ -672,3 +677,14 @@ if(Python3_Interpreter_FOUND)
       --output "${CMAKE_CURRENT_BINARY_DIR}/codec_matrix"
     DEPENDS ${ASN1_GENERATOR_DEPENDENCY} USES_TERMINAL VERBATIM)
 endif()
+
+# REV-25: a module dependency SCC must be one linked emission unit.
+set(_cycle_dir "${CMAKE_CURRENT_BINARY_DIR}/split_cycle")
+add_custom_command(OUTPUT "${_cycle_dir}/generated.hpp" "${_cycle_dir}/A.cpp"
+  COMMAND "${ASN1_GENERATOR}" --no-emit-cache --codec uper --emit-split
+    --emit-dir "${_cycle_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/split_cycle.asn"
+  DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/split_cycle.asn" VERBATIM)
+add_executable(asn1_split_cycle_tests codegen/split_cycle_test.cpp "${_cycle_dir}/A.cpp")
+target_include_directories(asn1_split_cycle_tests PRIVATE "${_cycle_dir}")
+target_link_libraries(asn1_split_cycle_tests PRIVATE asn1::per GTest::gtest_main)
+gtest_discover_tests(asn1_split_cycle_tests)

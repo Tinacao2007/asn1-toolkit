@@ -8,67 +8,26 @@
 落地步骤。每条给出最小可行子任务，便于逐步合入。状态变更走
 [status.md](status.md)，变更日志走 [changelog.md](changelog.md)。
 
-## P2-3 — 增量代码生成（内容哈希缓存）
+## P2-3 — 增量代码生成（已落地，持续回归）
 
-### 目标
+当前实现位于 `src/codegen/emit_cache.*`，不是 CLI 内部工具类。
+键包含生成器内容指纹/格式版本、完整选项、有序源路径及内容 hash、相关模块依赖。
+flat 为一个单元，split 按模块依赖 SCC 合并后的单元缓存；没有源依赖信息的手工 IR
+禁用缓存。命中仍核验产物 hash，mtime 不是正确性依据。
 
-`asn1cxx` 当前每次 `--emit-dir` 都全量生成 + 覆盖。C/C++ 工程在标准接入流程
-里需要把 asn1cxx 作为构建依赖（CMake `add_custom_command(OUTPUT ... DEPENDS
-asn1cxx <asn>)`），全量生成在大 fixture 上是数秒到分钟量级（per_golden 0.5 s、
-RRC 8.6.0 10 s、S1AP 14.4.0 30 s+），CI 反复构建和 IDE 内保存触发都吃这个
-成本。
+`--emit-cache` 默认开启，`--no-emit-cache` 关闭；缓存位于输出目录内部
+`.asn1cxx-cache/`。缓存不可读/损坏时重发射。升级指纹、依赖顺序与命中/未命中
+字节一致性证据见 [第四批验收](rev13-19-validation.md)。
 
-`--emit-split` 已经把粒度降到 ASN.1 模块，再加一个**内容哈希缓存**：源文
-件 hash 不变就跳过该单元的 emit + write；源文件 hash 变了只重写其对应单
-元。
-
-### 设计
-
-- **缓存键**：`sha256(module_name || source_path_mtime || source_sha256)`
-  三元组。`source_path_mtime` 仅用于触发重算 `source_sha256`（直接读文件
-  hash 比解析 .asn 快得多，避免把 lexer/parser 拖进缓存键计算）。
-- **缓存形态**：`.asn1cxx-cache/` 放在 `--emit-dir` 旁边，
-  `<module-name>.cache` 文件存 `key: emit_output_sha256`。emit 后把输出
-  文件做一次 hash 写入缓存条目；下一次命中时直接复用旧文件，并校验实际
-  写出的 hash 与缓存一致（防止手动改产物后被错认命中）。
-- **粒度**：
-  - flat 模式：缓存键 = 单个 key（全量；命中即跳过整 emit）。
-  - split 模式：每个 ASN.1 模块一个 key（与 `--emit-split` 单元粒度对
-    齐）。依赖模块 hash 变更只重算当前单元。
-- **失效链**：split 模式下单元 A 依赖 B 的类型 → B 失效时 A 也失效。
-  用拓扑序逐单元判定（A 缓存键附加所有依赖 B 的 hash），保证正确性。
-- **缓存关闭**：`--no-cache` 强制全量（CI 上做金标对验时不希望走缓存）；
-  默认开。
-- **诊断**：`Diagnostics` 加一条 `note`：「emit cache: 11/12 modules
-  hit (0.04s) / 1 miss (1.2s)」（按 `note` 走，不进错误计数）。
-
-### 子任务
-
-| # | 内容 | 估时 | 验证 |
-|---|------|------|------|
-| 1 | 在 `EmitOptions` 加 `emit_cache: bool = true`；`asn1cxx` 加 `--emit-cache` / `--no-emit-cache`；`--help` 文档化 | 0.5 h | CLI 用例：flag-as-is 下命中缓存第二次跑时间归零；`--no-emit-cache` 不命中 |
-| 2 | `tools/asn1cxx/main.cpp` 增加 `ContentCache` 工具类（读 `.asn1cxx-cache/*.cache` 文本、按 `(module, key) -> output_sha256` 查询、写回） | 1 h | 单元测试 `asn1_cache_tests`：写盘/读盘/命中/未命中/损坏恢复 |
-| 3 | `CppGenerator::emit` 入口改为先调 cache：命中且 hash 一致则跳过 emit + write；未命中则走原路径并写缓存 | 2 h | 重复调用同 fixture 二次运行时间记录（flat + split）；改一字节后正确失效 |
-| 4 | `CppGenerator::emit_split` 改为按单元走 cache：解析阶段产 module → key 依赖图（已有 `collect_module_groups`），拓扑序决定每个单元 emit 与否 | 2 h | LPP 单模块 split + S1AP 三单元 split 重复跑测时间；故意改一个 .asn 行仅影响一个单元 |
-| 5 | 加 `asn1_cache_tests`：金标准用例（Person.asn 二次运行时间记录 + 改字段后失效链）；sanitizer build 也跑 | 1 h | sanitizer 0 失败；ctest 多一项 |
-| 6 | 文档：`status.md` 「构建与测试状态」补缓存命中率；`changelog.md` 增条目；`development.md` 「验证门禁纪律」补"缓存命中不能绕过产物哈希校验" | 0.5 h | 文档审阅 |
-
-**总估时：~7 h（一个工作日）。**
-
-### 不在范围内（防止蔓延）
-
-- 不做产物 SHA256 之外的校验（不签名）。
-- 不做多进程锁：同一目录被并发 asn1cxx 调用由调用方负责；通常一个工程
-  一个 asn1cxx 实例。
-- 不做跨工程共享缓存：每个 `--emit-dir` 自带 `.asn1cxx-cache/`。
-
----
+REV-25 加入整批 stage/manifest 发布、旧产物归属清理以及同目录并发拒绝，
+契约见 [生成产物](generated-artifacts.md)。不是多进程共享缓存或等待锁服务。
+后续改动保留缓存命中、失效、手改输出、三形态切换和用户文件保护回归。
 
 ## P3-1 — 前端并行分析
 
-### 目标
+### 原始目标（历史规划，实际实现见下）
 
-`Analyzer::analyze` 当前串行跑四趟（`declare_pass` → `resolve_pass` →
+规划时 `Analyzer::analyze` 串行跑四趟（`declare_pass` → `resolve_pass` →
 `lower_pass` → `tag_pass`，见 `src/semantic/analyzer.cpp`）：
 
 - `declare_pass`：每个模块独立声明符号集。
@@ -302,101 +261,36 @@ oracle 路径）。P1-3 是把这些 oracle 从"综合构造 per_golden"扩到"�
 
 ## P2-4 — C 语言代码生成器（`--lang c`）
 
-### 目标
+当前 Phase49 仅完成 sub-task 1/2：纯 C11 公共头、原语实现、链接 smoke、失败契约和
+PER 独立差分。生产目标是 `asn1_c_runtime`（`asn1::c_runtime`），不链接 C++ 标准库。
+C++17 使用项目 `Span` 与 `Result<T>`；C 使用 `asn1_status_t`（0 成功，其他为已登记
+错误）和 out 参数，业务失败不使用异常，也不是进程全局 errno。
 
-当前 `asn1cxx` 只输出 C++ 代码（`namespace asn1::per` + `std::optional`
-+ `std::span` + 自研 `BigInt` 等）。P2-4 引入**第二目标语言**：
+| 子任务 | 状态与下一步 | 必需验收 |
+|---|---|---|
+| 1/2 C11 头与 runtime | 已落地；具体原语边界见 [声明登记](c-runtime-test-coverage.md) | C11/C++17 独立头、纯 C 链接、失败/资源边界、PER 两 Variant 与独立 oracle |
+| 规划前置（REV-27） | 最小 `codegen/plan.hpp` 已建立并接入 C++ PER/整数检查；C 后端接入未实现 | [共享规划](emission-planning.md)；不可声称已验证生成 C PDU |
+| 3 C emitter | 未实现；按 codec 分步渲染同一规划，避免复制标签/presence/约束/扩展/selector 决定 | 生成 C11 多 TU 编译链接、状态传播、所有权和真实编解码 |
+| 4 CLI/调度 | 未实现：`--lang cpp|c`、目标语言选项与调度 | 现有 C++ 参数/产物保持兼容，未实现组合明确诊断 |
+| 5/6 C fixture 门禁 | 未实现；按已支持 codec 开放，不预设只需 5 codec | 7 fixture ×12 入口能力登记、生成 C 的编译/链接/运行；不能用手写 smoke 替代 |
+| 7 oracle 复用 | 未实现：生成 C/C++ 同 schema/value 使用同一独立 oracle | 字节与双向互解，工具无覆盖时登记条文证据和局限 |
+| 8/9/10 集成收尾 | 后续每步同步 | Release + ASan+UBSan 全量、各形态 ODR、文档/安装、P1-3 独立运行 |
 
-- `asn1cxx --lang c` 输出**纯 C 兼容**代码（`asn1/codec.h` runtime
-  + `Foo.h` / `Foo.c` 类型 stub）。
-- 生成的 C 代码可被任意 C 项目（无 C++ 工具链）直接 `#include` + 编译。
-- 字节输出与 `--lang cpp` 逐字节一致（P1-3 oracle 同样适用）。
+继续 sub-task 3 前维持 REV-01..07 的失败传播与 PER 修复；见
+[第一批](rev01-03-validation.md)、[第二批](rev04-09-validation.md)。
+C/C++ runtime 平行实现各自语言的算法和状态接口；共享的是语义规划与测试向量，
+不能把 compiler 链到任一 runtime，也不通过 C++ 包装代替纯 C。
+UPER/APER 在各语言内各自共用一个 Variant 参数化 PER 核心。
 
-### 为什么放在 P2 项目
+暂不增加其他目标语言，也不为所谓通用 IR runtime 重写现有架构。
+完整类型布局、SEQUENCE OF/CHOICE 泛型表达、ABI 和资源预算在对应 C 子任务设计时
+明确，尚未决定的方案不作为当前已实现能力。
 
-P2 = **emit 系统强化**（P2-1 bit_io、P2-2 split emit、P2-3 增量缓存）。
-新增"目标语言维度"是 emit 输出的进一步强化，与 P2-3 同级（同样改
-emit 端、动 codec 输出形态、不动 runtime 语义）。归 P2-4。
+## 发布前条件
 
-### 关键挑战
+- [ ] 明确项目、生成产物、安装 SDK 的许可证与第三方 notices。
+- [ ] 确立版本化 C/C++ ABI/源码兼容政策；当前公开结构不承诺冻结 ABI。
+- [ ] 补全跨结构统一资源预算和长期 fuzz/设备运行证据；现有局部限额保持。
+- [ ] 完成能力矩阵 STD-01..05 的后续工作；本轮修正不等于整部 ASN.1 标准认证。
 
-1. **runtime 子集抽取**：`asn1/runtime/*` 用了 `std::optional`（Result
-   错误码载体）、`std::span`（解码缓冲）、自研 `BigInt`（INTEGER 大数）。
-   C 兼容子集 `asn1/c_runtime/*` 需要：
-   - `Result<T>` → 整数错误码 + out 参数（`-1` / `0` / `1`）；
-   - `std::span` → `const uint8_t*` + `size_t`；
-   - `BigInt` → 同名结构体（C 风格）；
-   - 命名空间 `asn1::per` → 前缀 `asn1_per_`。
-   所有现有 C++ runtime **保留不动**，C runtime 是平行的纯 C 实现
-   （`extern "C"` 包装不可行因为 C++ runtime 内部用了 C++ 习惯）。
-2. **类型擦除 / 泛型替代**：C 无模板 → `SEQUENCE OF` / `SET OF` / `CHOICE`
-   需要走 `void*` + size 或 per-element 函数指针表。最务实是
-   **per-codec 单一 SEQUENCE OF 实现 + void\***（参考 libasn1 / asn1c）。
-3. **错误码返回**：C++ 用 `Result<T>` + 抛出或 carry；C 用 errno + out
-   参数。
-4. **无 RTTI**：CHOICE 的 alternative 派发用 union + 显式 tag。
-5. **零依赖**：C runtime 不许引 `<optional>`/`<span>`/`<vector>`，纯
-   `<stdint.h>`/`<stddef.h>`/`<string.h>`。
-
-### 设计
-
-- **`src/codegen/emit_c/` 子目录**：模仿 `src/codegen/emit_per.cpp` 等
-  按 codec 拆 C 风格 emit（`emit_c_per.cpp`、`emit_c_tlv.cpp`、
-  `emit_c_jer.cpp` 等）。
-- **`include/asn1/c_runtime/` 平行的纯 C 头** + `src/c_runtime/` 实现
-  文件。**不允许** `#include <asn1/runtime/*>`（避免 C++ 习惯污染）。
-- **CLI**：`--lang cpp|c`（默认 `cpp`，向后兼容零变更）。
-- **CMake**：新增 `asn1c_c_runtime` 静态库（`asn1_c_per.o` 等）与
-  `asn1_codegen_c` emitter 库；`asn1cxx` target 沿用，新增
-  `--lang c` 路径调用 C emitter。
-- **可重现性**：C 产物的字节序列必须与 C++ 产物**逐字节一致**
-  （同 per_golden oracle）。P1-3 oracle 既覆盖 C++，扩到 `--lang c`
-  后同一份 oracle 必须两种语言产出对得上。
-- **测试**：复用 `tests/per/golden/`、`tests/tlv/golden/` 既有 oracle
-  （56 + 16 条）。新增 `tests/c_lang/`：
-  - `c_emit_test.cpp` 用 gtest + fork `cc` 编译生成的 C 代码 + 跑
-    encode/decode round-trip + 字节对 oracle；
-  - fixture compile gate：`asn1_c_lpp_up_compile` 等（N 个 fixture ×
-    5 codec）；
-  - sanitizer / ctest 必过。
-
-### 子任务
-
-| # | 内容 | 估时 | 验证 |
-|---|------|------|------|
-| 1 | 设计 `include/asn1/c_runtime/` 接口：从 `runtime/*` 头提取 C 兼容 API 清单（Result → errno；span → ptr+size；BigInt → C struct；命名空间 → 前缀）；`asn1/c_runtime/per.h` + `tlv.h` + `jer.h` 等骨架 | 6 h | 头文件接口 review 通过；编译 `gcc -std=c11 -c -fsyntax-only` 零错误 |
-| 2 | `src/c_runtime/` 纯 C 实现（剥离 std::optional / span / 自研 BigInt 转 C struct）：`asn1_per_bit_reader_t`、`asn1_per_bit_writer_t`、`asn1_ber_tlv_*` 等 | 10 h | 5 fixture × 5 codec 既有 per_golden + tlv_golden oracle 在 C runtime 下 byte-equal；ctest 新增 N 项 |
-| 3 | `src/codegen/emit_c/` emitter（仿 `emit_per.cpp` 拆分）：每 codec 一个 emit_c_*.cpp，输出 C 函数（C linkage，不带 `extern "C++"`） | 8 h | emit 输出 `gcc -std=c11 -Wall -Wextra -c -fsyntax-only` 零错误 |
-| 4 | `asn1cxx --lang c` CLI + `EmitOptions::lang` 字段；`emit_c_toplevel.cpp` 调度 | 2 h | `--lang c` 在 LPP / S1AP / RRC 三 fixture × 5 codec 跑通；无 C++ 串味 |
-| 5 | `tests/c_lang/c_emit_test.cpp`：fork `cc` 编译生成的 C 代码 + 跑 encode/decode round-trip + 比对 `tests/per/golden/` `tests/tlv/golden/` 既有 oracle；LPP / S1AP / RRC × 5 codec 字节级对验 | 6 h | Release **344/344 + N** + sanitizer **344/344 + N**；零 ASan/UBSan |
-| 6 | fixture compile gate：`asn1_c_lpp_{uper,aper,ber,der,cer,oer,coer,jer,jeri,xer,exer,cxer}_compile` 12 个 + 同 split 模式 — N 个新 gate | 4 h | ctest 全过 |
-| 7 | P1-3 oracle 复用：`-lang c` 与 `-lang cpp` 在同一 oracle 下 byte-equal（per_golden + tlv_golden + P1-3 协议级 oracle）；合并进 P1-3 验证清单 | 2 h | oracle byte-equal 通过；避免两套 oracle 分叉 |
-| 8 | sanitizer（ASan + UBSan）+ Release 全量 ctest 必过；新增 C runtime 走 `-fsanitize=address,undefined` 仍零报错 | 2 h | Release **344/344 + N** + sanitizer **344/344 + N** |
-| 9 | 文档：`status.md` 「剩余工作」表新增 P2-4 行（指向 todo.md）；`changelog.md` P2-4 条目 + Phase 里程碑表新增 Phase 49；`docs/architecture.md` 新增「目标语言维度」段落（runtime C/C++ 平行设计）；`usage-guide.md` 加 C 集成示例 | 2 h | 文档审阅 |
-| 10 | `tests/c_lang/` 与 `tests/protocol/`（P1-3）独立 fixture 编译互不依赖；CMake `add_subdirectory(tests)` 内分两套 fixture compile gate | 1 h | ctest 注册无冲突 |
-
-**总估时：~43 h（5-6 个工作日）。** 估时高的根因 = C runtime 子集抽取 +
-emit_c 拆分是大头；其余项与 P1-3 模式相似。
-
-### 排期
-
-- **先 P1-3**（commit `83fd175` 已规划）：协议级 oracle 字节对验
-  就位后，C 语言产出可直接用同一 oracle，无需新建 oracle。
-- **再 P2-4**（本 TODO）：C runtime 是新代码基线，**与 P1-3 协议消息
-  oracle 互补**——P2-4 让 `--lang c` 走 P1-3 同一 oracle，避免双 oracle
-  分叉。Phase 49。
-- 估时 **5-6 工作日**；建议拆两个 PR：
-  - PR1（子任务 1+2 + 头/实现骨架）：C runtime 子集就位，可独立跑
-    现有 per_golden oracle（C 手写 driver，~10 测试用例）；
-  - PR2（子任务 3+4+5+6+7）：emit_c + CLI + 自动 fixture 编译门禁 +
-    P1-3 oracle 复用。
-
-### 不在范围内（防止蔓延）
-
-- 不输出其它语言（Rust / Go / Python）：每个语言一个 runtime + emitter，
-  估时翻倍；当前只 C 一个新目标。
-- 不抽 `asn1c_c_runtime` 之外的"通用 IR runtime"——所有 codec 各自抽
-  C 子集；走 C 习惯的前缀 + errno，避免大一统抽象。
-- 不支持 C++/C 互操作（C++ emit 产物调用 C runtime 或反向）——两套
-  runtime 各自完整，不交叉。
-- 不做 C99 之前兼容（C11 起是合理基线，与 P1-3 oracle 时窗匹配）。
+边界和所有权见 [集成契约](generated-artifacts.md)。

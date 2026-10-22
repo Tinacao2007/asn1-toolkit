@@ -29,7 +29,7 @@ ASN.1 源码
 
 1. **编译器库从不 include 编解码算法**（`asn1cxx` / `asn1_codegen` 不链接任何运行时库）；
 2. **运行时从不 include AST / 符号表 / IR 头**（`src/runtime/**` 对前端头零依赖）；
-3. **生成的 `.cpp` 是唯一桥梁** —— 它调用运行时原语，自身不包含编解码算法。
+3. **生成产物是唯一桥梁（inline 模式为生成 `.hpp`）** —— 它调用运行时原语，自身不包含编解码算法。
 
 反面教材：父工作区的 `pasn1/tools/act`（解析器 `parser.h` 与 BER/UPER 生成器
 `ber-gen-enc.h` / `uper-gen-enc.h` 混在同一编译器内），本项目的严格分离即针对此模式确立。
@@ -85,7 +85,7 @@ asn1-toolkit/
       ber/ der/ cer/ per/ oer/ coer/ xer/ cxer/ exer/ jer/ jeri/
   src/               与 include 镜像的实现；ast/ir 下不出现编解码代码
   tools/asn1cxx/     编译器驱动 main.cpp
-  tests/             31 个测试可执行 + 7 个 fixture + 金标准向量
+  tests/             测试可执行与生成链接门禁 + 7 个 fixture + 金标准向量
   examples/          示例 .asn
   scripts/           版权头维护、金标准向量生成
   docs/              项目文档（入口见 docs/README.md）
@@ -112,7 +112,7 @@ C++17，`CMAKE_CXX_STANDARD_REQUIRED ON`，扩展关闭；CMake 3.16+。每个�
 | `asn1_ir`                | Type IR 与打印                      |
 | `asn1_constraints`       | 约束归一化                            |
 | `asn1_semantic`          | 符号表、分析器                          |
-| `asn1_codegen`           | C++ 发射器（按 codec 家族拆分的 7 个源文件，见上） |
+| `asn1_codegen`           | C++ 发射器（按 codec 家族拆分，含缓存和输出事务） |
 
 ### 运行时（静态库）
 
@@ -121,7 +121,7 @@ C++17，`CMAKE_CXX_STANDARD_REQUIRED ON`，扩展关闭；CMake 3.16+。每个�
 | `asn1_runtime` | ByteReader/ByteWriter、BitReader/BitWriter、BigInteger |
 | `asn1_ber`     | BER TLV + 原语/构造编解码                                   |
 | `asn1_der`     | DER 规范编解码（依赖 ber）                                    |
-| `asn1_cer`     | CER 规范策略层（X.690，依赖 ber）                              |
+| `asn1_cer`     | CER 规范策略层（X.690，依赖 der/ber）                              |
 | `asn1_per`     | PER 原语 + 类型编解码（UPER/APER 共享）                         |
 | `asn1_oer`     | OER（X.696 BASIC-OER）                                 |
 | `asn1_coer`    | COER 规范编解码（依赖 oer）                                   |
@@ -138,7 +138,7 @@ C++17，`CMAKE_CXX_STANDARD_REQUIRED ON`，扩展关闭；CMake 3.16+。每个�
 | `asn1cxx`                                        | 编译器驱动                                                                                |
 | `asn1_<fixture>_compile`                         | fixture emit 产物静态库编译门（RRC/LPP/S1AP/tlv_oer_golden/tlv_golden/cer_golden/rrc_slice 等） |
 | `asn1_split_lpp_split` / `asn1_split_s1ap_split` | `--emit-split` 分文件产物编译门（UPER）                                                        |
-| 测试可执行（31 个）                                      | 清单见 [development.md](development.md#测试体系)                                            |
+| 测试可执行                                      | 清单见 [development.md](development.md#测试体系)                                            |
 
 链接规则：`asn1cxx` 只链编译链；`asn1_codegen` 不链运行时（只打印
 `asn1::per::...` 调用）；生成的 TU 与编解码测试才链 `asn1_ber` / `asn1_der` /
@@ -320,8 +320,7 @@ governor id。
    自带 `detail::Null`（聚合头全量 include 时避免重复定义）；模块依赖 include
    按结构依赖（字段/元素/替代/表约束条目/别名目标/OCF fixed_type）计算。
    S1AP（6 模块，含 IEs/Containers/PDU-Contents 三模块递归环）是主要验证对象。
-   已知限制：单 codec 选择 XML 家族（`--codec xer` 等单独）会暴露既有
-   include 缺口，见 [status.md](status.md#剩余工作)。
+   单入口与组合入口的 include/链接覆盖由实际 12 入口门禁验证。
 
 ## 错误模型
 
@@ -339,3 +338,15 @@ Result 访问前置条件、源码 UTF-8 字节列、线路偏移与逻辑字段
 - `TypeId` arena 不如指针直观，换来递归类型的直接表达与稳定 IR dump；
 - 识别不支持语法有解析成本，换来真实规范不被误报；
 - 内部 `BigInt` 比 Boost 多写代码，换来运行时零依赖。
+
+
+## 发射规划与产物事务（REV-25..28）
+
+IR → `codegen/planning` 的借用计划 → 各语言渲染；规划不链接 runtime。
+本次仅接入 C++ PER presence/扩展数与 native INTEGER 约束，C emitter 后续复用
+见 [设计与阶段边界](emission-planning.md)。
+目录发射在私有 stage 生成，manifest 登记输出和依赖，成功发布时清理未修改的旧归属文件。
+同目录并发明确拒绝；不覆盖普通用户文件或符号链接。多文件发布与崩溃恢复的限制、
+三种形态的 ODR/ABI/线程安全/所有权见 [产物与集成契约](generated-artifacts.md)。
+配置阶段的 `cmake/Layering.cmake` 检查实际传递链接；源码 include 与独立公共头门禁
+见 [开发指南](development.md)。

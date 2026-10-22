@@ -22,6 +22,7 @@
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include "emit_internal.hpp"
+#include <asn1/codegen/plan.hpp>
 
 namespace asn1 {
 namespace codegen {
@@ -296,18 +297,9 @@ void Emitter::emit_sequence_like_encode(std::ostream& out, const ir::SequenceDes
                                  const std::string& expr, bool aper,
                                  const std::string& ind) {
     const char* C = ns_codec(aper);
-    std::vector<const ir::Field*> optionals;
-    for (const ir::Field& f : seq.root) {
-      if (field_has_presence_bit(f)) {
-        optionals.push_back(&f);
-      }
-    }
-    for (const ir::Field& f : seq.trailing_root) {
-      if (field_has_presence_bit(f)) {
-        optionals.push_back(&f);
-      }
-    }
-    const std::size_t n_ext = seq.extension_groups.size();
+    const auto plan = planning::sequence(seq);
+    const auto& optionals = plan.presence_fields;
+    const std::size_t n_ext = plan.extensions.size();
     out << ind << "{\n";
     auto emit_tc_encode = [&](const std::vector<ir::Field>& fields) {
       for (const auto& f : fields) {
@@ -473,18 +465,9 @@ void Emitter::emit_sequence_like_decode(std::ostream& out, const ir::SequenceDes
                                  const std::string& expr, bool aper,
                                  const std::string& ind) {
     const char* C = ns_codec(aper);
-    std::size_t n_optionals = 0;
-    for (const ir::Field& f : seq.root) {
-      if (field_has_presence_bit(f)) {
-        ++n_optionals;
-      }
-    }
-    for (const ir::Field& f : seq.trailing_root) {
-      if (field_has_presence_bit(f)) {
-        ++n_optionals;
-      }
-    }
-    const std::size_t n_ext = seq.extension_groups.size();
+    const auto plan = planning::sequence(seq);
+    const std::size_t n_optionals = plan.presence_fields.size();
+    const std::size_t n_ext = plan.extensions.size();
     out << ind << "{\n";
     out << ind << "  auto pre = " << C << "::decode_sequence_preamble(r, "
         << (seq.extensible ? "true" : "false") << ", " << n_optionals << ");\n";
