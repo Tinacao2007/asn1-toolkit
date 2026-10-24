@@ -11,12 +11,12 @@
 
 ## 环境要求
 
-| 项 | 要求 |
-|----|------|
-| CMake | 3.16+ |
-| 编译器 | C++17（GCC / Clang；MSVC 本地 Windows 工作可接受） |
-| 网络 | 配置阶段一次（FetchContent 获取 GoogleTest） |
-| 主要目标平台 | Linux / Ubuntu 24.04（GCC / Clang） |
+| 项      | 要求                                       |
+| ------ | ---------------------------------------- |
+| CMake  | 3.16+                                    |
+| 编译器    | C++17（GCC / Clang；MSVC 本地 Windows 工作可接受） |
+| 网络     | 配置阶段一次（FetchContent 获取 GoogleTest）       |
+| 主要目标平台 | Linux / Ubuntu 24.04（GCC / Clang）        |
 
 ## 构建
 
@@ -65,38 +65,38 @@ cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug -DASN1_ENABLE_SANITIZERS=ON \
 
 ### 选项
 
-| 选项 | 说明 |
-|------|------|
-| `-h`, `--help` | 显示帮助并退出 |
-| `-V`, `--version` | 显示版本并退出 |
-| `--dump-tokens` | 对每个文件跑 lexer 并打印 token 流 |
-| `--dump-ast` | 对每个文件解析并打印 AST |
-| `--dump-ir` | 解析 + 语义分析并打印 Type IR |
-| `--emit-dir <dir>` | 将生成产物写入 `<dir>` |
-| `--codec <list>` | 选择编解码规则（见下），默认 `uper` |
-| `--namespace <id>` | 生成类型的 C++ 命名空间，默认 `asn1_gen` |
-| `--emit-inline` | 编解码函数定义 inline 进头文件（默认定义落 `generated.cpp`） |
-| `--emit-split` | 按 ASN.1 模块分文件生成（`<Module>.hpp/.cpp` + 聚合头） |
+| 选项                 | 说明                                         |
+| ------------------ | ------------------------------------------ |
+| `-h`, `--help`     | 显示帮助并退出                                    |
+| `-V`, `--version`  | 显示版本并退出                                    |
+| `--dump-tokens`    | 对每个文件跑 lexer 并打印 token 流                   |
+| `--dump-ast`       | 对每个文件解析并打印 AST                             |
+| `--dump-ir`        | 解析 + 语义分析并打印 Type IR                       |
+| `--emit-dir <dir>` | 将生成产物写入 `<dir>`                            |
+| `--codec <list>`   | 选择编解码规则（见下），默认 `uper`                      |
+| `--namespace <id>` | 生成类型的 C++ 命名空间，默认 `asn1_gen`               |
+| `--emit-inline`    | 编解码函数定义 inline 进头文件（默认定义落 `generated.cpp`） |
+| `--emit-split`     | 按 ASN.1 模块分文件生成（`<Module>.hpp/.cpp` + 聚合头） |
 
 未指定任何输出动作（dump / emit）时直接报错退出。
 
 ### 编解码规则（`--codec`）
 
-| 别名 | 编码规则 | 运行时库 |
-|------|----------|----------|
-| `uper` | PER 非对齐（X.691） | `asn1_per` |
-| `aper` | PER 对齐（X.691） | `asn1_per` |
-| `per` | UPER + APER（双 Variant） | `asn1_per` |
-| `ber` | BER（X.690） | `asn1_ber` |
-| `der` | DER（X.690） | `asn1_der` |
-| `cer` | CER（X.690） | `asn1_cer` |
-| `oer` | OER（X.696 BASIC-OER） | `asn1_oer` |
-| `coer` | COER（X.696 CANONICAL-OER） | `asn1_coer` |
-| `xer` | XER（X.693 BASIC-XER） | `asn1_xer` |
-| `cxer` | CXER（X.693 CANONICAL-XER） | `asn1_cxer` |
-| `exer` | E-XER（X.693 扩展 XML + 编码指令） | `asn1_exer` |
-| `jer` | JER（X.697，兼容已有指令感知行为） | `asn1_jeri`（传递链接 `asn1_jer`） |
-| `jeri` | 项目 JER encoding-instruction 入口；同一种 X.697 线路语法 | `asn1_jeri` |
+| 别名     | 编码规则                                          | 运行时库                         |
+| ------ | --------------------------------------------- | ---------------------------- |
+| `uper` | PER 非对齐（X.691）                                | `asn1_per`                   |
+| `aper` | PER 对齐（X.691）                                 | `asn1_per`                   |
+| `per`  | UPER + APER（双 Variant）                        | `asn1_per`                   |
+| `ber`  | BER（X.690）                                    | `asn1_ber`                   |
+| `der`  | DER（X.690）                                    | `asn1_der`                   |
+| `cer`  | CER（X.690）                                    | `asn1_cer`                   |
+| `oer`  | OER（X.696 BASIC-OER）                          | `asn1_oer`                   |
+| `coer` | COER（X.696 CANONICAL-OER）                     | `asn1_coer`                  |
+| `xer`  | XER（X.693 BASIC-XER）                          | `asn1_xer`                   |
+| `cxer` | CXER（X.693 CANONICAL-XER）                     | `asn1_cxer`                  |
+| `exer` | E-XER（X.693 扩展 XML + 编码指令）                    | `asn1_exer`                  |
+| `jer`  | JER（X.697，兼容已有指令感知行为）                         | `asn1_jeri`（传递链接 `asn1_jer`） |
+| `jeri` | 项目 JER encoding-instruction 入口；同一种 X.697 线路语法 | `asn1_jeri`                  |
 
 组合语法（位掩码；重复项去重，列表顺序不改变所选入口）：
 
@@ -131,11 +131,11 @@ cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug -DASN1_ENABLE_SANITIZERS=ON \
 
 三种形态对比：
 
-| 形态 | 开关 | 产物 | 适用场景 |
-|------|------|------|----------|
-| out-of-line（默认） | 无 | `generated.hpp`（类型 + 函数声明）+ `generated.cpp`（定义，包在生成命名空间内） | 多 TU 集成（定义一次，其余 TU 只解析声明） |
-| 全 inline | `--emit-inline` | 单 `generated.hpp`（定义 inline） | 单 TU 小模块，零链接步骤 |
-| 分文件 | `--emit-split` | 每 ASN.1 模块一对 `<Module>.hpp/.cpp` + 聚合 `<basename>.hpp` | 大模块增量编译、IDE 索引 |
+| 形态              | 开关              | 产物                                                        | 适用场景                      |
+| --------------- | --------------- | --------------------------------------------------------- | ------------------------- |
+| out-of-line（默认） | 无               | `generated.hpp`（类型 + 函数声明）+ `generated.cpp`（定义，包在生成命名空间内） | 多 TU 集成（定义一次，其余 TU 只解析声明） |
+| 全 inline        | `--emit-inline` | 单 `generated.hpp`（定义 inline）                              | 单 TU 小模块，零链接步骤            |
+| 分文件             | `--emit-split`  | 每 ASN.1 模块一对 `<Module>.hpp/.cpp` + 聚合 `<basename>.hpp`    | 大模块增量编译、IDE 索引            |
 
 实测收益（RRC 全模块）：out-of-line 后头文件 33,697 → 5,998 行；消费 TU
 `-fsyntax-only` ~22s → ~5s；定义 TU 一次性 ~63s（盈亏平衡 N≈3–4 个 TU）。
@@ -205,27 +205,27 @@ ctest --test-dir build -R Cli --output-on-failure  # 按名字过滤
 
 测试目录结构：
 
-| 目录 | 内容 |
-|------|------|
-| `common/` `lexer/` `parser/` `semantic/` `constraints/` | 编译器前端与语义测试 |
-| `ber/` `der/` `cer/` `per/` `uper/` `aper/` `oer/` `coer/` `xer/` `cxer/` `exer/` `jer/` `jeri/` | 各编码规则单元测试 |
-| `per/golden/` `tlv/golden/` | 金标准差分向量（外部 oracle 生成的精确字节） |
-| `runtime/` | 运行时原语测试（bit_io / bigint 等） |
-| `codegen/` | 代码生成测试（emit 产物往返、CLI 子进程、跨 codec 一致性、benchmark） |
-| `telecom/` | 3GPP fixture 测试（RRC/LPP/S1AP 解析/分析/emit） |
-| `fixtures/` | 测试用 ASN.1 文件（telecom/ 与 cer/） |
+| 目录                                                                                               | 内容                                              |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| `common/` `lexer/` `parser/` `semantic/` `constraints/`                                          | 编译器前端与语义测试                                      |
+| `ber/` `der/` `cer/` `per/` `uper/` `aper/` `oer/` `coer/` `xer/` `cxer/` `exer/` `jer/` `jeri/` | 各编码规则单元测试                                       |
+| `per/golden/` `tlv/golden/`                                                                      | 金标准差分向量（外部 oracle 生成的精确字节）                      |
+| `runtime/`                                                                                       | 运行时原语测试（bit_io / bigint 等）                      |
+| `codegen/`                                                                                       | 代码生成测试（emit 产物往返、CLI 子进程、跨 codec 一致性、benchmark） |
+| `telecom/`                                                                                       | 3GPP fixture 测试（RRC/LPP/S1AP 解析/分析/emit）        |
+| `fixtures/`                                                                                      | 测试用 ASN.1 文件（telecom/ 与 cer/）                   |
 
 完整测试二进制清单与门禁纪律见 [development.md](development.md)。
 
 ## 示例文件
 
-| 文件 | 内容 |
-|------|------|
-| `person.asn` | 简单 SEQUENCE（id INTEGER, name UTF8String, age INTEGER OPTIONAL），快速上手首选 |
-| `smoke.asn` | 基础冒烟 |
-| `ioc.asn` | 信息对象类（IOC）示例 |
-| `phase12.asn` | 早期阶段构造示例 |
-| `split_demo.asn` | 双模块示例（Demo_Base / Demo_App），配合 `--emit-split` |
+| 文件               | 内容                                                                    |
+| ---------------- | --------------------------------------------------------------------- |
+| `person.asn`     | 简单 SEQUENCE（id INTEGER, name UTF8String, age INTEGER OPTIONAL），快速上手首选 |
+| `smoke.asn`      | 基础冒烟                                                                  |
+| `ioc.asn`        | 信息对象类（IOC）示例                                                          |
+| `phase12.asn`    | 早期阶段构造示例                                                              |
+| `split_demo.asn` | 双模块示例（Demo_Base / Demo_App），配合 `--emit-split`                         |
 
 ## 常见问题
 
@@ -252,7 +252,6 @@ ctest --test-dir build -R Cli --output-on-failure  # 按名字过滤
 README 标注 TBD（计划开源，发布时补齐 LICENSE 文件）；源码文件头已标注
 PROCODEC 版权 2026–2031。
 
-
 ## 缓存与并发契约（REV-13/14）
 
 缓存键含编译器实现/头文件内容指纹、工具链标识、格式版本、输出选项和全部
@@ -270,7 +269,6 @@ PROCODEC 版权 2026–2031。
 新增稳定入口 `encode_exer/decode_exer`；E-XER 选择且未选择 XER 时保留旧
 `encode_xer/decode_xer` 兼容别名。组合中 XER、CXER、E-XER 各自生成，
 OER 与 COER 也各自生成，不再由掩码里的规范策略覆盖同族入口。
-
 
 ## 输出目录与 SDK 集成（REV-25/28）
 

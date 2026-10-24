@@ -261,6 +261,8 @@ oracle 路径）。P1-3 是把这些 oracle 从"综合构造 per_golden"扩到"�
 
 ## P2-4 — C 语言代码生成器（`--lang c`）
 
+详细执行清单见 [纯 C11 后端 TODO](c-codegen-todo.md)：7 批、CGEN-01～24，包含模块内源文件分片。该清单为后续规划，不代表已实现。
+
 当前 Phase49 仅完成 sub-task 1/2：纯 C11 公共头、原语实现、链接 smoke、失败契约和
 PER 独立差分。生产目标是 `asn1_c_runtime`（`asn1::c_runtime`），不链接 C++ 标准库。
 C++17 使用项目 `Span` 与 `Result<T>`；C 使用 `asn1_status_t`（0 成功，其他为已登记
