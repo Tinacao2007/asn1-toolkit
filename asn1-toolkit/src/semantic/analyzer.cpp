@@ -654,6 +654,9 @@ std::optional<ir::ValueId> lower_simple_value(LowerCtx& ctx, const ast::Value& v
   } else if (const auto* sv = dynamic_cast<const ast::StringValue*>(&v)) {
     out.kind = ir::ValueKind::String;
     out.text = sv->text();
+  } else if (const auto* binary = dynamic_cast<const ast::BitOrOctetValue*>(&v)) {
+    out.kind = ir::ValueKind::BitOrOctet;
+    out.text = binary->text();
   } else if (const auto* vr = dynamic_cast<const ast::ValueReference*>(&v)) {
     out.kind = ir::ValueKind::Reference;
     out.name = vr->name();

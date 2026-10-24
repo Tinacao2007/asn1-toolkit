@@ -43,3 +43,34 @@ REV-27 的“真实 C 后端消费同一决定”需要 P2-4 sub-task 3+，现�
 
 CGEN-03 adds `--lang c` dispatch with an explicit Unsupported failure, without
 implementing a C emitter or closing the real C plan-consumption boundary above.
+
+Batch 2 attempt 1 adds a separate experimental type-only stream emitter. It
+consumes SequencePlan for root/trailing-root and extension membership, the new
+ChoicePlan for root/extension alternative ordering, and ConstraintPlan for exact
+native INTEGER copy validation. ChoicePlan borrows effective tags, selectors and
+separate region ordinals without changing existing C++ behavior. This is real
+generated C consumption, but does not yet render/use the complete tag, selector
+or extension-group wire decisions. REV-27 and CGEN-05 remain open. See
+[batch 2 evidence](cgen-batch2-validation.md).
+
+Batch 2 attempt 3 adds `storage_size(Type)` for OCTET STRING octet counts and
+OF element counts. The C adapter consumes the returned ConstraintPlan intervals
+in actual generated copy functions, including disjoint membership and empty
+non-extensible domains. Character-string byte counts are deliberately not used
+as character counts. Full tag/selector/extension-group consumption is still open.
+
+
+## Batch 2 type/lifecycle consumption (2026-10-24)
+
+`planning::fields` provides a single flattened view with effective tags, root and
+trailing-root presence indices, version-group-local indices, ordinals, selectors
+and extension membership. C renders this into public descriptors and executable
+selector lookup, preserving signed arbitrary-size decimal keys. Generated copy
+checks active version-group required members. `storage_size` adds bit counts;
+shared string/binary literal normalization serves C owning DEFAULT and existing
+C++ DEFAULT rendering. Both compilers still depend only on IR/common.
+
+The earlier pending statements describe historical attempts. Current type-level
+consumption is covered by generated-C tests, not merely planner unit tests. This fulfills
+REV-27 shared-decision consumption within the declared type/lifecycle profile.
+Complete C PDU wire/oracle acceptance remains in later codec batches.

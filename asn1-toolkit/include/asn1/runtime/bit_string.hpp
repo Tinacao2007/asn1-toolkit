@@ -21,6 +21,7 @@
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 namespace asn1 {
@@ -28,4 +29,14 @@ struct BitStringValue {
   std::vector<std::uint8_t> bits;
   std::size_t bit_length = 0;
 };
+// Equality concerns significant bits, independently of spare storage/padding.
+inline bool operator==(const BitStringValue& a, const BitStringValue& b) {
+  if(a.bit_length!=b.bit_length) return false;
+  const auto whole=a.bit_length/8, tail=a.bit_length%8;
+  const auto count=whole+(tail!=0);
+  if(a.bits.size()<count || b.bits.size()<count) return false;
+  for(std::size_t i=0;i<whole;++i) if(a.bits[i]!=b.bits[i]) return false;
+  return tail==0 || ((a.bits[whole]^b.bits[whole]) & (0xffu<<(8-tail)))==0;
+}
+inline bool operator!=(const BitStringValue& a, const BitStringValue& b) { return !(a==b); }
 }

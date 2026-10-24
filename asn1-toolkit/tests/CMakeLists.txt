@@ -565,6 +565,7 @@ gtest_discover_tests(asn1_codec_benchmark_tests)
 # split-mode tests can locate `tests/fixtures/telecom/{lpp,s1ap}_*/...`
 # without baking an absolute path into the source.
 add_executable(asn1_emit_cache_tests
+  codegen/cgen_batch2_test.cpp
   codegen/cgen_batch1_test.cpp
   codegen/emission_plan_test.cpp
   codegen/emit_cache_test.cpp
@@ -600,6 +601,27 @@ foreach(_mode IN ITEMS outline inline split)
   target_link_libraries(asn1_attributes_${_mode}_tests PRIVATE asn1::exer GTest::gtest_main)
   gtest_discover_tests(asn1_attributes_${_mode}_tests TEST_PREFIX "${_mode}.")
 endforeach()
+
+# Batch 2 type-only API acceptance; no generated codec is claimed here.
+add_executable(asn1_cgen_batch2_generate codegen/cgen_batch2_generate.cpp)
+target_link_libraries(asn1_cgen_batch2_generate PRIVATE asn1::frontend asn1::semantic asn1::codegen)
+set(_cgen2_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen_batch2")
+file(MAKE_DIRECTORY "${_cgen2_dir}")
+add_custom_command(OUTPUT "${_cgen2_dir}/generated.h" "${_cgen2_dir}/generated.c"
+  COMMAND asn1_cgen_batch2_generate "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch2.asn"
+    "${_cgen2_dir}/generated.h" "${_cgen2_dir}/generated.c"
+  DEPENDS asn1_cgen_batch2_generate "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch2.asn" VERBATIM)
+add_library(asn1_cgen_batch2_header OBJECT codegen/cgen_batch2_header.cpp "${_cgen2_dir}/generated.h")
+target_include_directories(asn1_cgen_batch2_header PRIVATE "${_cgen2_dir}" "${PROJECT_SOURCE_DIR}/include")
+add_executable(asn1_cgen_batch2_lifecycle codegen/cgen_batch2_lifecycle.c
+  codegen/cgen_batch2_second.c codegen/cgen_batch2_instrumented.c "${_cgen2_dir}/generated.h")
+target_include_directories(asn1_cgen_batch2_lifecycle PRIVATE "${_cgen2_dir}")
+target_link_libraries(asn1_cgen_batch2_lifecycle PRIVATE asn1::c_runtime)
+add_dependencies(asn1_cgen_batch2_lifecycle asn1_cgen_batch2_header)
+add_test(NAME CGenBatch2.GeneratedLifecycle COMMAND asn1_cgen_batch2_lifecycle)
+add_test(NAME CGenBatch2.GeneratedOwningProfiles COMMAND asn1_cgen_batch2_lifecycle --profiles)
+add_test(NAME CGenBatch2.GeneratedPlanningDecisions COMMAND asn1_cgen_batch2_lifecycle --plans)
+add_test(NAME CGenBatch2.GeneratedSizeMembership COMMAND asn1_cgen_batch2_lifecycle --size)
 
 # REV-16: every product entry links against its declared runtime and calls it.
 set(_gate_names "")
@@ -660,6 +682,21 @@ foreach(_entry IN LISTS _gate_names ITEMS combined combined_inline combined_spli
 endforeach()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 if(Python3_Interpreter_FOUND)
+  if(NOT MSVC)
+    set(_cgen2_sanitizer_args)
+    if(ASN1_ENABLE_SANITIZERS)
+      list(APPEND _cgen2_sanitizer_args --sanitizers)
+    endif()
+    add_test(NAME CGenBatch2.CompiledNamingMatrix COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch2_names.py"
+      --cc "${CMAKE_C_COMPILER}" --cxx "${CMAKE_CXX_COMPILER}"
+      --generator "$<TARGET_FILE:asn1_cgen_batch2_generate>"
+      --include "${PROJECT_SOURCE_DIR}/include" --work "${_cgen2_dir}/names-check" ${_cgen2_sanitizer_args})
+    add_test(NAME CGenBatch2.C11LinkAndDuplicateDefinition COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch2_link.py"
+      --cc "${CMAKE_C_COMPILER}" --include "${PROJECT_SOURCE_DIR}/include"
+      --generated "${_cgen2_dir}" --work "${_cgen2_dir}/link-check" --runtime "$<TARGET_FILE:asn1_c_runtime>" ${_cgen2_sanitizer_args})
+  endif()
   add_test(NAME Architecture.Layering COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/validate_layering.py" --cmake "${CMAKE_COMMAND}")
   if(NOT MSVC)
     add_test(NAME Architecture.PublicHeaders COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/validate_public_headers.py" --cxx "${CMAKE_CXX_COMPILER}" --cc "${CMAKE_C_COMPILER}")
@@ -697,4 +734,28 @@ add_test(NAME CGenBatch1.CliDispatch COMMAND "${Python3_EXECUTABLE}"
   "$<TARGET_FILE:asn1_entry_combined_split>")
 foreach(_shape IN ITEMS combined combined_inline combined_split)
   add_test(NAME CGenBatch1.Cpp.${_shape} COMMAND asn1_entry_${_shape})
+endforeach()
+
+# C batch 2 literal normalization must preserve the C++ emitter's behaviour.
+foreach(_mode IN ITEMS outline inline split)
+  set(_default_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen2_cpp_${_mode}")
+  set(_default_flag "")
+  set(_default_cpp "${_default_dir}/generated.cpp")
+  if(_mode STREQUAL "inline")
+    set(_default_flag --emit-inline)
+  elseif(_mode STREQUAL "split")
+    set(_default_flag --emit-split)
+    set(_default_cpp "${_default_dir}/CppDefaults.cpp")
+  endif()
+  add_custom_command(OUTPUT "${_default_dir}/generated.hpp" "${_default_cpp}"
+    COMMAND "${ASN1_GENERATOR}" --no-emit-cache --codec uper ${_default_flag}
+      --emit-dir "${_default_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen2_cpp_defaults.asn"
+    DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen2_cpp_defaults.asn" VERBATIM)
+  add_executable(asn1_cgen2_cpp_${_mode}_tests codegen/cgen2_cpp_defaults_test.cpp "${_default_cpp}")
+  target_include_directories(asn1_cgen2_cpp_${_mode}_tests PRIVATE "${_default_dir}")
+  target_link_libraries(asn1_cgen2_cpp_${_mode}_tests PRIVATE asn1::per GTest::gtest_main)
+  if(_mode STREQUAL "split")
+    target_compile_definitions(asn1_cgen2_cpp_${_mode}_tests PRIVATE CGEN2_CPP_SPLIT)
+  endif()
+  gtest_discover_tests(asn1_cgen2_cpp_${_mode}_tests TEST_PREFIX "${_mode}.")
 endforeach()

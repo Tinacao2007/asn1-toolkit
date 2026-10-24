@@ -1,0 +1,6 @@
+CppDefaults DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+Flags ::= BIT STRING (SIZE (8))
+Octets ::= OCTET STRING
+Text ::= UTF8String
+Record ::= SEQUENCE { flags Flags DEFAULT '11111111'B, octets Octets DEFAULT 'ABCD'H, text Text DEFAULT "demo" }
+END

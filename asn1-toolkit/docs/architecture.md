@@ -361,3 +361,20 @@ fields in cache keys. The future `.h/.c` layout/ownership/ABI contract is in
 [c-runtime-codegen-gaps.md](c-runtime-codegen-gaps.md). No generated C value codec
 or additional runtime implementation is enabled. Evidence:
 [cgen-batch1-validation.md](cgen-batch1-validation.md).
+
+
+## CGEN batch 2 type/lifecycle boundary
+
+`codegen/c_types.hpp` and `src/codegen/c_types.cpp` form an experimental stream
+backend inside `asn1_codegen`; they depend on IR/common, never either runtime.
+The emitted C header/source alone include C runtime types and call its BigInt
+comparison primitive. There is no C++ runtime wrapper or AST/IR in target C.
+
+Language-neutral field and literal plans feed C descriptors, selector lookup,
+constraint/group checks and DEFAULT rendering. C++ retains its separate renderer
+and uses the same literal normalization; actual three-shape DEFAULT wire tests
+protect compatibility. Type storage, init/free, transactional copy and fallible
+owning-default restoration have [explicit profiles](c-generated-abi.md).
+This backend does not publish directories or generate codecs. CLI C dispatch
+remains Unsupported; source shards and full PDU orchestration belong to later
+batches. See [batch 2 evidence](cgen-batch2-validation.md).

@@ -6,6 +6,51 @@
 
 ## 近期变更详录
 
+### 2026-10-24 (CGEN batch 2 complete within explicit profiles)
+
+- Add pure-C11 types, transactional lifecycle/default restoration and owned
+  BigInt/bit/enum/OID/REAL/open-content profiles. Validate malformed ownership,
+  integer/SIZE domains, presence/group coherence and allocation failures.
+- Render shared tags, presence, ordinals and arbitrary-size selector keys into
+  executable generated-C consumers. Close CGEN-04..06 and REV-27 planning reuse;
+  keep CLI C codecs, shards and all later CGEN tasks open.
+- Preserve binary literals in IR and normalize string DEFAULTs for C/C++.
+  Add significant-bit equality and three-shape C++ wire compatibility tests,
+  independently checked by asn1tools 0.166.0.
+- Final Release/ASan+UBSan each **466/466**, syntax matrix **84/84**, native MSVC
+  targeted C lifecycle **4/4**; preserve all 448 baseline tests and protected runner
+  files. All four installed package consumers pass; the C consumer has no C++
+  runtime dependency. Docs and project skill updated. [Evidence](cgen-batch2-validation.md).
+
+### 2026-10-24 (CGEN batch 2, partial attempt 3)
+
+- Enforce exact normalized OCTET STRING and OF SIZE membership in generated C
+  deep copy before allocation; reject unrepresentable or unresolved SIZE plans
+  before writing either stream. Add real generated-C range/OOM acceptance.
+- CGEN-04/05 and REV-27 remain open. No codec, runtime, runner or later-batch
+  implementation changed. [Evidence and remaining work](cgen-batch2-validation.md).
+
+### 2026-10-24 (CGEN batch 2, partial attempt 2)
+
+- Preserve lowered BOOLEAN/bounded INTEGER DEFAULT values on init/free and
+  initialize nested by-value types through their generated lifecycle functions.
+  Diagnose missing, mismatched and out-of-domain defaults before stream writes.
+- Close CGEN-06 with a strict compiled naming matrix, C11/C++17 public-header
+  consumers, module qualification, escaped collisions and repeated aliases.
+  Reject standard-header output names using case-insensitive comparison.
+- CGEN-04/05 remain open; no codec dispatch or later batch is enabled.
+  [Commands, evidence and remaining work](cgen-batch2-validation.md).
+
+### 2026-10-24 (CGEN batch 2, partial attempt 1)
+
+- Add experimental type-only C11 stream emission with typed initialization,
+  repeatable cleanup, transactional deep copy and indirect recursive edges.
+- Consume shared sequence/choice ordering and native INTEGER interval planning;
+  preserve lowered descriptor clones and escape C identifiers injectively.
+- Add generated-C lifecycle/fault-injection, multi-TU/link-negative and C++17
+  header checks. Unsupported layouts remain diagnostics; CGEN-04..06 and REV-27
+  remain open. [Evidence and remaining work](cgen-batch2-validation.md).
+
 ### 2026-10-24 (CGEN batch 1)
 
 - Define the future C generated ABI/ownership and twelve-entry runtime gap register.

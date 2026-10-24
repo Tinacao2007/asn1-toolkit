@@ -412,7 +412,7 @@
 
 ### REV-27 【优化】C/C++ emitter 复用语义规划
 
-- [ ] 状态：阶段完成，C 接入待办（2026-10-21）；最小借用规划、C++ PER/整数首批消费及回归已完成；真实 C emitter 消费同一规划的验收依赖 P2-4 sub-task 3+，保留未勾选。见 [规划设计](emission-planning.md) 和 [第六批验收](rev25-28-validation.md)。
+- [x] 状态：完成共享规划复用验收（2026-10-24，CGEN 第 2 批）。真实生成 C 的描述符、selector 调用及生命周期检查消费标签、presence、约束和扩展组决定；C++ 线路回归通过。此项不代表 C codec 已实现；完整 PDU/oracle 门禁仍在后续批次。见 [规划设计](emission-planning.md)、[第六批验收](rev25-28-validation.md) 和 [CGEN 第 2 批验收](cgen-batch2-validation.md)。
 
 - 范围：IR 到 codegen 的标签、presence、约束、扩展组及 selector 规划。
 

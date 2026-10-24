@@ -69,6 +69,111 @@ inline SequencePlan sequence(const ir::SequenceDesc& descriptor) {
     plan.extensions.push_back({&group, group.version_bracket});
   return plan;
 }
+struct AlternativePlan {
+  const ir::Field* field;
+  ir::Tag effective_tag;
+  const ir::TableConstraintInfo* selector;
+  std::size_t ordinal; // zero-based within root or extension region
+};
+struct ChoicePlan {
+  std::vector<AlternativePlan> root;
+  std::vector<AlternativePlan> extensions;
+  bool extensible = false;
+};
+inline ChoicePlan choice(const ir::ChoiceDesc& descriptor) {
+  ChoicePlan plan;
+  plan.extensible = descriptor.extensible;
+  const auto append = [](const std::vector<ir::Field>& fields,
+                         std::vector<AlternativePlan>& out) {
+    for (const auto& field : fields)
+      out.push_back({&field, field.tag,
+                     field.table_constraint ? &*field.table_constraint : nullptr,
+                     out.size()});
+  };
+  append(descriptor.alternatives, plan.root);
+  append(descriptor.extensions, plan.extensions);
+  return plan;
+}
+// Literal normalization shared by language backends. Legacy IR strings retain
+// lexer quotes; binary values retain their original B/H token spelling.
+inline std::optional<std::string> string_default(const ir::Value& value) {
+  if (value.kind!=ir::ValueKind::String) return std::nullopt;
+  std::string text=value.text;
+  if (text.size()>=2 && text.front()=='"' && text.back()=='"') {
+    text=text.substr(1,text.size()-2);
+    std::string normalized;
+    for (std::size_t i=0;i<text.size();++i) {
+      normalized+=text[i];
+      if(text[i]=='"' && i+1<text.size() && text[i+1]=='"') ++i;
+    }
+    return normalized;
+  }
+  return text;
+}
+struct BinaryDefault { std::vector<std::uint8_t> bytes; std::size_t bits=0; };
+inline std::optional<BinaryDefault> binary_default(const ir::Value& value) {
+  if (value.kind!=ir::ValueKind::BitOrOctet) return std::nullopt;
+  const auto& token=value.text;
+  if (token.size()<3 || token.front()!='\'' || token[token.size()-2]!='\'') return std::nullopt;
+  const auto radix=token.back();
+  if (radix!='B' && radix!='b' && radix!='H' && radix!='h') return std::nullopt;
+  BinaryDefault out;
+  for(std::size_t i=1;i+2<token.size();++i) {
+    const char c=token[i]; if(c==' ' || c=='\r' || c=='\n' || c=='\t') continue;
+    unsigned number;
+    if(c>='0' && c<='9') number=unsigned(c-'0');
+    else if(c>='a' && c<='f') number=unsigned(c-'a'+10);
+    else if(c>='A' && c<='F') number=unsigned(c-'A'+10);
+    else return std::nullopt;
+    const unsigned width=radix=='B'||radix=='b'?1:4;
+    if(number >= (1u<<width)) return std::nullopt;
+    for(unsigned j=width;j>0;--j) {
+      if(out.bits%8==0) out.bytes.push_back(0);
+      if(number & (1u<<(j-1))) out.bytes.back()|=static_cast<std::uint8_t>(0x80u>>(out.bits%8));
+      ++out.bits;
+    }
+  }
+  return out;
+}
+
+// Target-neutral flattened storage/dispatch view. Indices preserve root,
+// trailing root, CHOICE regions, and extension-group identity.
+struct EmissionFieldPlan {
+  const ir::Field* field;
+  ir::Tag effective_tag;
+  std::optional<std::size_t> presence_index;
+  const ir::TableConstraintInfo* selector;
+  std::optional<std::size_t> extension_group;
+  bool nested_sequence;
+  std::size_t ordinal;
+};
+inline std::vector<EmissionFieldPlan> fields(const ir::Type& type) {
+  std::vector<EmissionFieldPlan> out;
+  if (type.kind == ir::TypeKind::Sequence || type.kind == ir::TypeKind::Set) {
+    const auto plan = sequence(type.kind == ir::TypeKind::Set ? type.set : type.sequence);
+    for (const auto& f : plan.root)
+      out.push_back({f.field,f.effective_tag,f.presence_index,f.selector,std::nullopt,false,out.size()});
+    for (std::size_t i=0; i<plan.extensions.size(); ++i) {
+      const auto& group=plan.extensions[i];
+      std::size_t presence=0;
+      for (const auto& field: group.group->fields) {
+        std::optional<std::size_t> index;
+        if(group.nested_sequence && has_presence_bit(field)) index=presence++;
+        out.push_back({&field,field.tag,index,
+                       field.table_constraint ? &*field.table_constraint : nullptr,
+                       i,group.nested_sequence,out.size()});
+      }
+    }
+  } else if (type.kind == ir::TypeKind::Choice) {
+    const auto plan=choice(type.choice);
+    for (const auto& f: plan.root)
+      out.push_back({f.field,f.effective_tag,std::nullopt,f.selector,std::nullopt,false,f.ordinal});
+    for (const auto& f: plan.extensions)
+      out.push_back({f.field,f.effective_tag,std::nullopt,f.selector,f.ordinal,false,f.ordinal});
+  }
+  return out;
+}
+
 // Retain exact normalized ranges, not just their envelope; C and C++ adapters
 // must use the same descriptor and cannot turn a disjoint constraint into a range.
 struct ConstraintPlan {
@@ -78,5 +183,16 @@ struct ConstraintPlan {
 };
 inline ConstraintPlan constraint(const ir::ConstraintDesc& descriptor) {
   return {&descriptor, descriptor.per_kind(), !descriptor.extensible && !descriptor.root_ranges.empty()};
+}
+// Length is measured in octets for OCTET STRING and elements for OF. Character
+// string lengths need repertoire-aware counting and must not use byte counts.
+inline const ir::ConstraintDesc* storage_size(const ir::Type& type) {
+  switch (type.kind) {
+    case ir::TypeKind::BitString: return &type.bit_string.size;
+    case ir::TypeKind::OctetString: return &type.octet_string.size;
+    case ir::TypeKind::SequenceOf: return &type.sequence_of.size;
+    case ir::TypeKind::SetOf: return &type.set_of.size;
+    default: return nullptr;
+  }
 }
 }}}

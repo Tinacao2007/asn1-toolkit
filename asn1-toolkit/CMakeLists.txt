@@ -294,6 +294,7 @@ string(SHA256 ASN1_GENERATOR_REVISION "${_generator_identity}")
 configure_file(cmake/generator_revision.hpp.in generated/generator_revision.hpp @ONLY)
 
 add_library(asn1_codegen STATIC
+  src/codegen/c_types.cpp
   src/codegen/emit_output.cpp
   src/codegen/emit_core.cpp
   src/codegen/emit_per.cpp

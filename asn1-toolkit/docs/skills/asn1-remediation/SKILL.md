@@ -178,3 +178,31 @@ identity; source-shard options remain a later batch. Keep the ABI design and gap
 audit separate from the primitive declaration register. See
 [batch 1 evidence](../../cgen-batch1-validation.md),
 [C ABI design](../../c-generated-abi.md) and [runtime gaps](../../c-runtime-codegen-gaps.md).
+
+## CGEN batch 2 type-emitter checks
+
+`emit_c_types` is type/lifecycle-only; keep CLI codec Unsupported tests until wire
+code exists. Preserve field-specific IR clones. Unsupported reachable layouts or
+DEFAULTs must diagnose before writing streams. See [ABI profiles](../../c-generated-abi.md)
+and [batch 2 evidence](../../cgen-batch2-validation.md).
+
+Build `asn1_cgen_batch2_lifecycle`, `asn1_emit_cache_tests` and
+`asn1_cgen2_cpp_{outline,inline,split}_tests`; run `CGenBatch2` and
+`EmissionPlanning` tests in Release and ASan+UBSan. Strict independent C linkage,
+C++17 header inclusion, compiled naming and duplicate-definition rejection stay
+in the gate. Test allocation faults in generated C, with hooks only in the test
+wrapper. Preserve pre-existing tests and the 7-by-12 C++ selector matrix.
+
+Allocation-free init/free restore scalar defaults, not owning literal contents.
+`reset_defaults` materializes owned literals through a temporary and must retain
+live output on every allocation failure. Required nested defaults recurse;
+OPTIONAL/inactive extension storage stays freeable without allocation. Keep
+unsupported structured/list and unresolved non-enum defaults explicit.
+
+Use shared field plans for tags, presence, version groups and selectors, and
+shared literal normalization for C/C++ DEFAULTs. Preserve >64-bit selector keys
+as decimal strings; generated type IDs are schema-local. Exercise descriptors,
+lookup and group coherence in actual compiled C. REV-27 planning reuse can be
+closed on this evidence; it does not open wire codecs or their PDU/oracle gates. SIZE units differ for bits/octets/elements;
+character-string byte length is not ASN.1 character count. REAL host-double,
+OID uint64 arcs and enum int64 are declared profiles, not full standard domains.

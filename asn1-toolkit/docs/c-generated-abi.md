@@ -1,9 +1,70 @@
 # C generated artifact and ABI design (CGEN-01)
 
-This is the batch 1 contract for the future emitter, not an implemented C API.
+This is the batch 1 design contract plus the limited batch 2 stream API below.
 `--lang c` currently fails with an Unsupported diagnostic and publishes nothing.
 The compiler stays C++17, uses Diagnostics/Result, and never links either runtime.
 Generated C11 alone bridges compiler decisions to `asn1::c_runtime`.
+
+## Experimental type-only stream API (batch 2)
+
+`asn1::codegen::emit_c_types` renders one header/source pair into caller-owned
+streams. Model/option rejection leaves streams untouched; publication remains the
+caller's responsibility. Codec dispatch, artifact cache, inline and split output
+are later batches; `--lang c` still reports Unsupported. See
+[acceptance evidence](cgen-batch2-validation.md).
+
+Layouts cover BOOLEAN/NULL, bounded native INTEGER and owned BigInt INTEGER,
+BIT/OCTET/character-string storage, int64 ENUMERATED, uint64-arc OID/RELATIVE-OID,
+host-double REAL, records, CHOICE, OF, references and open/fixed object-class
+fields. These are explicit storage profiles, not complete ASN.1 value domains:
+REAL is not exact decimal/binary ASN.1 REAL, OID arcs cannot exceed uint64, and
+ENUMERATED known values must fit int64. Unlowered INSTANCE OF and unsupported
+DEFAULT forms diagnose before output. Character storage does not imply repertoire
+or character-count validation. Unknown open content owns raw octets.
+
+Names use `<prefix>_m<escaped-module>_t<escaped-type>`, `_view<TypeId>` for
+field-specific named clones and `anon_<TypeId>` for anonymous types. Non-ASCII-
+alphanumeric bytes, including underscore, escape as `_xHH`. Members use `f`,
+presence flags `has_f`. Duplicate names diagnose; prefixes qualify helpers too.
+The prefix identifies one complete header/source pair, including its guard and
+metadata types; independently generated pairs require distinct prefixes.
+Headers cannot shadow C11 standard headers or Windows device names. The
+experimental generated ABI macro is 1; no fictional runtime ABI macro is used.
+
+`init(T*)` is allocation-free and restores scalar defaults; it accepts NULL or
+new/freed storage, never a live owner. Owning default fields start as empty,
+freeable storage. Call status-returning `reset_defaults(T*)` to materialize string,
+BigInt, BIT/OCTET literals, including required nested records. It builds a temporary
+and replaces the initialized output only on success. OPTIONAL/inactive extension
+fields do not allocate. General structured/list defaults, unresolved non-enum value
+references and unsupported REAL/OID literal defaults diagnose before output.
+
+`free(T*)` frees initialized members even with false presence flags, visits only
+the active CHOICE arm and restores initialized storage; repeated free is safe.
+Schema recursion uses owned pointers. Caller graphs must be finite, acyclic and
+uniquely owned; counts must stay within allocated initialized capacity. Never
+shallow-copy owners. Allocation and release must use one C allocator/CRT.
+
+`copy(const T*,T*)` and `reset_defaults(T*)` commit transactionally, support
+self-copy and clean partial allocation on failure. Copy validates canonical BigInt,
+bit padding, OID first arcs, closed enumeration membership, exact integer/SIZE
+intervals and presence/group coherence. Recursive operations have a 256-frame
+limit and per-object allocation limits; no cumulative PDU budget is claimed.
+The allocator hook exists only in the test wrapper.
+
+Generated `_field_count`, `_field` and `_select` APIs consume language-neutral
+field planning. They expose effective tags, combined root/trailing-root presence,
+version-group internal presence, ordinals, governor and decimal selector keys.
+Descriptors borrow immutable static storage; an out-of-range `_field` returns NULL.
+`_select` takes a canonical signed decimal key. Selector type IDs are opaque schema-local identifiers, not wire discriminants or
+cross-build ABI IDs. Lookup failures preserve the output. An unmatched key reports
+constraint violation for this known-entry lookup only; future wire codecs must
+separately decide whether unknown open content is allowed. These descriptors and
+lifecycle checks satisfy the real-C consumption part of REV-27; they are not
+wire codec dispatch. Complete generated C codecs and their independent oracle
+acceptance remain later batches.
+
+The remainder records the intended complete ABI, not implemented capabilities.
 
 ## Names, artifacts and versioning
 
@@ -103,4 +164,14 @@ but cannot silently bypass primitive limits. OOM, truncation, unsupported,
 resource-limit and invalid-value failures remain distinguishable.
 UPER/APER share one Variant-parameterized core; derived canonical families share
 base mechanisms with separate policy. Shared `codegen/plan.hpp` remains the source
-of presence/tag/constraint/extension/selector decisions (CGEN-05 still pending).
+of presence/tag/constraint/extension/selector decisions (batch 2 type/lifecycle consumption; wire acceptance pending).
+
+## Batch 2 verification
+
+Strict C11 compilation, independent C linkage, C++17 header inclusion, multi-TU
+and duplicate-definition rejection, naming collisions, actual lifecycle/OOM,
+owning DEFAULT and generated planning checks are recorded in
+[batch 2 evidence](cgen-batch2-validation.md). SIZE units are bits for BIT STRING,
+octets for OCTET STRING, elements for OF. Extensible roots permit outside-root
+values; unresolved or unrepresentable SIZE plans diagnose before stream writes.
+These tests do not establish complete codec or character-repertoire coverage.

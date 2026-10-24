@@ -61,7 +61,7 @@ README（根目录）→ [usage-guide.md](usage-guide.md) 快速开始与 CLI �
 
 ## 纯 C11 后端后续计划
 
-[纯 C11 生成后端 TODO](c-codegen-todo.md)：Phase49 sub-task 3+ 的分批实施与验收，包含单模块内拆分 `.c`。当前仍是规划。
+[纯 C11 生成后端 TODO](c-codegen-todo.md)：Phase49 sub-task 3+ 的分批实施与验收，包含单模块内拆分 `.c`。第 2 批已有独立类型/生命周期 stream API；完整 codec 与模块内分片仍待后续批次。
 
 [夜间分批执行说明](c-codegen-nightly.md)：CGEN 每批独立验收、本地 commit、不 push，含启动与恢复命令。
 
@@ -69,3 +69,7 @@ CGEN batch 1: [C ABI design](c-generated-abi.md),
 [twelve-entry runtime gaps](c-runtime-codegen-gaps.md), and
 [execution evidence](cgen-batch1-validation.md). `--lang c` currently fails
 explicitly without output; later emitter batches remain open.
+
+CGEN batch 2: [type/lifecycle acceptance](cgen-batch2-validation.md), including
+owning DEFAULT, generated shared-plan consumers and explicit value profiles.
+This does not enable CLI C codec generation.

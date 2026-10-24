@@ -3,6 +3,8 @@
 /build-san/
 /build-vs/
 /build-rev*/
+/build-cgen2-stage/
+/build-cgen2-san/
 /cmake-build-*/
 /out/
 /compile_commands.json

@@ -1,0 +1,34 @@
+A DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+IMPORTS Node FROM B;
+Bytes ::= OCTET STRING
+Flag ::= BOOLEAN
+Number ::= INTEGER (0..127)
+Discrete ::= INTEGER (0..2 | 7..9)
+SizedBytes ::= OCTET STRING (SIZE (0..2 | 7..9))
+SizedBag ::= SEQUENCE (SIZE (0..2 | 7..9)) OF Flag
+SizedSet ::= SET (SIZE (0..2 | 7..9)) OF Flag
+EmptyBytes ::= OCTET STRING (SIZE (0))
+Huge ::= INTEGER
+BoundedHuge ::= INTEGER (-340282366920938463463374607431768211456..340282366920938463463374607431768211456)
+Bits ::= BIT STRING (SIZE (1..17))
+Mode ::= ENUMERATED { red(2), green(9), blue(12) }
+Identifier ::= OBJECT IDENTIFIER
+Relative ::= RELATIVE-OID
+Reading ::= REAL
+Text ::= UTF8String
+OwningDefaults ::= SEQUENCE { text Text DEFAULT "demo", number Huge DEFAULT 340282366920938463463374607431768211456, bits Bits DEFAULT '10101'B, octets Bytes DEFAULT 'ABCD'H }
+NestedOwning ::= SEQUENCE { required OwningDefaults, optional OwningDefaults OPTIONAL }
+EnumDefault ::= SEQUENCE { mode Mode DEFAULT green }
+FlagCopy ::= Flag
+Pick ::= CHOICE { text Bytes, flag Flag }
+Bag ::= SEQUENCE OF Bytes
+Record ::= SEQUENCE { auto Flag OPTIONAL, restrict Flag, a-b Flag, data Bytes, pick Pick, bag Bag }
+Link ::= SEQUENCE { node Node OPTIONAL }
+Defaults ::= SEQUENCE { enabled Flag DEFAULT TRUE, number Number DEFAULT 7, alias FlagCopy DEFAULT FALSE }
+NestedDefaults ::= SEQUENCE { required Defaults, optional Defaults OPTIONAL }
+END
+B DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+IMPORTS Link FROM A;
+Flag ::= NULL
+Node ::= SEQUENCE { next Link OPTIONAL }
+END

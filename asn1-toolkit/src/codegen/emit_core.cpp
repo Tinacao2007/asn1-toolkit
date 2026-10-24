@@ -31,6 +31,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 
@@ -1086,13 +1087,26 @@ std::string Emitter::default_val_cpp(const ir::Field& f) {
         }
         break;
       case ir::ValueKind::String: {
-        // The IR may carry character-string literals with their quotes
-        // still attached (lexer capture); normalise before wrapping.
-        std::string s = val.text;
-        if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
-          s = s.substr(1, s.size() - 2);
+        const auto text=planning::string_default(val);
+        std::ostringstream literal;
+        literal << "\"";
+        for(unsigned char c:*text) {
+          if(c>=32 && c<127 && c!='\"' && c!='\\') literal << c;
+          else literal << "\\" << std::oct << std::setw(3) << std::setfill('0') << unsigned(c) << std::dec;
         }
-        base = "\"" + s + "\"";
+        literal << "\""; base="std::string{"+literal.str()+"}"; break;
+      }
+      case ir::ValueKind::BitOrOctet: {
+        const auto value=planning::binary_default(val);
+        const auto& type=resolve(model_,f.type);
+        if(!value || (type.kind!=ir::TypeKind::BitString && type.kind!=ir::TypeKind::OctetString) ||
+           (type.kind==ir::TypeKind::OctetString && value->bits%8)) {
+          diag_.error({}, "Unsupported binary DEFAULT literal"); return "";
+        }
+        base=type.kind==ir::TypeKind::BitString ? "asn1::BitStringValue{{" : "std::vector<std::uint8_t>{";
+        for(auto byte:value->bytes) base+=std::to_string(byte)+",";
+        base+="}";
+        if(type.kind==ir::TypeKind::BitString) base+=",std::size_t{"+std::to_string(value->bits)+"}}";
         break;
       }
       default:

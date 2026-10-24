@@ -6,7 +6,19 @@
 
 ## 当前阶段
 
-**Phase 49: C runtime primitives and CGEN batch 1 design/dispatch complete; C emitter pending.**
+**Phase 49: C runtime primitives and CGEN batches 1–2 complete within documented profiles.**
+
+CGEN-04..06 now provide an experimental pure-C11 type/lifecycle stream backend,
+including owning DEFAULT restoration, BigInt/bit/enum/OID/REAL/open-content
+storage and compiled naming/public-header acceptance. Actual generated C consumes
+shared tags, presence, constraints, extension groups and selectors; REV-27 planning
+reuse is complete within this scope. CLI C codecs remain Unsupported; module-internal
+source shards and complete PDU codecs belong to batches 3+.
+
+GCC Release and ASan+UBSan each **466/466**; actual C++ selector syntax matrix
+**84/84**; native MSVC targeted generated-C checks **4/4**. Original 448 baseline
+tests are retained. Profiles, unsupported defaults and exact verification scope:
+[batch 2 evidence](cgen-batch2-validation.md), [C ABI](c-generated-abi.md).
 
 - **2026-10-21，第六批**：REV-25/26/28 完成产物事务、ODR/命名/归属回归、自动分层/公共头门禁及文档收口。REV-27 完成最小共享规划和 C++ 首批接入；真实 C emitter 消费验收仍待 P2-4 sub-task 3+。GCC Release/ASan+UBSan 各 **442/442**，实际矩阵 **84/84**，MSVC 针对性 **37/37**；组件独立构建与安装消费者通过。见 [第六批验收](rev25-28-validation.md)、[产物契约](generated-artifacts.md)、[规划边界](emission-planning.md)。
 

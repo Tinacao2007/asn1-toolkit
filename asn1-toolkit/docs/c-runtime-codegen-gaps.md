@@ -66,4 +66,13 @@ XML/JSON parsing/policies. Keep unsupported domains explicit in every gate.
 Opening an entry requires pure C11 compile/link/run, schema-specific negative
 cases, allocation-failure cleanup and applicable independent wire vectors.
 Self-roundtrip or raw writer output is insufficient. Later checklist boxes remain
-unchanged; REV-27 real C consumption remains open.
+unchanged. REV-27 type/lifecycle consumption is recorded in the batch 2 evidence.
+
+
+Batch 2 now provides the separate experimental type/lifecycle stream API,
+including explicit BigInt/bit/enum/OID/REAL/open-content storage profiles and
+shared-plan descriptors/selector lookup. See [ABI boundary](c-generated-abi.md).
+This removes type-layout blockers within that declared profile; none of the
+missing wire APIs in this audit is thereby implemented. Full C CLI entries and
+generated-PDU/oracle acceptance remain open; REV-27 planning reuse is covered
+by the batch 2 generated-C consumers.

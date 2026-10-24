@@ -1,6 +1,10 @@
 # 纯 C11 代码生成后端执行清单
 
-Created 2026-10-23. Batch 1 (CGEN-01..03) complete; later batches remain open.
+Created 2026-10-23. Batches 1 and 2 (CGEN-01..06) complete as of 2026-10-24.
+Batch 2 implements pure-C type/lifecycle profiles, owning DEFAULT restoration,
+naming/public headers and actual shared-plan consumers. Full C codec dispatch
+and module-internal source shards remain later batches. Scope and acceptance:
+[batch 2 evidence](cgen-batch2-validation.md).
 本清单细化 [P2-4](todo.md#p2-4--c-语言代码生成器-lang-c) sub-task 3+，
 承接 [共享规划](emission-planning.md) 与 REV-27，不另建一套前端或 runtime。
 C dispatch now reports Unsupported; evidence: [batch 1](cgen-batch1-validation.md).
@@ -53,15 +57,15 @@ ByteReader 尚无完整 byte decode API，JER/XER reader 只绑定输入。
 
 ### 第 2 批：C 类型、生命周期与共享规划
 
-- [ ] **CGEN-04【重要】生成 C 类型和生命周期。** 用有前缀的 struct/enum/union；
+- [x] **CGEN-04【重要】生成 C 类型和生命周期。** 用有前缀的 struct/enum/union；
   OPTIONAL 有显式存在标志，DEFAULT 保留语义；CHOICE 有 discriminator 与无效初始态；
   OF 保存 data/count/capacity；递归依赖用受控间接引用，不能无限按值展开。
   生成可重复 free、失败后可释放/复用的接口，按需要提供深拷贝，禁止浅拷贝拥有指针。
-- [ ] **CGEN-05【重要】C emitter 实际消费 `codegen/plan.hpp`。** 复用标签、presence
+- [x] **CGEN-05【重要】C emitter 实际消费 `codegen/plan.hpp`。** 复用标签、presence
   顺序、离散约束、扩展组和 selector 决定；不足的规划补在语言无关层。
   C 后端只渲染 C 布局和调用，不重新执行语义分析、不复制 C++ 的语义分支。
   有真实生成 C 的调用证据后再关闭 REV-27，不能仅凭规划单测勾选。
-- [ ] **CGEN-06【重要】命名与公开头。** 覆盖 C11 关键字、保留标识符、模块/类型/字段
+- [x] **CGEN-06【重要】命名与公开头。** 覆盖 C11 关键字、保留标识符、模块/类型/字段
   转换碰撞、大小写文件冲突、跨模块限定、重复类型别名；前缀一致应用到辅助函数。
   公共 C 头独立 C11/C++17 可包含；可用 extern C 保护 C 函数声明，但实现仍是纯 C。
 
