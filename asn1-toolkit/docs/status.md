@@ -1,12 +1,12 @@
 # 项目状态
 
-当前状态的唯一权威。状态截至 **2026-10-21**。历史变更见
+当前状态的唯一权威。状态截至 **2026-10-24**。历史变更见
 [changelog.md](changelog.md)。已排期 / 未排期待办见
 [todo.md](todo.md)。
 
 ## 当前阶段
 
-**Phase 49 — C 语言代码生成器（P2-4，sub-task 1 + sub-task 2 已落地；sub-task 3+ 未排期）。**
+**Phase 49: C runtime primitives and CGEN batch 1 design/dispatch complete; C emitter pending.**
 
 - **2026-10-21，第六批**：REV-25/26/28 完成产物事务、ODR/命名/归属回归、自动分层/公共头门禁及文档收口。REV-27 完成最小共享规划和 C++ 首批接入；真实 C emitter 消费验收仍待 P2-4 sub-task 3+。GCC Release/ASan+UBSan 各 **442/442**，实际矩阵 **84/84**，MSVC 针对性 **37/37**；组件独立构建与安装消费者通过。见 [第六批验收](rev25-28-validation.md)、[产物契约](generated-artifacts.md)、[规划边界](emission-planning.md)。
 
@@ -149,3 +149,10 @@
 4. **CER 无外部 oracle** —— asn1c v0.9.29 与 asn1tools 均无 CER 实现，
    金标准由 X.690 条文推导 + DER 值等价交叉验证；
 5. **许可证未定** —— 源码头已标 PROCODEC 版权，正式许可证文件发布时补齐。
+
+## CGEN batch 1 (2026-10-24)
+
+CGEN-01..03 completes the C ABI design, twelve-entry runtime gap audit and
+`--lang cpp|c` dispatch. C emission explicitly fails without publishing artifacts.
+No C emitter or generated PDU is claimed; batches 2 onward and REV-27 real C
+plan consumption remain open. [Evidence](cgen-batch1-validation.md).

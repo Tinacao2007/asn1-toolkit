@@ -45,6 +45,14 @@ bool portable_output_name(const std::string& name) {
   return true;
 }
 bool validate_emit_options(const EmitOptions& opt, Diagnostics& diag) {
+  if (opt.language != TargetLanguage::Cpp) {
+    diag.error({}, "Unsupported: C11 code generation is not implemented; no .h/.c artifacts emitted");
+    return false;
+  }
+  if (!opt.c_prefix.empty()) {
+    diag.error({}, "c-prefix is only valid with --lang c");
+    return false;
+  }
   if (!portable_output_name(opt.basename)) {
     diag.error({}, "basename must be a portable filename stem (letters, digits, underscore; no Windows device names)");
     return false;
@@ -61,6 +69,13 @@ bool validate_emit_options(const EmitOptions& opt, Diagnostics& diag) {
     }
   }
   return diag.ok();
+}
+void emit_generated_to_dir(const ir::Model& model, const EmitOptions& opt,
+                           Diagnostics& diag, const fs::path& dir) {
+  if (!validate_emit_options(opt, diag)) return;
+  CppGenerator generator;
+  if (opt.emit_split) generator.emit_split(model, opt, diag, dir);
+  else generator.emit_to_dir(model, opt, diag, dir);
 }
 namespace {
 const char* manifest_name = ".asn1cxx-manifest";

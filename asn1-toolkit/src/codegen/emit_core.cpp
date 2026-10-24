@@ -1626,6 +1626,8 @@ std::vector<std::string> Emitter::cache_extra_inputs() const {
   // Codec bitmask + basename + namespace_name + emit_inline + emit_split
   // distinguish output options. The build-generated content identity also
   // invalidates entries when compiler implementation or headers change.
+  out.push_back("language=" + std::to_string(static_cast<unsigned>(options_.language)));
+  out.push_back("c_prefix=" + options_.c_prefix);
   out.push_back("codec=" + std::to_string(static_cast<unsigned>(options_.codec)));
   out.push_back("basename=" + options_.basename);
   out.push_back("namespace=" + options_.namespace_name);

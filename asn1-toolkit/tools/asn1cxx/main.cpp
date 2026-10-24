@@ -117,6 +117,8 @@ void print_usage(std::ostream& out) {
       << "  --codec <uper|aper|per|ber|der|cer|jer|jeri|xer|exer|oer|coer|cxer>\n"
       << "                         Comma-separated combination (e.g. uper,ber)\n"
       << "                         Codec for --emit-dir (default: uper)\n"
+      << "  --lang <cpp|c>         Target language (default cpp; C unavailable)\n"
+      << "  --c-prefix <id>        C symbol prefix; requires --lang c\n"
       << "  --namespace <id>        Non-reserved C++17 identifier (default: asn1_gen)\n"
       << "                         Output directory has one artifact set; concurrent writes rejected\n"
       << "  --emit-inline           Emit codec functions inline in the header\n"
@@ -264,7 +266,8 @@ HitMiss latest_cache_stats(const asn1::Diagnostics& diag) {
 
 int emit_code(const std::vector<std::string>& paths, const std::string& dir,
               asn1::codegen::CodecKind codec, const std::string& namespace_name,
-              bool emit_inline, bool emit_split, bool emit_cache, int parallelism) {
+              bool emit_inline, bool emit_split, bool emit_cache, int parallelism,
+              asn1::codegen::TargetLanguage language, const std::string& c_prefix) {
   asn1::Diagnostics diag;
   std::vector<asn1::SourceFile> files;
   asn1::ir::Model model = analyze_files(paths, diag, files, parallelism);
@@ -274,9 +277,9 @@ int emit_code(const std::vector<std::string>& paths, const std::string& dir,
   }
 
   std::error_code ec;
-  std::filesystem::create_directories(dir, ec);
-  if (ec) { std::cerr << "asn1cxx: cannot create output directory " << dir << ": " << ec.message() << '\n'; return EXIT_FAILURE; }
   asn1::codegen::EmitOptions opt;
+  opt.language = language;
+  opt.c_prefix = c_prefix;
   opt.codec = codec;
   opt.basename = "generated";
   opt.namespace_name = namespace_name;
@@ -293,8 +296,7 @@ int emit_code(const std::vector<std::string>& paths, const std::string& dir,
   }
 
   if (emit_split) {
-    asn1::codegen::CppGenerator gen;
-    gen.emit_split(model, opt, diag, dir);
+    asn1::codegen::emit_generated_to_dir(model, opt, diag, dir);
     if (!diag.ok()) {
       diag.print(std::cerr);
       return EXIT_FAILURE;
@@ -314,8 +316,7 @@ int emit_code(const std::vector<std::string>& paths, const std::string& dir,
     return EXIT_SUCCESS;
   }
 
-  asn1::codegen::CppGenerator gen;
-  gen.emit_to_dir(model, opt, diag, dir);
+  asn1::codegen::emit_generated_to_dir(model, opt, diag, dir);
   if (!diag.ok()) {
     diag.print(std::cerr);
     return EXIT_FAILURE;
@@ -355,6 +356,9 @@ int main(int argc, char** argv) {
   bool dump_ir_flag = false;
   std::string emit_dir;
   std::string namespace_name = "asn1_gen";
+  auto language = asn1::codegen::TargetLanguage::Cpp;
+  std::string c_prefix;
+  bool namespace_explicit = false, prefix_explicit = false;
   // CLI default is out-of-line (declarations in the .hpp, definitions in the
   // companion .cpp); --emit-inline restores the all-inline header for small
   // single-TU modules where a zero-link setup is worth more.
@@ -405,7 +409,21 @@ int main(int argc, char** argv) {
       emit_dir = argv[++i];
       continue;
     }
+    if (arg == "--lang" || arg == "--c-prefix") {
+      if (i + 1 >= argc) {
+        std::cerr << "asn1cxx: " << arg << " requires a value\n";
+        return EXIT_FAILURE;
+      }
+      const std::string value = argv[++i];
+      if (arg == "--lang") {
+        if (value == "cpp") language = asn1::codegen::TargetLanguage::Cpp;
+        else if (value == "c") language = asn1::codegen::TargetLanguage::C;
+        else { std::cerr << "asn1cxx: unknown language '" << value << "'\n"; return EXIT_FAILURE; }
+      } else { c_prefix = value; prefix_explicit = true; }
+      continue;
+    }
     if (arg == "--namespace") {
+      namespace_explicit = true;
       if (i + 1 >= argc) {
         std::cerr << "asn1cxx: --namespace requires an identifier\n";
         return EXIT_FAILURE;
@@ -481,6 +499,25 @@ int main(int argc, char** argv) {
     files.emplace_back(arg);
   }
 
+  if (language == asn1::codegen::TargetLanguage::C && namespace_explicit) {
+    std::cerr << "asn1cxx: --namespace conflicts with --lang c; use --c-prefix\n";
+    return EXIT_FAILURE;
+  }
+  if (prefix_explicit && language != asn1::codegen::TargetLanguage::C) {
+    std::cerr << "asn1cxx: --c-prefix requires --lang c\n";
+    return EXIT_FAILURE;
+  }
+  if (prefix_explicit) {
+    const auto alpha = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
+    bool valid = !c_prefix.empty() && alpha(c_prefix[0]);
+    for (char c : c_prefix) valid = valid && (alpha(c) || (c >= '0' && c <= '9') || c == '_');
+    valid = valid && c_prefix.find("__") == std::string::npos;
+    if (!valid) { std::cerr << "asn1cxx: --c-prefix requires a non-reserved identifier prefix\n"; return EXIT_FAILURE; }
+  }
+  if (language == asn1::codegen::TargetLanguage::C && emit_inline && emit_split) {
+    std::cerr << "asn1cxx: C inline and split output conflict\n";
+    return EXIT_FAILURE;
+  }
   if (files.empty()) {
     print_usage(std::cerr);
     return EXIT_FAILURE;
@@ -503,7 +540,7 @@ int main(int argc, char** argv) {
       if (codec == asn1::codegen::CodecKind::None) {
         codec = asn1::codegen::CodecKind::Uper;
       }
-      if (emit_code(files, emit_dir, codec, namespace_name, emit_inline, emit_split, emit_cache, parallelism) != EXIT_SUCCESS) {
+      if (emit_code(files, emit_dir, codec, namespace_name, emit_inline, emit_split, emit_cache, parallelism, language, c_prefix) != EXIT_SUCCESS) {
         status = EXIT_FAILURE;
       }
     }

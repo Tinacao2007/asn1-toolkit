@@ -565,6 +565,7 @@ gtest_discover_tests(asn1_codec_benchmark_tests)
 # split-mode tests can locate `tests/fixtures/telecom/{lpp,s1ap}_*/...`
 # without baking an absolute path into the source.
 add_executable(asn1_emit_cache_tests
+  codegen/cgen_batch1_test.cpp
   codegen/emission_plan_test.cpp
   codegen/emit_cache_test.cpp
 )
@@ -688,3 +689,12 @@ add_executable(asn1_split_cycle_tests codegen/split_cycle_test.cpp "${_cycle_dir
 target_include_directories(asn1_split_cycle_tests PRIVATE "${_cycle_dir}")
 target_link_libraries(asn1_split_cycle_tests PRIVATE asn1::per GTest::gtest_main)
 gtest_discover_tests(asn1_split_cycle_tests)
+
+# Batch 1 acceptance exercises real CLI failures and existing linked codecs.
+add_test(NAME CGenBatch1.CliDispatch COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch1_cli.py" "${ASN1_GENERATOR}"
+  "$<TARGET_FILE:asn1_entry_combined>" "$<TARGET_FILE:asn1_entry_combined_inline>"
+  "$<TARGET_FILE:asn1_entry_combined_split>")
+foreach(_shape IN ITEMS combined combined_inline combined_split)
+  add_test(NAME CGenBatch1.Cpp.${_shape} COMMAND asn1_entry_${_shape})
+endforeach()

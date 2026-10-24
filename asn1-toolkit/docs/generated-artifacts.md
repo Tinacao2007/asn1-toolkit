@@ -70,3 +70,14 @@ BigInt limb 的 little-endian 是内存表示，不能推导线路端序；PER �
 **发布前待办**：当前仓库带 PROCODEC 专有版权头；零第三方 runtime 依赖不等于
 项目可自由分发。需由权利人明确项目/生成代码/安装 SDK 的分发许可，补许可证文件、
 第三方构建依赖 notices 与版本/ABI 政策。这是发布条件，不能由本批代码修正代为授权。
+
+## CGEN batch 1 boundary
+
+Unified directory dispatch now selects `TargetLanguage` (default Cpp). C requests
+fail through Diagnostics before stage/cache/publication; CppGenerator also rejects
+C options on legacy stream paths. Language and C prefix join the existing shape
+fields in cache keys. The future `.h/.c` layout/ownership/ABI contract is in
+[c-generated-abi.md](c-generated-abi.md); the twelve-entry implementation audit is
+[c-runtime-codegen-gaps.md](c-runtime-codegen-gaps.md). No generated C value codec
+or additional runtime implementation is enabled. Evidence:
+[cgen-batch1-validation.md](cgen-batch1-validation.md).

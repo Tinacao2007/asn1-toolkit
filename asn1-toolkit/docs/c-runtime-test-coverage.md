@@ -47,3 +47,14 @@ BOOLEAN 能揭示对齐及片段消费错误；184 个短向量冻结在
 这些项在脚本输出中逐条 EXCLUDED，不计入通过的独立差分用例。条文来源：
 [ITU-T X.691 (02/2021)](https://www.itu.int/rec/T-REC-X.691-202102-I/en)。
 这不宣称完整 ASN.1、全部 C codec 或 C emitter 已完成。
+
+## CGEN batch 1 boundary
+
+Unified directory dispatch now selects `TargetLanguage` (default Cpp). C requests
+fail through Diagnostics before stage/cache/publication; CppGenerator also rejects
+C options on legacy stream paths. Language and C prefix join the existing shape
+fields in cache keys. The future `.h/.c` layout/ownership/ABI contract is in
+[c-generated-abi.md](c-generated-abi.md); the twelve-entry implementation audit is
+[c-runtime-codegen-gaps.md](c-runtime-codegen-gaps.md). No generated C value codec
+or additional runtime implementation is enabled. Evidence:
+[cgen-batch1-validation.md](cgen-batch1-validation.md).

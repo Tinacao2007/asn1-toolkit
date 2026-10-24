@@ -101,3 +101,8 @@ asn1-toolkit/
 
 TBD —— 计划开源，许可证文件将在项目发布时补齐（源码文件头已标注 PROCODEC 版权
 2026–2031，由 `scripts/add_file_headers.py` 自动维护）。
+
+CGEN batch 1 adds `--lang cpp|c` (default cpp) and C-only `--c-prefix`.
+C emission currently fails explicitly with Unsupported and publishes no artifacts.
+See [C ABI design](docs/c-generated-abi.md), [runtime gap audit](docs/c-runtime-codegen-gaps.md)
+and [stage evidence](docs/cgen-batch1-validation.md).

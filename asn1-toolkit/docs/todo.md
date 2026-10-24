@@ -273,7 +273,7 @@ C++17 使用项目 `Span` 与 `Result<T>`；C 使用 `asn1_status_t`（0 成功�
 | 1/2 C11 头与 runtime | 已落地；具体原语边界见 [声明登记](c-runtime-test-coverage.md) | C11/C++17 独立头、纯 C 链接、失败/资源边界、PER 两 Variant 与独立 oracle |
 | 规划前置（REV-27） | 最小 `codegen/plan.hpp` 已建立并接入 C++ PER/整数检查；C 后端接入未实现 | [共享规划](emission-planning.md)；不可声称已验证生成 C PDU |
 | 3 C emitter | 未实现；按 codec 分步渲染同一规划，避免复制标签/presence/约束/扩展/selector 决定 | 生成 C11 多 TU 编译链接、状态传播、所有权和真实编解码 |
-| 4 CLI/调度 | 未实现：`--lang cpp|c`、目标语言选项与调度 | 现有 C++ 参数/产物保持兼容，未实现组合明确诊断 |
+| 4 CLI/dispatch | CGEN-03: `--lang cpp|c`, C-only prefix, conflicts and unified dispatch implemented; C generation explicitly Unsupported | [Batch 1 evidence](cgen-batch1-validation.md); real C emission remains later work |
 | 5/6 C fixture 门禁 | 未实现；按已支持 codec 开放，不预设只需 5 codec | 7 fixture ×12 入口能力登记、生成 C 的编译/链接/运行；不能用手写 smoke 替代 |
 | 7 oracle 复用 | 未实现：生成 C/C++ 同 schema/value 使用同一独立 oracle | 字节与双向互解，工具无覆盖时登记条文证据和局限 |
 | 8/9/10 集成收尾 | 后续每步同步 | Release + ASan+UBSan 全量、各形态 ODR、文档/安装、P1-3 独立运行 |

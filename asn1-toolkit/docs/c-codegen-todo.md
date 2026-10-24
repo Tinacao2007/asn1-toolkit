@@ -1,9 +1,9 @@
 # 纯 C11 代码生成后端执行清单
 
-创建日期：2026-10-23。状态：规划，所有 CGEN 项均未完成。
+Created 2026-10-23. Batch 1 (CGEN-01..03) complete; later batches remain open.
 本清单细化 [P2-4](todo.md#p2-4--c-语言代码生成器-lang-c) sub-task 3+，
 承接 [共享规划](emission-planning.md) 与 REV-27，不另建一套前端或 runtime。
-本次仅制定计划，没有实现 `--lang c` 或以下新增拆分参数。
+C dispatch now reports Unsupported; evidence: [batch 1](cgen-batch1-validation.md).
 
 ## 目标与现状
 
@@ -36,14 +36,14 @@ ByteReader 尚无完整 byte decode API，JER/XER reader 只绑定输入。
 
 ### 第 1 批：契约、能力审计与 CLI 调度
 
-- [ ] **CGEN-01【重要】C 产物与接口设计。** 明确类型/函数前缀、类型布局、参数顺序、
+- [x] **CGEN-01【重要】C 产物与接口设计。** 明确类型/函数前缀、类型布局、参数顺序、
   init/free、借用/拥有、状态传播、输出提交、资源上限及 ABI 版本策略。
   覆盖 INTEGER/BigInt、BOOLEAN/NULL、字符串/位串、OID/REAL、SEQUENCE/SET、CHOICE、
   OF、OPTIONAL/DEFAULT、递归与开放类型；无法完整支持的值域写入能力表。
-- [ ] **CGEN-02【重要】建立生成需求→C runtime API 缺口表。** 对 12 入口逐项登记
+- [x] **CGEN-02【重要】建立生成需求→C runtime API 缺口表。** 对 12 入口逐项登记
   原语、容器、规范策略、完整 decode、错误定位和资源限制，不凭头文件存在判定可用。
   对照 C++ 实际调用链，区分可复用原语、必须补实现与当前 Unsupported。
-- [ ] **CGEN-03【重要】增加 `--lang cpp|c` 与统一调度。** 默认 cpp；C 模式 `.h/.c`；
+- [x] **CGEN-03【重要】增加 `--lang cpp|c` 与统一调度。** 默认 cpp；C 模式 `.h/.c`；
   C 前缀采用单独 `--c-prefix`，明确 C 模式 `--namespace` 的处理并报冲突，不能静默忽略。
   语言/前缀/拆分选项进入缓存键，未知值或不支持的组合在发布前诊断。
   CLI 骨架未具备编码能力时必须明确失败，不能输出假实现。

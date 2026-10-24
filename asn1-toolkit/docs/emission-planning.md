@@ -39,3 +39,7 @@ REV-27 的“真实 C 后端消费同一决定”需要 P2-4 sub-task 3+，现�
 4. 每次迁移缩小目标语言 emitter 的语义分支，但无需为抽象重做前端或合并 runtime。
 
 此文是当前代码和待接入边界的设计审查记录，不代表另一个外部评审者已批准完整 C 后端。
+
+
+CGEN-03 adds `--lang c` dispatch with an explicit Unsupported failure, without
+implementing a C emitter or closing the real C plan-consumption boundary above.

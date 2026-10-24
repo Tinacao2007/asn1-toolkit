@@ -94,6 +94,8 @@ inline CodecKind operator&(CodecKind a, CodecKind b) {
   return static_cast<CodecKind>(static_cast<unsigned>(a) & static_cast<unsigned>(b));
 }
 
+enum class TargetLanguage { Cpp, C };
+
 struct EmitOptions {
   std::string namespace_name = "asn1_gen";
   CodecKind codec = CodecKind::Uper;
@@ -134,7 +136,15 @@ struct EmitOptions {
   /// Ignored by the legacy stream-based `emit(stream, stream)` API, by
   /// `emit_header_string()`, and when `emit_cache` is false.
   std::filesystem::path emit_dir;
+  /// Appended to preserve existing positional aggregate initialization.
+  TargetLanguage language = TargetLanguage::Cpp;
+  /// Empty selects the C design default; C emission currently diagnoses Unsupported.
+  std::string c_prefix;
 };
+
+/// Unified dispatch diagnoses unsupported targets before directory/cache I/O.
+void emit_generated_to_dir(const ir::Model&, const EmitOptions&, Diagnostics&,
+                           const std::filesystem::path&);
 
 class CppGenerator {
  public:

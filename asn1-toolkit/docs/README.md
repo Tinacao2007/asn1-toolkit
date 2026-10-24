@@ -64,3 +64,8 @@ README（根目录）→ [usage-guide.md](usage-guide.md) 快速开始与 CLI �
 [纯 C11 生成后端 TODO](c-codegen-todo.md)：Phase49 sub-task 3+ 的分批实施与验收，包含单模块内拆分 `.c`。当前仍是规划。
 
 [夜间分批执行说明](c-codegen-nightly.md)：CGEN 每批独立验收、本地 commit、不 push，含启动与恢复命令。
+
+CGEN batch 1: [C ABI design](c-generated-abi.md),
+[twelve-entry runtime gaps](c-runtime-codegen-gaps.md), and
+[execution evidence](cgen-batch1-validation.md). `--lang c` currently fails
+explicitly without output; later emitter batches remain open.

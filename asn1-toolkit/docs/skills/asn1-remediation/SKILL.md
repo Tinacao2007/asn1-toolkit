@@ -162,3 +162,19 @@ runner 的自动门禁不替代每批独立 oracle、生成 C PDU 或安装验�
 尤其不能把 C11 原语与 smoke 通过表述为 Phase49 C emitter 已完成。
 
 该文件是仓库内的 skill 源文件；置于 docs 不代表已安装到 Codex 的技能发现目录。
+
+
+## CGEN batch 1 reusable checks
+
+C generation rejects through unified directory dispatch before filesystem/cache
+I/O; legacy CppGenerator stream paths must also reject C target options.
+Build asn1cxx, asn1_emit_cache_tests and asn1_entry_combined,
+asn1_entry_combined_inline, asn1_entry_combined_split. Then run
+`ctest --test-dir <build> -C Release -R '^CGenBatch1\.' --output-on-failure`.
+These tests execute API/CLI rejection, preserve prior artifacts/cache and compare
+all twelve actual C++ entries across outline/inline/split. Do not turn Unsupported
+into successful empty `.h/.c` output. Language/prefix options must join cache
+identity; source-shard options remain a later batch. Keep the ABI design and gap
+audit separate from the primitive declaration register. See
+[batch 1 evidence](../../cgen-batch1-validation.md),
+[C ABI design](../../c-generated-abi.md) and [runtime gaps](../../c-runtime-codegen-gaps.md).

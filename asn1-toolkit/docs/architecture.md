@@ -350,3 +350,14 @@ IR → `codegen/planning` 的借用计划 → 各语言渲染；规划不链接 
 三种形态的 ODR/ABI/线程安全/所有权见 [产物与集成契约](generated-artifacts.md)。
 配置阶段的 `cmake/Layering.cmake` 检查实际传递链接；源码 include 与独立公共头门禁
 见 [开发指南](development.md)。
+
+## CGEN batch 1 boundary
+
+Unified directory dispatch now selects `TargetLanguage` (default Cpp). C requests
+fail through Diagnostics before stage/cache/publication; CppGenerator also rejects
+C options on legacy stream paths. Language and C prefix join the existing shape
+fields in cache keys. The future `.h/.c` layout/ownership/ABI contract is in
+[c-generated-abi.md](c-generated-abi.md); the twelve-entry implementation audit is
+[c-runtime-codegen-gaps.md](c-runtime-codegen-gaps.md). No generated C value codec
+or additional runtime implementation is enabled. Evidence:
+[cgen-batch1-validation.md](cgen-batch1-validation.md).

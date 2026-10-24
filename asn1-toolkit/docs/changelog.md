@@ -6,6 +6,14 @@
 
 ## 近期变更详录
 
+### 2026-10-24 (CGEN batch 1)
+
+- Define the future C generated ABI/ownership and twelve-entry runtime gap register.
+- Add default-compatible `--lang cpp|c`, C-only prefix and conflict diagnostics,
+  unified dispatch and language/prefix cache identity. C requests fail before I/O.
+- Add real API/CLI/publication and linked three-shape C++ `CGenBatch1.*` tests.
+  [Evidence and verification boundaries](cgen-batch1-validation.md).
+
 ### 2026-10-23（C 后端夜间 runner）
 
 - 增加 CGEN 逐批非交互 runner 与 PowerShell 包装器，固定 Release/ASan+UBSan、原有测试、
