@@ -1,6 +1,6 @@
 ---
 name: asn1-remediation
-description: 执行 asn1-toolkit 的 REV 修正任务，并同步代码、验证证据和项目文档。用于本仓库 TODO 分批修复与回归维护。
+description: 执行 asn1-toolkit 的 REV/CGEN 修正任务，并同步代码、验证证据和项目文档。用于本仓库 TODO 分批修复与回归维护。
 ---
 
 # ASN.1 工程修正
@@ -12,7 +12,7 @@ description: 执行 asn1-toolkit 的 REV 修正任务，并同步代码、验证
 
 ## 接手任务
 
-读取仓库适用的 AGENTS.md（如存在）、指定 REV、相关接口/实现/测试和当前 diff。
+读取仓库适用的 AGENTS.md（如存在）、指定 REV 或 CGEN 批次、相关接口/实现/测试和当前 diff。
 按用户指定的编号或批次处理必要依赖，保留已有未提交修改。先核实调用链或复现，
 再做修复；若代码已变更，记录证据，避免重复修改。
 
@@ -31,6 +31,8 @@ description: 执行 asn1-toolkit 的 REV 修正任务，并同步代码、验证
   [REV-20..24](../../rev20-24-validation.md)。
 - 产物/分层/后端规划：[产物契约](../../generated-artifacts.md)、
   [规划边界](../../emission-planning.md)、[REV-25..28](../../rev25-28-validation.md)。
+- 纯 C 后端：[CGEN 清单](../../c-codegen-todo.md)；若由夜间 runner 调用，另读
+  [夜间契约](../../c-codegen-nightly.md)。
 
 ## 必须保留的设计
 
@@ -140,6 +142,14 @@ Release 与 ASan+UBSan 全量门禁，以及 7 fixture ×12 实际入口语法�
 
 大型 fixture 构建根据资源控制并行度；中断/未跑的门禁不记为通过。
 只改文档时检查表述与链接，无需重复全量编译。
+
+## 夜间 runner 调用
+
+由 `nightly_c_codegen.py` 调用时只执行指定 CGEN 批次，父 runner 负责 commit；
+模型不得自行提交、push、切换分支或重置工作区。补真实 `CGenBatchN.*` 阶段验收，
+同步契约与证据；不改 TODO 验收正文、受保护 runner/门禁或提前勾选后续任务。
+runner 的自动门禁不替代每批独立 oracle、生成 C PDU 或安装验收。
+其他交互任务是否提交/推送仍以用户明确授权为准，本节不提供额外 Git 授权。
 
 ## 同步收尾
 
