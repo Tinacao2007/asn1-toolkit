@@ -23,6 +23,7 @@
 #pragma once
 #include <asn1/codegen/emit.hpp>
 namespace asn1 { namespace codegen {
+bool valid_c_prefix(const std::string&);
 bool portable_output_name(const std::string& name);
 std::string portable_output_key(std::string name);
 bool validate_emit_options(const EmitOptions&, Diagnostics&);

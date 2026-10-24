@@ -1580,6 +1580,7 @@ void Emitter::run_split(const std::filesystem::path& dir) {
 
 void CppGenerator::emit(const ir::Model& model, const EmitOptions& options, Diagnostics& diag,
                         std::ostream& header, std::ostream* source) try {
+  if(options.language != TargetLanguage::Cpp) { diag.error({},"CppGenerator only supports C++ output"); return; }
   if (!validate_emit_options(options, diag)) return;
   Emitter emitter(model, options, diag);
   emitter.run(header, source);
@@ -1593,6 +1594,7 @@ void CppGenerator::emit_split(const ir::Model& model, const EmitOptions& options
                               Diagnostics& diag, const std::filesystem::path& dir) try {
   // Copy options so we can attach the dir without mutating the caller's
   // struct (caller might pass a temporary, const-ref, or reused instance).
+  if(options.language != TargetLanguage::Cpp) { diag.error({},"CppGenerator only supports C++ output"); return; }
   EmitOptions opts = options;
   emit_directory(model, opts, diag, dir, true);
 } catch (const std::filesystem::filesystem_error& ex) {
@@ -1603,6 +1605,7 @@ void CppGenerator::emit_split(const ir::Model& model, const EmitOptions& options
 
 void CppGenerator::emit_to_dir(const ir::Model& model, const EmitOptions& options,
                                 Diagnostics& diag, const std::filesystem::path& dir) try {
+  if(options.language != TargetLanguage::Cpp) { diag.error({},"CppGenerator only supports C++ output"); return; }
   EmitOptions opts = options;
   emit_directory(model, opts, diag, dir, false);
 } catch (const std::filesystem::filesystem_error& ex) {
@@ -1642,6 +1645,8 @@ std::vector<std::string> Emitter::cache_extra_inputs() const {
   // invalidates entries when compiler implementation or headers change.
   out.push_back("language=" + std::to_string(static_cast<unsigned>(options_.language)));
   out.push_back("c_prefix=" + options_.c_prefix);
+  out.push_back("c_types_only="+std::to_string(options_.c_types_only));
+  out.push_back("split_max_types="+std::to_string(options_.split_max_types));
   out.push_back("codec=" + std::to_string(static_cast<unsigned>(options_.codec)));
   out.push_back("basename=" + options_.basename);
   out.push_back("namespace=" + options_.namespace_name);

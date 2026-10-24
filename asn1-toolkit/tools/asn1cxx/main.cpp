@@ -117,7 +117,9 @@ void print_usage(std::ostream& out) {
       << "  --codec <uper|aper|per|ber|der|cer|jer|jeri|xer|exer|oer|coer|cxer>\n"
       << "                         Comma-separated combination (e.g. uper,ber)\n"
       << "                         Codec for --emit-dir (default: uper)\n"
-      << "  --lang <cpp|c>         Target language (default cpp; C unavailable)\n"
+      << "  --lang <cpp|c>         Target language (default cpp; C codecs unavailable)\n"
+      << "  --types-only          C type/lifecycle artifacts, no codecs\n"
+      << "  --split-max-types <N>  C source soft limit in IR types; SCCs stay whole\n"
       << "  --c-prefix <id>        C symbol prefix; requires --lang c\n"
       << "  --namespace <id>        Non-reserved C++17 identifier (default: asn1_gen)\n"
       << "                         Output directory has one artifact set; concurrent writes rejected\n"
@@ -267,7 +269,8 @@ HitMiss latest_cache_stats(const asn1::Diagnostics& diag) {
 int emit_code(const std::vector<std::string>& paths, const std::string& dir,
               asn1::codegen::CodecKind codec, const std::string& namespace_name,
               bool emit_inline, bool emit_split, bool emit_cache, int parallelism,
-              asn1::codegen::TargetLanguage language, const std::string& c_prefix) {
+              asn1::codegen::TargetLanguage language, const std::string& c_prefix,
+              bool types_only, std::size_t split_max_types) {
   asn1::Diagnostics diag;
   std::vector<asn1::SourceFile> files;
   asn1::ir::Model model = analyze_files(paths, diag, files, parallelism);
@@ -280,6 +283,8 @@ int emit_code(const std::vector<std::string>& paths, const std::string& dir,
   asn1::codegen::EmitOptions opt;
   opt.language = language;
   opt.c_prefix = c_prefix;
+  opt.c_types_only = types_only;
+  opt.split_max_types = split_max_types;
   opt.codec = codec;
   opt.basename = "generated";
   opt.namespace_name = namespace_name;
@@ -295,6 +300,13 @@ int emit_code(const std::vector<std::string>& paths, const std::string& dir,
     opt.source_paths.push_back(std::move(absolute));
   }
 
+  if (language == asn1::codegen::TargetLanguage::C) {
+    asn1::codegen::emit_generated_to_dir(model,opt,diag,dir);
+    diag.print(std::cerr);
+    if(!diag.ok()) return EXIT_FAILURE;
+    std::cerr << "asn1cxx: generated C11 types/lifecycle only; sources in " << dir << "/generated-sources.json\n";
+    return EXIT_SUCCESS;
+  }
   if (emit_split) {
     asn1::codegen::emit_generated_to_dir(model, opt, diag, dir);
     if (!diag.ok()) {
@@ -359,6 +371,8 @@ int main(int argc, char** argv) {
   auto language = asn1::codegen::TargetLanguage::Cpp;
   std::string c_prefix;
   bool namespace_explicit = false, prefix_explicit = false;
+  bool types_only = false;
+  std::size_t split_max_types = 0;
   // CLI default is out-of-line (declarations in the .hpp, definitions in the
   // companion .cpp); --emit-inline restores the all-inline header for small
   // single-TU modules where a zero-link setup is worth more.
@@ -407,6 +421,16 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
       }
       emit_dir = argv[++i];
+      continue;
+    }
+    if (arg == "--types-only") { types_only=true; continue; }
+    if (arg == "--split-max-types") {
+      if(i+1>=argc){std::cerr << "asn1cxx: --split-max-types requires a positive integer\n";return EXIT_FAILURE;}
+      const std::string value=argv[++i];
+      const auto parsed=std::from_chars(value.data(),value.data()+value.size(),split_max_types);
+      if(parsed.ec!=std::errc{} || parsed.ptr!=value.data()+value.size() || !split_max_types){
+        std::cerr << "asn1cxx: --split-max-types requires a positive integer\n";return EXIT_FAILURE;
+      }
       continue;
     }
     if (arg == "--lang" || arg == "--c-prefix") {
@@ -518,6 +542,15 @@ int main(int argc, char** argv) {
     std::cerr << "asn1cxx: C inline and split output conflict\n";
     return EXIT_FAILURE;
   }
+  if ((types_only || split_max_types) && language != asn1::codegen::TargetLanguage::C) {
+    std::cerr << "asn1cxx: --types-only and --split-max-types require --lang c\n";return EXIT_FAILURE;
+  }
+  if (emit_inline && split_max_types) {
+    std::cerr << "asn1cxx: inline and source splitting conflict\n";return EXIT_FAILURE;
+  }
+  if(types_only && (codec!=asn1::codegen::CodecKind::None || emit_dir.empty())) {
+    std::cerr << "asn1cxx: --types-only requires --emit-dir and forbids --codec\n";return EXIT_FAILURE;
+  }
   if (files.empty()) {
     print_usage(std::cerr);
     return EXIT_FAILURE;
@@ -537,10 +570,10 @@ int main(int argc, char** argv) {
     }
     if (!emit_dir.empty()) {
       // No --codec given at all: keep the historical UPER default.
-      if (codec == asn1::codegen::CodecKind::None) {
+      if (codec == asn1::codegen::CodecKind::None && !types_only) {
         codec = asn1::codegen::CodecKind::Uper;
       }
-      if (emit_code(files, emit_dir, codec, namespace_name, emit_inline, emit_split, emit_cache, parallelism, language, c_prefix) != EXIT_SUCCESS) {
+      if (emit_code(files, emit_dir, codec, namespace_name, emit_inline, emit_split, emit_cache, parallelism, language, c_prefix, types_only, split_max_types) != EXIT_SUCCESS) {
         status = EXIT_FAILURE;
       }
     }

@@ -6,6 +6,23 @@
 
 ## 近期变更详录
 
+### 2026-10-24 (CGEN batch 3 complete: C type-only shapes and source shards)
+
+- Open explicit `--lang c --types-only`, rejecting codec requests instead of
+  generating stubs. Add positive `--split-max-types`, stable dependency SCC
+  grouping, module ownership and true static-inline C with C++17 header consumers.
+- Reuse the existing artifact transaction for C/C++ transitions, safe stale cleanup
+  and sidecars. Add JSON/CMake current source lists and verified per-file cache
+  identity with all shape, budget, source-order and generator inputs.
+- Add seven real stage tests, including single-module 5-to-4 source reduction,
+  two-TU ownership/OOM checks, protected publication/cache negatives and whole
+  LTE RRC type generation: 1037 IR types in 9 C sources, pure-C compile/link and
+  selected lifecycle calls. Full C PDU codecs remain pending.
+- Final GCC Release/ASan+UBSan **473/473** each, actual C++ syntax matrix **84/84**,
+  installed consumers pass. Native MSVC **8/8** plus static-inline consumer **1/1**.
+  Clang absent from WSL PATH, not run. Docs/skill synchronized; no push.
+  [Evidence and measured limits](cgen-batch3-validation.md).
+
 ### 2026-10-24 (CGEN batch 2 complete within explicit profiles)
 
 - Add pure-C11 types, transactional lifecycle/default restoration and owned

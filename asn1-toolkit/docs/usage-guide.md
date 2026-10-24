@@ -278,20 +278,20 @@ OER 与 COER 也各自生成，不再由掩码里的规范策略覆盖同族入�
 `.asn1cxx-manifest` 登记本次生成的文件与源依赖；集成构建应使用其中 `.cpp` 清单，
 而非 glob 目录中所有历史 `.cpp`。失败返回非零，不输出写入成功消息。
 异常终止后的 stage/backup 恢复、inline 的多 TU 用法、ABI、线程安全及发布许可
-见 [产物契约](generated-artifacts.md)。`--lang c` 仍未实现，规划前置见
-[Phase49 接续](emission-planning.md)。
+见 [产物契约](generated-artifacts.md)。C 类型-only 的三形态/分片入口见
+[C 输出与集成](c-codegen-output.md)，完整 C codec 仍未开放。
 
-## Target language (CGEN batch 1)
+## Target language and C type-only output
 
-`--lang cpp` is the default; existing C++ output shapes and codec combinations
-are preserved. `--lang c` selects the C11 dispatch skeleton and currently fails
-with Unsupported before output/cache creation; no `.h/.c` is produced.
-`--c-prefix <id>` is C-only (design default `asn1_gen`), starts with an ASCII
-letter, then letters/digits/underscores, with no double underscore. An explicit
-`--namespace`, even `asn1_gen`, conflicts with C mode; use `--c-prefix`.
-C inline plus split is rejected. Unknown languages, missing values and invalid
-prefixes fail. New source-shard options remain unimplemented/unknown.
-Language/prefix and existing inline/split options participate in cache identity.
-Frontend dumps may run with `--lang c` without emission; this does not enable C.
-See [C ABI design](c-generated-abi.md), [runtime gaps](c-runtime-codegen-gaps.md)
-and [batch 1 evidence](cgen-batch1-validation.md).
+`--lang cpp` remains the default. Ordinary `--lang c --codec ...` still rejects;
+CGEN batch 3 opens explicit `--lang c --types-only` without a codec request.
+It generates real pure-C types/lifecycle in outline, static-inline or module/source
+split shapes. `--split-max-types N` is a positive soft IR-type budget, not a
+byte limit; dependency SCCs stay whole. `--c-prefix` is C-only; an explicit
+`--namespace` conflicts with C mode. See [C output and source-list integration](c-codegen-output.md)
+for runnable CLI/CMake examples, file ownership/cache behavior and scope.
+
+Frontend dumps may still run without emission. C type generation does not open
+C wire codecs or complete PDU/oracle support. Historical dispatch rejection:
+[batch 1 evidence](cgen-batch1-validation.md); current profiles:
+[C ABI](c-generated-abi.md), [runtime gaps](c-runtime-codegen-gaps.md).

@@ -22,6 +22,9 @@
 ***************************************************************************/
 #include "emit_output.hpp"
 #include "emit_internal.hpp"
+#include "generator_revision.hpp"
+#include <asn1/codegen/c_types.hpp>
+#include <asn1/codegen/sha256.hpp>
 #include <fstream>
 #include <map>
 #include <set>
@@ -44,14 +47,29 @@ bool portable_output_name(const std::string& name) {
       key[3] >= '0' && key[3] <= '9') return false;
   return true;
 }
+bool valid_c_prefix(const std::string& prefix) {
+  const auto alpha=[](char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z');};
+  if(prefix.empty() || !alpha(prefix.front()) || prefix.back()=='_' || prefix.find("__")!=std::string::npos) return false;
+  for(char c:prefix) if(!alpha(c) && !(c>='0'&&c<='9') && c!='_') return false;
+  return true;
+}
 bool validate_emit_options(const EmitOptions& opt, Diagnostics& diag) {
-  if (opt.language != TargetLanguage::Cpp) {
-    diag.error({}, "Unsupported: C11 code generation is not implemented; no .h/.c artifacts emitted");
-    return false;
-  }
-  if (!opt.c_prefix.empty()) {
-    diag.error({}, "c-prefix is only valid with --lang c");
-    return false;
+  if (opt.language == TargetLanguage::C) {
+    if (!valid_c_prefix(opt.c_prefix.empty()?"asn1_gen":opt.c_prefix)) {
+      diag.error({},"C types: invalid non-reserved symbol prefix");return false;
+    }
+    if (!opt.c_types_only || opt.codec != CodecKind::None) {
+      diag.error({}, "Unsupported: C11 codec generation is not implemented; use --types-only without --codec for lifecycle artifacts");
+      return false;
+    }
+    if (opt.emit_inline && (opt.emit_split || opt.split_max_types)) {
+      diag.error({}, "C inline and module/source splitting conflict"); return false;
+    }
+    if (opt.namespace_name != "asn1_gen") {
+      diag.error({}, "C output does not accept a C++ namespace"); return false;
+    }
+  } else if (!opt.c_prefix.empty() || opt.c_types_only || opt.split_max_types) {
+    diag.error({}, "c-prefix, types-only and split-max-types require --lang c"); return false;
   }
   if (!portable_output_name(opt.basename)) {
     diag.error({}, "basename must be a portable filename stem (letters, digits, underscore; no Windows device names)");
@@ -71,11 +89,20 @@ bool validate_emit_options(const EmitOptions& opt, Diagnostics& diag) {
   return diag.ok();
 }
 void emit_generated_to_dir(const ir::Model& model, const EmitOptions& opt,
-                           Diagnostics& diag, const fs::path& dir) {
+                           Diagnostics& diag, const fs::path& dir) try {
   if (!validate_emit_options(opt, diag)) return;
+  if (opt.language == TargetLanguage::C) {
+    emit_directory(model,opt,diag,dir,opt.emit_split); return;
+  }
   CppGenerator generator;
   if (opt.emit_split) generator.emit_split(model, opt, diag, dir);
   else generator.emit_to_dir(model, opt, diag, dir);
+} catch(const fs::filesystem_error& ex) {
+  diag.error({},std::string("code generation filesystem failure: ")+ex.what());
+} catch(const std::length_error& ex) {
+  diag.error({},std::string("code generation capacity exceeded: ")+ex.what());
+} catch(const std::ios_base::failure& ex) {
+  diag.error({},std::string("code generation stream failure: ")+ex.what());
 }
 namespace {
 const char* manifest_name = ".asn1cxx-manifest";
@@ -83,6 +110,12 @@ struct Workspace {
   fs::path lock;
   ~Workspace() { if (!lock.empty()) { std::error_code ec; fs::remove_all(lock, ec); } }
 };
+bool artifact_name(const fs::path& path) {
+  if(path.filename()!=path) return false;
+  if(path=="generated-sources.json" || path=="generated-sources.cmake") return true;
+  const auto ext=path.extension();
+  return (ext==".hpp" || ext==".cpp" || ext==".h" || ext==".c") && portable_output_name(path.stem().string());
+}
 bool read_owned(const fs::path& dir, std::map<std::string,std::string>& owned) {
   std::ifstream in(dir / manifest_name);
   if (!in) { std::error_code ec; return !fs::exists(dir / manifest_name,ec) && !ec; }
@@ -93,8 +126,7 @@ bool read_owned(const fs::path& dir, std::map<std::string,std::string>& owned) {
     if (name == "dependencies") { std::string line; std::getline(in,line); continue; }
     if (!(in >> hash)) return false;
     const fs::path path(name);
-    if (path.filename() != path || (path.extension() != ".hpp" && path.extension() != ".cpp") ||
-        !portable_output_name(path.stem().string()) || (hash.size() != 64 || hash.find_first_not_of("0123456789abcdef") != std::string::npos) || !owned.emplace(name,hash).second)
+    if (!artifact_name(path) || (hash.size() != 64 || hash.find_first_not_of("0123456789abcdef") != std::string::npos) || !owned.emplace(name,hash).second)
       return false;
   }
   return in.eof();
@@ -136,7 +168,7 @@ void emit_directory(const ir::Model& model, EmitOptions opt, Diagnostics& diag,
     const auto path = it->path();
     const auto status = it->symlink_status(ec);
     if (ec) break;
-    if (fs::is_regular_file(status) && (path.extension() == ".hpp" || path.extension() == ".cpp") &&
+    if (fs::is_regular_file(status) && artifact_name(path.filename()) &&
         (owned.count(path.filename().string()) || generated_legacy(path)))
       fs::copy_file(path,stage/path.filename(),fs::copy_options::overwrite_existing,ec);
   }
@@ -155,9 +187,47 @@ void emit_directory(const ir::Model& model, EmitOptions opt, Diagnostics& diag,
   std::set<std::string> outputs;
   opt.emit_dir = stage;
   opt.emit_split = split;
-  Emitter emitter(model,opt,diag);
-  emitter.output_files_ = &outputs;
-  if (split) emitter.run_split(stage); else emitter.run_to_dir(stage);
+  if (opt.language == TargetLanguage::C) {
+    const auto files=render_c_type_files(model,opt,diag);
+    if(!diag.ok()) return;
+    bool cacheable=opt.emit_cache && !opt.source_paths.empty();
+    std::unordered_map<std::string,std::string> source_hashes;
+    std::string source_order;
+    for(const auto& dependency:opt.source_paths){
+      auto hash=ContentCache::hash_output_file(dependency.parent_path(),dependency.filename());
+      if(hash.empty()) cacheable=false;
+      source_hashes[dependency.string()]=hash;
+      source_order+=std::to_string(dependency.string().size())+":"+dependency.string();
+    }
+    ContentCache c_cache(stage);
+    const std::vector<std::string> extras={"language=c","types_only=1","codec="+std::to_string(static_cast<unsigned>(opt.codec)),
+      "prefix="+opt.c_prefix,"basename="+opt.basename,"inline="+std::to_string(opt.emit_inline),
+      "split="+std::to_string(split),"max_types="+std::to_string(opt.split_max_types),
+      "order="+sha256_hex(source_order),"format=c-artifacts-1","generator=" ASN1_GENERATOR_REVISION};
+    std::size_t hits=0;
+    for(const auto& file:files){
+      if(!artifact_name(file.name)){diag.error({},"non-portable C output name: "+file.name);return;}
+      outputs.insert(file.name);
+      const auto key=c_cache.compute_key(file.name,opt.source_paths,extras,source_hashes);
+      const auto expected=sha256_hex(file.contents);
+      const auto unit="c_"+sha256_hex(file.name);
+      const auto* entry=cacheable?c_cache.lookup(unit):nullptr;
+      const bool hit=entry && entry->key==key && entry->outputs.size()==1 && entry->outputs.count(file.name) &&
+        entry->outputs.at(file.name)==expected && ContentCache::hash_output_file(stage,file.name)==expected;
+      if(hit) ++hits;
+      else {
+        std::ofstream out(stage/file.name,std::ios::binary);out << file.contents;out.close();
+        if(!out){diag.error({},"cannot write C staged output: "+file.name);return;}
+      }
+      if(cacheable)c_cache.store(unit,CacheEntry{key,{{file.name,expected}}});
+    }
+    if(cacheable)c_cache.flush();
+    diag.note({},"emit cache: "+std::to_string(hits)+"/"+std::to_string(files.size())+" units hit (C verified artifact reuse; rendering still planned)");
+  } else {
+    Emitter emitter(model,opt,diag);
+    emitter.output_files_ = &outputs;
+    if (split) emitter.run_split(stage); else emitter.run_to_dir(stage);
+  }
   if (!diag.ok()) return;
   std::map<std::string,std::string> hashes;
   for (const auto& name : outputs) {

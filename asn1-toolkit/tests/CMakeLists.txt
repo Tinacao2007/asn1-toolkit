@@ -759,3 +759,20 @@ foreach(_mode IN ITEMS outline inline split)
   endif()
   gtest_discover_tests(asn1_cgen2_cpp_${_mode}_tests TEST_PREFIX "${_mode}.")
 endforeach()
+
+# C batch 3 exercises actual generated artifacts through the unified CLI.
+foreach(_case IN ITEMS shapes single_module rrc_types publication cache options cmake)
+  if(MSVC AND (_case STREQUAL "shapes" OR _case STREQUAL "single_module" OR _case STREQUAL "rrc_types"))
+    continue() # Strict GNU flags and GNU time metrics; native CMake consumer remains enabled.
+  endif()
+  set(_cgen3_san_args)
+  if(ASN1_ENABLE_SANITIZERS)
+    list(APPEND _cgen3_san_args --sanitizers)
+  endif()
+  add_test(NAME CGenBatch3.${_case} COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch3.py"
+    --compiler "${ASN1_GENERATOR}" --cc "${CMAKE_C_COMPILER}" --cxx "${CMAKE_CXX_COMPILER}"
+    --runtime "$<TARGET_FILE:asn1_c_runtime>" --root "${PROJECT_SOURCE_DIR}"
+    --work "${CMAKE_CURRENT_BINARY_DIR}/cgen3-${_case}" --case "${_case}"
+    --cmake "${CMAKE_COMMAND}" ${_cgen3_san_args})
+endforeach()

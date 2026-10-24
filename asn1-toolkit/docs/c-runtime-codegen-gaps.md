@@ -76,3 +76,9 @@ This removes type-layout blockers within that declared profile; none of the
 missing wire APIs in this audit is thereby implemented. Full C CLI entries and
 generated-PDU/oracle acceptance remain open; REV-27 planning reuse is covered
 by the batch 2 generated-C consumers.
+
+
+Batch 3 adds explicit type-only artifact generation, static-inline/module/source
+shapes, verified cache and source-list publication. No missing wire primitive in
+this audit is thereby implemented; all twelve ordinary C codec requests still
+reject. See [C artifact contract](c-codegen-output.md).

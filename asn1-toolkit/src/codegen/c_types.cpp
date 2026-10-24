@@ -1,6 +1,9 @@
 #include <asn1/codegen/c_types.hpp>
 #include <asn1/codegen/plan.hpp>
+#include "emit_output.hpp"
 #include <functional>
+#include <algorithm>
+#include <limits>
 #include <iomanip>
 #include <map>
 #include <set>
@@ -66,6 +69,11 @@ class Types {
   const Model& model;
   const std::string prefix;
   Diagnostics& diag;
+  bool external_helpers = false;
+  bool inline_functions = false;
+  std::string linkage(bool helper = false) const {
+    return inline_functions ? "static inline " : helper && !external_helpers ? "static " : "";
+  }
   std::map<TypeId, std::string> names;
   std::map<TypeId, std::vector<TypeId>> edges;
   std::set<std::pair<TypeId, TypeId>> indirect;
@@ -206,7 +214,7 @@ class Types {
   void defaults_body(TypeId id, std::ostream& s) const {
     const auto& t=model.arena.get(id);
     const auto n=name(id);
-    s << "static asn1_status_t " << n << "_defaults_at(" << n << " *v, size_t depth) {\n"
+    s << linkage(true) << "asn1_status_t " << n << "_defaults_at(" << n << " *v, size_t depth) {\n"
       << "asn1_status_t status=ASN1_OK; (void)v; if (depth>=ASN1_MAX_RECURSION_DEPTH) return ASN1_ERR_RESOURCE_LIMIT;\n";
     const auto recurse=[&](TypeId dep,const std::string& path) {
       s << "status=" << name(dep) << "_defaults_at(&" << path << ",depth+1); if(status!=ASN1_OK) return status;\n";
@@ -249,7 +257,7 @@ class Types {
       }
     }
     s << "return status; }\n"
-      << "asn1_status_t " << n << "_reset_defaults(" << n << " *out) {\n"
+      << linkage() << "asn1_status_t " << n << "_reset_defaults(" << n << " *out) {\n"
       << n << " tmp; asn1_status_t status; if(!out) return ASN1_ERR_INVALID_ARGUMENT; " << n << "_init(&tmp);\n"
       << "status=" << n << "_defaults_at(&tmp,0); if(status!=ASN1_OK) { " << n << "_free(&tmp); return status; }\n"
       << n << "_free(out); *out=tmp; return ASN1_OK; }\n";
@@ -276,10 +284,10 @@ class Types {
       }
       s << "};\n";
     }
-    s << "size_t " << n << "_field_count(void) { return " << fs.size() << "; }\n"
-      << "const " << prefix << "_field_plan *" << n << "_field(size_t index) { "
+    s << linkage() << "size_t " << n << "_field_count(void) { return " << fs.size() << "; }\n"
+      << linkage() << "const " << prefix << "_field_plan *" << n << "_field(size_t index) { "
       << (fs.empty()?"(void)index; return NULL;":"return index < "+std::to_string(fs.size())+" ? &"+n+"_fields[index] : NULL;") << " }\n"
-      << "asn1_status_t " << n << "_select(size_t index, const char *key, uint32_t *type) {\n"
+      << linkage() << "asn1_status_t " << n << "_select(size_t index, const char *key, uint32_t *type) {\n"
       << "const " << prefix << "_field_plan *f=" << n << "_field(index); if(!f || !key || !type) return ASN1_ERR_INVALID_ARGUMENT;\n"
       << "if(!f->governor) return ASN1_ERR_UNSUPPORTED;\n"
       << "for(size_t i=0;i<f->selector_count;++i) { if(!f->entries[i].has_key) return ASN1_ERR_UNSUPPORTED; "
@@ -386,6 +394,35 @@ class Types {
     }
     h << "};\n";
   }
+  void helper_declarations(std::ostream& s) const {
+    for (const auto& item : names) {
+      const auto& n=item.second;
+      s << linkage(true) << "asn1_status_t " << n << "_copy_at(const " << n << "*, " << n << "*, size_t);\n"
+        << linkage(true) << "asn1_status_t " << n << "_defaults_at(" << n << "*, size_t);\n";
+    }
+  }
+  void header(std::ostream& h) const {
+  h << "/* Generated C11 types only; no codec implementation. */\n#ifndef " << prefix << "_types_h\n#define " << prefix
+    << "_types_h\n#define " << prefix << "_GENERATED_ABI_VERSION 1\n"
+    << "#include <asn1/c_runtime/asn1_c_common.h>\n#include <asn1/c_runtime/bit_string.h>\n#include <asn1/c_runtime/limits.h>\n#include <stdlib.h>\n#include <string.h>\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n";
+  h << "typedef struct { int has_key; const char *decimal_key; uint32_t type_id; } " << prefix << "_selector_entry;\n"
+    << "typedef struct { const char *name; unsigned tag_class; uint64_t tag_number; int explicit_tag; size_t presence_index,extension_group; int nested_sequence; size_t ordinal; const char *governor; size_t selector_count; const " << prefix << "_selector_entry *entries; } " << prefix << "_field_plan;\n";
+  for (const auto& item : names) h << "typedef struct " << item.second << ' ' << item.second << ";\n";
+  for (auto id : order) declaration(id,h);
+  for (const auto& item : names) {
+    const auto& n = item.second;
+    h << linkage() << "void " << n << "_init(" << n << "*);\n" << linkage() << "void " << n << "_free(" << n << "*);\n"
+      << linkage() << "asn1_status_t " << n << "_copy(const " << n << "*, " << n << "*);\n"
+      << linkage() << "asn1_status_t " << n << "_reset_defaults(" << n << "*);\n"
+      << linkage() << "size_t " << n << "_field_count(void);\n" << linkage() << "const " << prefix << "_field_plan *" << n << "_field(size_t);\n"
+      << linkage() << "asn1_status_t " << n << "_select(size_t,const char*,uint32_t*);\n";
+  }
+  if (inline_functions) {
+    helper_declarations(h);
+    for (auto id : order) { body(id,h); defaults_body(id,h); metadata(id,h); }
+  }
+  h << "#ifdef __cplusplus\n}\n#endif\n#endif\n";
+  }
   void child(TypeId parent, TypeId dep, const std::string& path, std::ostream& s, bool copy) const {
     const auto n = name(dep);
     if (copy) {
@@ -401,10 +438,15 @@ class Types {
       else s << n << "_free(&v->" << path << ");\n";
     }
   }
+  void zero_declaration(const std::string& type, const char* variable, std::ostream& s) const {
+    s << "#ifdef __cplusplus\n" << type << ' ' << variable << " = {};\n#else\n"
+      << type << ' ' << variable << " = {0};\n#endif\n";
+  }
   void body(TypeId id, std::ostream& s) const {
     const auto& t = model.arena.get(id);
     const auto n = name(id);
-    s << "void " << n << "_init(" << n << " *v) { if (v) { " << n << " zero = {0}; *v = zero;\n";
+    s << linkage() << "void " << n << "_init(" << n << " *v) { if (v) {\n";
+    zero_declaration(n,"zero",s); s << "*v = zero;\n";
     if (t.kind == TypeKind::Sequence || t.kind == TypeKind::Set) {
       for (auto m : members(t)) {
         const auto path = "v->f" + spell(m.field->name);
@@ -415,11 +457,13 @@ class Types {
       s << name(t.object_class_field.fixed_type) << "_init(&v->value);\n";
     else if (t.kind == TypeKind::Referenced && !pointer(id,t.referenced.resolved))
       s << name(t.referenced.resolved) << "_init(&v->value);\n";
-    s << "} }\nvoid " << n << "_free(" << n << " *v) { if (!v) return;\n";
+    s << "} }\n" << linkage() << "void " << n << "_free(" << n << " *v) { if (!v) return;\n";
     contents(id, s, false);
     s << n << "_init(v); }\n"
-      << "static asn1_status_t " << n << "_copy_at(const " << n << " *src, " << n << " *out, size_t depth) {\n"
-      << n << " tmp = {0}; asn1_status_t status = ASN1_OK;\n"
+      << linkage(true) << "asn1_status_t " << n << "_copy_at(const " << n << " *src, " << n << " *out, size_t depth) {\n"
+      ;
+    zero_declaration(n,"tmp",s);
+    s << "asn1_status_t status = ASN1_OK;\n"
       << "if (!src || !out) return ASN1_ERR_INVALID_ARGUMENT;\n"
       << "if (depth >= 256) return ASN1_ERR_RESOURCE_LIMIT;\n";
     s << n << "_init(&tmp);\n";
@@ -427,7 +471,7 @@ class Types {
     // All generated copy paths share one transactional cleanup route.
     s << "if (status != ASN1_OK) goto fail;\n" << n << "_free(out); *out = tmp; return ASN1_OK;\n"
       << "fail: " << n << "_free(&tmp); return status; }\n"
-      << "asn1_status_t " << n << "_copy(const " << n << " *src, " << n << " *out) { return "
+      << linkage() << "asn1_status_t " << n << "_copy(const " << n << " *src, " << n << " *out) { return "
       << n << "_copy_at(src, out, 0); }\n";
   }
   void contents(TypeId id, std::ostream& s, bool copy) const {
@@ -553,10 +597,7 @@ class Types {
 void emit_c_types(const ir::Model& model, const std::string& prefix,
                   const std::string& header_name, Diagnostics& diag,
                   std::ostream& header, std::ostream& source) try {
-  bool valid = !prefix.empty() && alpha(prefix[0]);
-  for (char c : prefix) valid = valid && (alpha(c) || digit(c) || c == '_');
-  valid = valid && prefix.back() != '_' && prefix.find("__") == std::string::npos;
-  if (!valid) { diag.error({}, "C types: invalid non-reserved symbol prefix"); return; }
+  if (!valid_c_prefix(prefix)) { diag.error({}, "C types: invalid non-reserved symbol prefix"); return; }
   if (header_name.empty() || header_name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.") != std::string::npos ||
       header_name.find("..") != std::string::npos || header_name.back() == '.') {
     diag.error({}, "C types: header name must be a plain portable filename"); return;
@@ -582,22 +623,7 @@ void emit_c_types(const ir::Model& model, const std::string& prefix,
   Types types(model,prefix,diag);
   if (!types.prepare()) return;
   std::ostringstream h,s;
-  h << "/* Generated C11 types only; no codec implementation. */\n#ifndef " << prefix << "_types_h\n#define " << prefix
-    << "_types_h\n#define " << prefix << "_GENERATED_ABI_VERSION 1\n"
-    << "#include <asn1/c_runtime/asn1_c_common.h>\n#include <asn1/c_runtime/bit_string.h>\n#include <asn1/c_runtime/limits.h>\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n";
-  h << "typedef struct { int has_key; const char *decimal_key; uint32_t type_id; } " << prefix << "_selector_entry;\n"
-    << "typedef struct { const char *name; unsigned tag_class; uint64_t tag_number; int explicit_tag; size_t presence_index,extension_group; int nested_sequence; size_t ordinal; const char *governor; size_t selector_count; const " << prefix << "_selector_entry *entries; } " << prefix << "_field_plan;\n";
-  for (const auto& item : types.names) h << "typedef struct " << item.second << ' ' << item.second << ";\n";
-  for (auto id : types.order) types.declaration(id,h);
-  for (const auto& item : types.names) {
-    const auto& n = item.second;
-    h << "void " << n << "_init(" << n << "*);\nvoid " << n << "_free(" << n << "*);\n"
-      << "asn1_status_t " << n << "_copy(const " << n << "*, " << n << "*);\n"
-      << "asn1_status_t " << n << "_reset_defaults(" << n << "*);\n"
-      << "size_t " << n << "_field_count(void);\nconst " << prefix << "_field_plan *" << n << "_field(size_t);\n"
-      << "asn1_status_t " << n << "_select(size_t,const char*,uint32_t*);\n";
-  }
-  h << "#ifdef __cplusplus\n}\n#endif\n#endif\n";
+  types.header(h);
   s << "#include \"" << header_name << "\"\n#include <stdlib.h>\n#include <string.h>\n";
   for (const auto& item : types.names) s << "static asn1_status_t " << item.second << "_copy_at(const " << item.second
     << "*, " << item.second << "*, size_t);\n";
@@ -610,4 +636,122 @@ void emit_c_types(const ir::Model& model, const std::string& prefix,
 } catch (const std::ios_base::failure& ex) {
   diag.error({}, std::string("C types stream failure: ")+ex.what());
 }
+std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
+                                               const EmitOptions& opt, Diagnostics& diag) try {
+  if (!validate_emit_options(opt,diag)) return {};
+  if(opt.language!=TargetLanguage::C || !opt.c_types_only || opt.codec!=CodecKind::None) {
+    diag.error({},"C artifact rendering requires explicit type-only C options without codecs"); return {};
+  }
+  const auto prefix=opt.c_prefix.empty()?std::string("asn1_gen"):opt.c_prefix;
+  // Share the existing model/name/profile preflight, including untouched streams.
+  std::ostringstream checked_header, checked_source;
+  emit_c_types(model,prefix,opt.basename+".h",diag,checked_header,checked_source);
+  if (!diag.ok()) return {};
+  if (opt.emit_inline && (opt.emit_split || opt.split_max_types)) {
+    diag.error({},"C inline output conflicts with module/source splitting"); return {};
+  }
+  Types types(model,prefix,diag);
+  if (!types.prepare()) return {};
+  types.external_helpers=true;
+  types.inline_functions=opt.emit_inline;
+  std::ostringstream h; types.header(h);
+  std::vector<CGeneratedFile> files{{opt.basename+".h",h.str(),types.names.size(),opt.emit_inline?types.names.size()*9:0}};
+  if (!opt.emit_inline) {
+    std::ostringstream internal;
+    internal << "/* Generated C11 internal declarations. */\n#ifndef " << prefix << "_internal_h\n#define " << prefix
+      << "_internal_h\n#include \"" << opt.basename << ".h\"\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n";
+    types.helper_declarations(internal);
+    internal << "#ifdef __cplusplus\n}\n#endif\n#endif\n";
+    files.push_back({opt.basename+"_internal.h",internal.str(),0,0});
+    // Tarjan SCC over the actual storage/selector dependency graph. Sort by
+    // qualified emitted names, not unordered-container traversal.
+    std::map<TypeId,std::size_t> index,low;
+    std::set<TypeId> active;
+    std::vector<TypeId> stack;
+    std::vector<std::vector<TypeId>> groups;
+    std::size_t next=0;
+    std::function<void(TypeId)> visit=[&](TypeId id) {
+      index[id]=low[id]=next++; stack.push_back(id);active.insert(id);
+      auto deps=types.edges.at(id);
+      std::sort(deps.begin(),deps.end(),[&](TypeId a,TypeId b){return types.name(a)<types.name(b);});
+      for(auto dep:deps) {
+        if(!index.count(dep)){ visit(dep);low[id]=std::min(low[id],low[dep]); }
+        else if(active.count(dep)) low[id]=std::min(low[id],index[dep]);
+      }
+      if(low[id]==index[id]) {
+        std::vector<TypeId> group;
+        for(;;){const auto dep=stack.back();stack.pop_back();active.erase(dep);group.push_back(dep);if(dep==id)break;}
+        std::sort(group.begin(),group.end(),[&](TypeId a,TypeId b){return types.name(a)<types.name(b);});
+        groups.push_back(std::move(group));
+      }
+    };
+    std::vector<TypeId> ids;
+    for(const auto& item:types.names) ids.push_back(item.first);
+    std::sort(ids.begin(),ids.end(),[&](TypeId a,TypeId b){return types.name(a)<types.name(b);});
+    for(auto id:ids) if(!index.count(id)) visit(id);
+    std::sort(groups.begin(),groups.end(),[&](const auto& a,const auto& b){return types.name(a.front())<types.name(b.front());});
+    std::map<std::string,std::vector<std::vector<TypeId>>> modules;
+    for(auto& group:groups) {
+      std::string owner;
+      if(opt.emit_split) {
+        owner=model.arena.get(group.front()).module;
+        for(auto id:group) owner=std::min(owner,model.arena.get(id).module);
+        owner="c_m"+spell(owner);
+      }
+      if(opt.split_max_types && group.size()>opt.split_max_types)
+        diag.warning({},"C source SCC exceeds split-max-types: "+std::to_string(group.size())+" types, owner "+owner);
+      modules[owner].push_back(std::move(group));
+    }
+    for(const auto& module:modules) {
+      std::vector<std::vector<TypeId>> chunks;
+      for(const auto& group:module.second) {
+        if(chunks.empty() || (opt.split_max_types && !chunks.back().empty() &&
+            group.size()>opt.split_max_types-std::min(opt.split_max_types,chunks.back().size()))) chunks.emplace_back();
+        chunks.back().insert(chunks.back().end(),group.begin(),group.end());
+      }
+      for(std::size_t i=0;i<chunks.size();++i) {
+        std::string stem=opt.emit_split?module.first:opt.basename;
+        if(opt.split_max_types){std::ostringstream suffix;suffix << '_' << std::setw(4) << std::setfill('0') << i+1;stem+=suffix.str();}
+        std::ostringstream source;
+        source << "/* Generated C11 types only; no codec implementation. */\n#include \"" << opt.basename << "_internal.h\"\n#include <stdlib.h>\n#include <string.h>\n";
+        for(auto id:chunks[i]){types.body(id,source);types.defaults_body(id,source);types.metadata(id,source);}
+        files.push_back({stem+".c",source.str(),chunks[i].size(),chunks[i].size()*9});
+      }
+    }
+  }
+  std::set<std::string> unique;
+  for(const auto& file:files){
+    if(!portable_output_name(std::filesystem::path(file.name).stem().string())) {
+      diag.error({},"non-portable C output filename: "+file.name);return {};
+    }
+    auto key=file.name;for(auto& c:key)if(c>='A'&&c<='Z')c=char(c-'A'+'a');
+    if(!unique.insert(key).second){diag.error({},"C output filename collision: "+file.name);return {};}}
+  std::ostringstream json,cmake;
+  json << "{\"format\":1,\"language\":\"c\",\"types_only\":true,\"codec_mask\":0,\"inline\":"
+    << (opt.emit_inline?"true":"false") << ",\"split_modules\":" << (opt.emit_split?"true":"false")
+    << ",\"split_max_types\":" << opt.split_max_types << ",\"sources\":[";
+  cmake << "# Generated by asn1cxx; reconfigure after changing the schema/options.\nset(ASN1_GENERATED_SOURCES\n";
+  bool first=true;
+  for(const auto& file:files)if(file.name.size()>2 && file.name.substr(file.name.size()-2)==".c"){
+    if(!first)json << ',';first=false;json << '\"' << file.name << '\"';
+    cmake << "  \"${CMAKE_CURRENT_LIST_DIR}/" << file.name << "\"\n";
+  }
+  cmake << ")\nset(ASN1_GENERATED_HEADERS\n";
+  json << "],\"headers\":[";first=true;
+  for(const auto& file:files)if(file.name.size()>2 && file.name.substr(file.name.size()-2)==".h"){
+    if(!first)json << ',';first=false;json << '\"' << file.name << '\"';
+    cmake << "  \"${CMAKE_CURRENT_LIST_DIR}/" << file.name << "\"\n";
+  }
+  cmake << ")\n"; json << "],\"units\":[";first=true;
+  for(const auto& file:files){if(!first)json << ',';first=false;
+    json << "{\"file\":\"" << file.name << "\",\"types\":" << file.type_count << ",\"functions\":"
+      << file.function_count << ",\"bytes\":" << file.contents.size() << '}';}
+  json << "]}\n";
+  files.push_back({"generated-sources.json",json.str(),0,0});
+  files.push_back({"generated-sources.cmake",cmake.str(),0,0});
+  return files;
+} catch(const std::length_error& ex) {
+  diag.error({},std::string("C artifact capacity exceeded: ")+ex.what());return {};
+}
+
 }}

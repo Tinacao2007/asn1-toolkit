@@ -6,11 +6,14 @@ C++17 ASN.1 编译器与编解码运行时：将 ASN.1 规范（X.680 系列）�
 
 | 项目    | 值                                                                                                                                                                                     |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 当前阶段 | Phase 49 — C11 原语与 CGEN 第 1–2 批类型/生命周期完成；C CLI codec 仍 Unsupported，模块内分片属第 3 批。见 [状态](docs/status.md) |
-| 测试状态 | GCC Release、ASan+UBSan 各 **466/466**；7×12 实际入口语法矩阵 **84/84**；本批 MSVC 生成 C 针对性 **4/4**。见 [第 2 批验收](docs/cgen-batch2-validation.md) |
+| 当前阶段 | Phase 49 — C11 原语与 CGEN 第 1–3 批完成；C 类型-only 三形态/模块内分片可用，完整 C codec 仍 Unsupported。见 [状态](docs/status.md) |
+| 测试状态 | GCC Release、ASan+UBSan 各 **473/473**；7×12 实际入口语法矩阵 **84/84**；本批 MSVC **8/8** + 单头消费者 **1/1**。见 [第 3 批验收](docs/cgen-batch3-validation.md) |
 | 编码入口  | BER / DER / CER / UPER / APER / OER / COER / XER / CXER / E-XER / JER / JERI                                                                                                          |
 | 语言/构建 | C++17（GCC / Clang；MSVC 本地可用）+ CMake 3.16+                                                                                                                                             |
 | 依赖    | 零第三方运行时依赖（BigInt 自研，无 Boost、无 multiprecision）                                                                                                                                         |
+
+显式 `--lang c --types-only` 可生成纯 C11 类型/生命周期及模块内分片；完整 C codec 尚未开放。
+用法见 [C 输出与集成](docs/c-codegen-output.md)。
 
 ## 特性
 

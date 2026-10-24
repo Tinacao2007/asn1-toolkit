@@ -81,3 +81,16 @@ fields in cache keys. The future `.h/.c` layout/ownership/ABI contract is in
 [c-runtime-codegen-gaps.md](c-runtime-codegen-gaps.md). No generated C value codec
 or additional runtime implementation is enabled. Evidence:
 [cgen-batch1-validation.md](cgen-batch1-validation.md).
+
+
+## C type-only directory artifacts (CGEN batch 3)
+
+The same stage/backup/manifest transaction now registers `.h/.c` and the exact
+`generated-sources.json` / `generated-sources.cmake` sidecars, alongside legacy
+C++ artifacts. Unchanged stale owners are removed across language/shape/shard
+changes; edited stale and user files are retained and excluded from the new source
+list. No separate C publication implementation bypasses these protections.
+C single-header output uses `static inline`; ordinary/source-sharded C has external
+prefixed private depth helpers declared in its generated internal header.
+See [C output contract](c-codegen-output.md) for budgets, SCC/module ownership,
+cache behavior, current lists versus depfiles, and C-only CMake integration.

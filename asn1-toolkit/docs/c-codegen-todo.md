@@ -1,13 +1,13 @@
 # 纯 C11 代码生成后端执行清单
 
-Created 2026-10-23. Batches 1 and 2 (CGEN-01..06) complete as of 2026-10-24.
-Batch 2 implements pure-C type/lifecycle profiles, owning DEFAULT restoration,
-naming/public headers and actual shared-plan consumers. Full C codec dispatch
-and module-internal source shards remain later batches. Scope and acceptance:
-[batch 2 evidence](cgen-batch2-validation.md).
+Created 2026-10-23. Batches 1–3 (CGEN-01..09) complete as of 2026-10-24.
+Explicit C type/lifecycle-only CLI output now supports static-inline, module
+sources and SCC-preserving within-module shards, verified cache and transactional
+source-list publication. Ordinary C codec requests remain Unsupported.
+See [output contract](c-codegen-output.md) and [batch 3 evidence](cgen-batch3-validation.md).
 本清单细化 [P2-4](todo.md#p2-4--c-语言代码生成器-lang-c) sub-task 3+，
 承接 [共享规划](emission-planning.md) 与 REV-27，不另建一套前端或 runtime。
-C dispatch now reports Unsupported; evidence: [batch 1](cgen-batch1-validation.md).
+Ordinary C codec dispatch reports Unsupported; historical evidence: [batch 1](cgen-batch1-validation.md).
 
 ## 目标与现状
 
@@ -20,8 +20,8 @@ C dispatch now reports Unsupported; evidence: [batch 1](cgen-batch1-validation.m
 ByteReader 尚无完整 byte decode API，JER/XER reader 只绑定输入。
 因此不能直接把 C++ emitter 的函数名替换为 C 前缀，也不能假定 C runtime 已支持全部类型。
 
-当前 `--emit-split` 只按模块拆分；RRC fixture 只有一个模块，不能靠它解决单文件过大。
-本清单将“单个 ASN.1 模块内部拆 `.c`”作为首轮可用版本的必需能力。
+C++ `--emit-split` 仍按模块；显式 C `--types-only` 可叠加 `--split-max-types N`，
+已解决类型产物的模块内源分片。完整 codec 编排仍在后续批次。
 既有 RRC 是 LTE EUTRA fixture，不是 TS 38.331；NR 全文测试须另行引入明确版本的输入。
 
 ## 必须保留的约束
@@ -74,15 +74,15 @@ OOM/部分初始化/CHOICE 切换/多 TU 负例；生成头不包含任何 C++ �
 
 ### 第 3 批：模块内分片与可靠产物管理
 
-- [ ] **CGEN-07【重要】按类型依赖规划 `.c` 分片。** 在现有模块 split 外增加可配置的
+- [x] **CGEN-07【重要】按类型依赖规划 `.c` 分片。** 在现有模块 split 外增加可配置的
   单模块源分片；暂定参数 `--split-max-types N`，实施时在设计中固定语义。
   按稳定顺序/依赖 SCC 分组；每个函数只定义一次，跨片调用有声明，不依赖 static 私有
   函数跨 TU 可见。公共类型头先保证正确，测量后再决定是否按依赖拆头。
-- [ ] **CGEN-08【重要】明确三种形态与分片组合。** 默认 out-of-line 为 `.h/.c`；
+- [x] **CGEN-08【重要】明确三种形态与分片组合。** 默认 out-of-line 为 `.h/.c`；
   C 单头使用 `static inline`，避免 C99/C11 外部 inline 规则造成遗漏/重复符号。
   `--emit-split` 仍按模块，叠加模块内分片；inline 与源分片冲突明确报错。
   可选按 codec 分开源文件，但不能复制类型声明或公共生命周期定义。
-- [ ] **CGEN-09【重要】扩展 REV-25 输出事务。** manifest/归属验证接受 `.h/.c` 和分片；
+- [x] **CGEN-09【重要】扩展 REV-25 输出事务。** manifest/归属验证接受 `.h/.c` 和分片；
   缓存按稳定单元记录语言/codec/分片参数及依赖；暂存成功才发布，旧文件按归属和 hash
   清理，拒绝同目录并发。切换 C/C++、形态、片数不残留参与链接的旧产物，不删除用户文件。
   提供机器可读源清单与可选 CMake include 清单，明确它们与 depfile 的区别。
@@ -159,32 +159,21 @@ OOM/部分初始化/CHOICE 切换/多 TU 负例；生成头不包含任何 C++ �
 里程碑 M2：12 入口与三形态/模块内分片达到所登记支持范围，最终 C/C++ 门禁和安装
 消费全部通过；仍不等于整部 ASN.1 标准或全部 3GPP 消息得到认证。
 
-## 计划中的使用示例（当前不可运行）
+## 当前可运行的 C type-only 示例
 
-下列参数以 CGEN-03/07 的最终设计为准；`128` 只是分片阈值示例，不是性能承诺。
+以下命令已经由 CGEN-03/07 验收；`128` 是软类型数预算，不是性能承诺或字节上限：
 
 ```sh
-asn1cxx --lang c --c-prefix rrc --codec uper,ber \
+asn1cxx --lang c --types-only --c-prefix rrc \
   --emit-split --split-max-types 128 --emit-dir build/gen-c \
   tests/fixtures/telecom/rrc_8_6_0/EUTRA-RRC-Definitions.asn
 ```
 
-预期目录示意（最终命名由 CGEN-01/07 确定）：
-
-```text
-build/gen-c/
-  generated.h
-  EUTRA_RRC_Definitions.h
-  EUTRA_RRC_Definitions_types.c
-  EUTRA_RRC_Definitions_uper_0001.c
-  EUTRA_RRC_Definitions_uper_0002.c
-  EUTRA_RRC_Definitions_ber_0001.c
-  generated-sources.cmake
-  .asn1cxx-manifest
-```
-
-分片优先按稳定类型/依赖组；按 codec 再分源是可选实现策略，示意文件名不构成现有能力。
-若最后只生成一个巨大 `.c`，或需要 C++ 编译器才能消费，不能判定用户需求已经完成。
+当前产物包含一个完整公共 `generated.h`、内部声明头、模块归属的 `.c` 分片、
+`generated-sources.json`、`generated-sources.cmake` 和 `.asn1cxx-manifest`。
+RRC fixture 已通过整个类型产物集的 C11 编译、链接和代表生命周期调用；这不表示
+C codec 可用，也不表示 LTE/NR 全部 PDU 或 TS 38.331 wire 行为已验证。文件命名与组合规则
+见 [C 输出契约](c-codegen-output.md)，批次证据见 [CGEN 第 3 批记录](cgen-batch3-validation.md)。
 
 ## 每批执行与完成记录
 

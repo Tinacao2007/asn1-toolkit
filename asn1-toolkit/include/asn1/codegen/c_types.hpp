@@ -1,5 +1,5 @@
 #pragma once
-#include <asn1/ir/type.hpp>
+#include <asn1/codegen/emit.hpp>
 #include <asn1/support/diagnostics.hpp>
 #include <ostream>
 #include <string>
@@ -18,4 +18,14 @@ namespace asn1 { namespace codegen {
 void emit_c_types(const ir::Model&, const std::string& prefix,
                   const std::string& header_name, Diagnostics&,
                   std::ostream& header, std::ostream& source);
+struct CGeneratedFile {
+  std::string name;
+  std::string contents;
+  std::size_t type_count = 0;
+  std::size_t function_count = 0;
+};
+// Pure rendering/planning: no filesystem access or runtime linkage.
+// Empty on diagnosed failure. Directory publication uses unified dispatch.
+std::vector<CGeneratedFile> render_c_type_files(const ir::Model&,
+                                               const EmitOptions&, Diagnostics&);
 }}

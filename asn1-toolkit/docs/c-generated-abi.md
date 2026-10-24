@@ -1,7 +1,8 @@
 # C generated artifact and ABI design (CGEN-01)
 
-This is the batch 1 design contract plus the limited batch 2 stream API below.
-`--lang c` currently fails with an Unsupported diagnostic and publishes nothing.
+This is the batch 1 design contract plus the explicit type/lifecycle profiles.
+C codec requests still fail with Unsupported. Batch 3 adds `--lang c --types-only`
+with actual directory artifacts, shapes and source shards; see [output contract](c-codegen-output.md).
 The compiler stays C++17, uses Diagnostics/Result, and never links either runtime.
 Generated C11 alone bridges compiler decisions to `asn1::c_runtime`.
 
@@ -9,8 +10,8 @@ Generated C11 alone bridges compiler decisions to `asn1::c_runtime`.
 
 `asn1::codegen::emit_c_types` renders one header/source pair into caller-owned
 streams. Model/option rejection leaves streams untouched; publication remains the
-caller's responsibility. Codec dispatch, artifact cache, inline and split output
-are later batches; `--lang c` still reports Unsupported. See
+caller's responsibility. The separate unified type-only directory path now supports
+cache, inline and source split output. Codec dispatch still reports Unsupported. See
 [acceptance evidence](cgen-batch2-validation.md).
 
 Layouts cover BOOLEAN/NULL, bounded native INTEGER and owned BigInt INTEGER,

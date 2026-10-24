@@ -89,7 +89,7 @@ PER 改动同时验证两种 Variant，覆盖非零起始位、整数符号/补�
 独立验证 compiler-only/runtime-only；组件开关不能只在全量构建里测试。
 
 规划只依赖 IR，借用计划不能比 descriptor 活得久，IR 在消费期间不可修改。
-C emitter 后续调用同一规划，不能复制 presence/标签/约束/扩展/selector 判定。
+C 类型后端已消费同一规划；后续 codec 继续复用，不复制 presence/标签/约束/扩展/selector 判定。
 计划模型和 C++ 接入通过不等于 C emitter 通过，真实生成 C PDU 验收留给对应子任务。
 
 ### 标准语义与独立验证
@@ -158,23 +158,23 @@ runner 的自动门禁不替代每批独立 oracle、生成 C PDU 或安装验�
 历史验收和分析快照保留原数字；只同步当前状态数字。
 
 每批完成时检查本 skill：把已验证且可复用的流程变化同步到对应段落，详细证据
-链接到验收文档，不复制整个任务清单。REV-27 的 C 接入及能力矩阵延期项不能写成已实现能力，
-尤其不能把 C11 原语与 smoke 通过表述为 Phase49 C emitter 已完成。
+链接到验收文档，不复制整个任务清单。按当前验收区分原语、类型产物和 codec；
+不能把 C11 smoke 或类型-only 通过写成完整 C PDU 编解码已完成。
 
 该文件是仓库内的 skill 源文件；置于 docs 不代表已安装到 Codex 的技能发现目录。
 
 
 ## CGEN batch 1 reusable checks
 
-C generation rejects through unified directory dispatch before filesystem/cache
-I/O; legacy CppGenerator stream paths must also reject C target options.
+Ordinary C codec generation rejects through unified dispatch before filesystem/cache
+I/O; explicit type-only output is the batch-3 exception. legacy CppGenerator stream paths must also reject C target options.
 Build asn1cxx, asn1_emit_cache_tests and asn1_entry_combined,
 asn1_entry_combined_inline, asn1_entry_combined_split. Then run
 `ctest --test-dir <build> -C Release -R '^CGenBatch1\.' --output-on-failure`.
 These tests execute API/CLI rejection, preserve prior artifacts/cache and compare
 all twelve actual C++ entries across outline/inline/split. Do not turn Unsupported
 into successful empty `.h/.c` output. Language/prefix options must join cache
-identity; source-shard options remain a later batch. Keep the ABI design and gap
+identity; explicit type-only/source-shard behavior is covered by batch 3 below. Keep the ABI design and gap
 audit separate from the primitive declaration register. See
 [batch 1 evidence](../../cgen-batch1-validation.md),
 [C ABI design](../../c-generated-abi.md) and [runtime gaps](../../c-runtime-codegen-gaps.md).
@@ -206,3 +206,35 @@ lookup and group coherence in actual compiled C. REV-27 planning reuse can be
 closed on this evidence; it does not open wire codecs or their PDU/oracle gates. SIZE units differ for bits/octets/elements;
 character-string byte length is not ASN.1 character count. REAL host-double,
 OID uint64 arcs and enum int64 are declared profiles, not full standard domains.
+
+
+## CGEN batch 3 artifact checks
+
+C CLI artifacts require explicit `--types-only` and no codec. Preserve rejection
+of ordinary unsupported codec requests; do not manufacture successful codec stubs.
+`CppGenerator` remains C++ only. Follow the [C output contract](../../c-codegen-output.md)
+for SCC budgets, source ownership, internal helper linkage and source lists.
+
+Run `CGenBatch3` in Release and ASan+UBSan. Shape tests compile/link two actual C
+consumers, inject allocation failures into each generated shard, include headers
+under strict C++17 and compare values/primitive wire projections. The latter is
+not full generated-PDU evidence. Keep the single-module threshold-change test,
+whole LTE RRC fixture type compile/link, cache corruption/hit/miss checks and
+C-only CMake source-list consumer. Record shape/RRC metrics from actual runs.
+
+Inline C uses `static inline` for public and private functions. Cross-source depth
+helpers instead have prefixed external declarations in the generated internal
+header; no static helper may be assumed visible across TUs. Extend the measured
+function count when adding emitters and retain actual definition/link checks.
+C++17 header consumers need valid typed zero initialization for enum-first structs.
+
+C and C++ publication share one transaction. Test language/shape/budget changes,
+modified stale files, unowned sidecars, symlinks, lock and model/manifest failures.
+Only current sources enter JSON/CMake; retained user files must not enter a glob.
+A CMake source list is not a depfile or automatic ASN.1 build dependency.
+
+Verify pure-C runtime dependencies in non-instrumented binaries. GCC UBSan itself
+pulls libstdc++, so its dependency is not evidence of a product runtime leak.
+Keep sanitizer execution fully instrumented. A missing compiler is unexecuted
+coverage, not a passing result; preserve later toolchain checkboxes. Evidence:
+[batch 3 validation](../../cgen-batch3-validation.md).

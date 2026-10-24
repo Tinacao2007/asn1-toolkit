@@ -378,3 +378,18 @@ owning-default restoration have [explicit profiles](c-generated-abi.md).
 This backend does not publish directories or generate codecs. CLI C dispatch
 remains Unsupported; source shards and full PDU orchestration belong to later
 batches. See [batch 2 evidence](cgen-batch2-validation.md).
+
+
+## CGEN batch 3 artifact boundary
+
+`render_c_type_files` stays a pure IR-to-text planner/renderer inside codegen.
+Unified directory dispatch accepts explicit C types-only options, then reuses
+REV-25 stage/manifest publication. `CppGenerator` remains C++ only. No compiler
+runtime link is added; only emitted C includes the C runtime.
+Dependency SCCs remain intact for deterministic source ownership/budgeting;
+complete public types and a private declaration header connect actual C shards.
+Static-inline C gives every TU internal definitions. JSON/CMake list the current
+source set; consumers regenerate/reconfigure after schema/option changes.
+The verified per-file cache conservatively depends on all source inputs and
+includes shape/shard parameters and generator identity. Rendering is still
+planned on hits; no claim of skipped CPU work. [Contract](c-codegen-output.md).
