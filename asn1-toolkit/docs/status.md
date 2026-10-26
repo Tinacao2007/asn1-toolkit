@@ -1,18 +1,32 @@
 # 项目状态
 
-当前状态的唯一权威。状态截至 **2026-10-24**。历史变更见
+当前状态的唯一权威。状态截至 **2026-10-26**。历史变更见
 [changelog.md](changelog.md)。已排期 / 未排期待办见
 [todo.md](todo.md)。
 
 ## 当前阶段
 
-**Phase 49: C runtime primitives and CGEN batches 1–3 complete within documented profiles.**
+**Phase 49: CGEN batches 1–4 complete for their declared profiles; batch 5 is next.**
 
 CGEN-07..09 adds explicit `--lang c --types-only` output in ordinary, static-inline,
 module and within-module shard forms, deterministic SCC budgeting and shared
-transactional publication/cache with JSON/CMake source lists. C++ behavior and
-all earlier C lifecycle/planning checks remain covered. Ordinary C codecs are
-Unsupported; complete PDU code generation starts in later batches.
+transactional publication/cache with JSON/CMake source lists. C++ behavior and all
+earlier C lifecycle/planning checks remain covered. Batch 4's C UPER/APER profile
+now has C11 consumers for BOOLEAN, NULL, INTEGER, ENUMERATED, BIT/OCTET STRING,
+OID/RELATIVE-OID, restricted Numeric/IA5 strings, common binary64/decimal REAL,
+root CHOICE, SEQUENCE OF/SET OF, recursive SEQUENCE OF, extensible SEQUENCE/SET
+single additions and version-bracket groups. It also carries opaque open-type
+payloads and selector lookup. Out-of-line, inline and split forms pass Release and
+ASan+UBSan consumer tests. Collection length fragmentation, cumulative PDU budgets,
+collection-growth allocation-failure injection, CHOICE extensions, trailing-root
+components and selector-driven typed open decode are now covered. Full restricted
+alphabet/resource profiles, the broader failure matrix and independent oracle checks
+remain outside this declared profile: full X.691 string/REAL value ranges, unknown
+CHOICE extension preservation, broader allocation/cursor fault matrix and external
+oracle vectors for every schema shape. Those limits are explicit; unsupported inputs
+must be diagnosed. MSVC Release full suite **455/455**; Ubuntu GCC ASan+UBSan batch 2/4
+targeted regression **12/12**. See
+[batch 4 validation and limits](cgen-batch4-validation.md).
 
 GCC Release and ASan+UBSan each **473/473**; actual C++ selector syntax matrix
 **84/84**; MSVC targeted checks **8/8**, plus a two-TU C11 static-inline consumer

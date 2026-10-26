@@ -14,6 +14,8 @@ with tempfile.TemporaryDirectory(prefix="cgen-batch1-") as tmp:
                                 capture_output=True, text=True)
         assert (result.returncode == 0) == success, (args, result.stdout, result.stderr)
         return result
+    def snapshot(directory):
+        return {p.relative_to(directory): p.read_bytes() for p in directory.rglob("*") if p.is_file()}
     cases = [(["--lang", "rust"], "unknown language"),
              (["--lang", "c", "--namespace", "asn1_gen"], "conflicts"),
              (["--c-prefix", "abc"], "requires --lang c"),
@@ -28,30 +30,37 @@ with tempfile.TemporaryDirectory(prefix="cgen-batch1-") as tmp:
     for option in ("--lang", "--c-prefix"):
         result = subprocess.run([compiler, option], capture_output=True, text=True)
         assert result.returncode != 0 and "requires a value" in result.stderr
-    codecs = "uper aper ber der cer oer coer jer jeri xer cxer exer".split()
+    for codec in ("uper", "aper", "per", "uper,aper"):
+        for shape in ([], ["--emit-inline"], ["--emit-split"]):
+            output = root / (codec.replace(',', '_') + ('_inline' if shape and shape[0]=='--emit-inline' else '_split' if shape else '_out'))
+            run(["--lang", "c", "--c-prefix", "sample", "--codec", codec, *shape], output, True)
+            manifest = (output / "generated-sources.json").read_text()
+            assert '"types_only":false' in manifest and '"codec_mask":' in manifest
+            assert "encode_uper" in (output / "generated.h").read_text() if codec in ("uper", "per", "uper,aper") else True
+            assert "encode_aper" in (output / "generated.h").read_text() if codec in ("aper", "per", "uper,aper") else True
+    codecs = "ber der cer oer coer jer jeri xer cxer exer".split()
     for codec in codecs:
         for shape in ([], ["--emit-inline"], ["--emit-split"]):
-            output = root / "unsupported"
-            args = ["--lang", "c", "--c-prefix", "sample", "--codec", codec, *shape]
-            result = run(args, output, False)
-            assert "Unsupported" in result.stderr
+            output = root / "unsupported_" / codec / ("inline" if shape and shape[0]=='--emit-inline' else "split" if shape else "out")
+            result = run(["--lang", "c", "--c-prefix", "sample", "--codec", codec, *shape], output, False)
+            assert "supports --types-only" in result.stderr
             assert not output.exists()
-    # Reject before touching a previously published C++ directory or its cache.
+    # Language switching publishes one owned artifact set and retires the old one.
     output = root / "cpp"
     run([], output, True)
-    def snapshot(directory):
-        return {p.relative_to(directory): p.read_bytes() for p in directory.rglob("*") if p.is_file()}
-    baseline = snapshot(output)
-    run(["--lang", "c"], output, False)
-    assert snapshot(output) == baseline
+    assert (output / "generated.hpp").exists() and (output / "generated.cpp").exists()
+    run(["--lang", "c"], output, True)
+    assert (output / "generated.h").exists() and (output / "generated.c").exists()
+    assert not (output / "generated.hpp").exists() and not (output / "generated.cpp").exists()
     run(["--lang", "cpp"], output, True)
-    assert snapshot(output) == baseline
+    assert (output / "generated.hpp").exists() and (output / "generated.cpp").exists()
+    assert not (output / "generated.h").exists() and not (output / "generated.c").exists()
     for flags in ([], ["--emit-inline"], ["--emit-split"]):
         a, b = root / "default", root / "explicit"
         run(["--no-emit-cache", "--codec", "uper,ber", *flags], a, True)
         run(["--lang", "cpp", "--no-emit-cache", "--codec", "uper,ber", *flags], b, True)
         assert snapshot(a) == snapshot(b)
-print("C dispatch rejected all 12 entries in three shapes; C++ artifacts/cache preserved")
+print("C emits supported PER subsets and rejects unsupported rules; C++ artifacts/cache preserved")
 
 # Compare the actual encoded results of all twelve entries across three shapes.
 outputs = [subprocess.run([driver], check=True, capture_output=True).stdout

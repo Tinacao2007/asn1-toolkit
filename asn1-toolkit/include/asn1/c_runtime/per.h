@@ -61,6 +61,11 @@ typedef struct {
 /* One shared core for both variants. Legacy functions below wrap UPER. */
 typedef enum { ASN1_PER_UNALIGNED = 0, ASN1_PER_ALIGNED = 1 } asn1_per_variant_t;
 typedef enum {
+  ASN1_PER_STRING_IA5 = 0, ASN1_PER_STRING_PRINTABLE = 1,
+  ASN1_PER_STRING_VISIBLE = 2, ASN1_PER_STRING_NUMERIC = 3,
+  ASN1_PER_STRING_BMP = 4, ASN1_PER_STRING_UNIVERSAL = 5
+} asn1_per_string_kind_t;
+typedef enum {
   ASN1_PER_LENGTH_UNCONSTRAINED = 0,
   ASN1_PER_LENGTH_CONSTRAINED = 1,
   ASN1_PER_LENGTH_SEMI_CONSTRAINED = 2
@@ -73,6 +78,36 @@ typedef struct {
   int extensible;
 } asn1_per_length_constraint_t;
 
+/* X.691 18.1/19.1 presence and extension preamble. The decoder owns
+   optional_bits; release it with asn1_per_sequence_preamble_free(). */
+typedef struct {
+    int extensions_present;
+    uint8_t* optional_bits;
+    size_t optional_count;
+} asn1_per_sequence_preamble_t;
+typedef struct {
+    uint8_t* presence;
+    uint8_t** open_type_data;
+    size_t* open_type_sizes;
+    size_t count;
+} asn1_per_extension_additions_t;
+asn1_status_t asn1_per_encode_sequence_preamble(asn1_bit_writer_t*, int extensible,
+                                                int extensions_present,
+                                                const uint8_t* optional_bits,
+                                                size_t optional_count);
+asn1_status_t asn1_per_decode_sequence_preamble(asn1_bit_reader_t*, int extensible,
+                                                size_t optional_count,
+                                                asn1_per_sequence_preamble_t* out);
+void asn1_per_sequence_preamble_free(asn1_per_sequence_preamble_t*);
+/* Encoder values are indexed by extension slot; only present slots are read.
+   Decoder out must be zero-initialized or previously freed; success replaces
+   it with owned arrays, failure leaves it unchanged. */
+asn1_status_t asn1_per_encode_extension_additions(asn1_bit_writer_t*, asn1_per_variant_t,
+    const uint8_t* presence, size_t count, const asn1_byte_view_t* open_types);
+asn1_status_t asn1_per_decode_extension_additions(asn1_bit_reader_t*, asn1_per_variant_t,
+    asn1_per_extension_additions_t*);
+void asn1_per_extension_additions_free(asn1_per_extension_additions_t*);
+
 /* A single determinant; more!=0 requires 16K/32K/48K/64K units.
    Caller interleaves determinants with payload and writes a final determinant
    (including zero after an exact fragment). No whole-value length ambiguity. */
@@ -82,18 +117,54 @@ asn1_status_t asn1_per_decode_length_fragment(asn1_bit_reader_t*, asn1_per_varia
    lengths return Unsupported; use the whole string/open-type APIs instead. */
 asn1_status_t asn1_per_encode_size_ex(asn1_bit_writer_t*, asn1_per_variant_t, const asn1_per_length_constraint_t*, size_t);
 asn1_status_t asn1_per_decode_size_ex(asn1_bit_reader_t*, asn1_per_variant_t, const asn1_per_length_constraint_t*, size_t*);
+/* Collection lengths are interleaved with elements when fragmented. Call
+   encode with remaining count; decode with cumulative count before this chunk. */
+asn1_status_t asn1_per_encode_collection_fragment_ex(asn1_bit_writer_t*, asn1_per_variant_t,
+    const asn1_per_length_constraint_t*, size_t remaining, int first,
+    int* is_extension, size_t* chunk, int* more);
+asn1_status_t asn1_per_decode_collection_fragment_ex(asn1_bit_reader_t*, asn1_per_variant_t,
+    const asn1_per_length_constraint_t*, int first, int* is_extension,
+    size_t consumed, size_t* chunk, int* more);
 asn1_status_t asn1_per_encode_int_ex(asn1_bit_writer_t*, asn1_per_variant_t, const asn1_per_int_range_t*, int64_t);
 asn1_status_t asn1_per_decode_int_ex(asn1_bit_reader_t*, asn1_per_variant_t, const asn1_per_int_range_t*, int64_t*);
 asn1_status_t asn1_per_encode_unbounded_int_ex(asn1_bit_writer_t*, asn1_per_variant_t, const asn1_bigint_t*);
 asn1_status_t asn1_per_decode_unbounded_int_ex(asn1_bit_reader_t*, asn1_per_variant_t, asn1_bigint_t*);
+/* X.691 10.6 normally-small non-negative whole number. */
+asn1_status_t asn1_per_encode_normally_small_uint_ex(asn1_bit_writer_t*, asn1_per_variant_t, uint64_t);
+asn1_status_t asn1_per_decode_normally_small_uint_ex(asn1_bit_reader_t*, asn1_per_variant_t, uint64_t*);
+/* X.691 10.5: root_index is the sorted root ordinal; extension_index is the
+   ordinal in the extension list. Decode returns extension and ordinal. */
+asn1_status_t asn1_per_encode_enumerated_ex(asn1_bit_writer_t*, asn1_per_variant_t,
+                                           size_t root_index, size_t root_count,
+                                           int extensible, int is_extension,
+                                           uint64_t extension_index);
+asn1_status_t asn1_per_decode_enumerated_ex(asn1_bit_reader_t*, asn1_per_variant_t,
+                                           size_t root_count, int extensible,
+                                           int* is_extension, uint64_t* ordinal);
+/* X.691 23: BER OBJECT IDENTIFIER contents carried with a semi-constrained
+   octet count. Arc storage is uint64_t; larger ASN.1 arcs are rejected. */
+asn1_status_t asn1_per_encode_oid_ex(asn1_bit_writer_t*, asn1_per_variant_t,
+                                     const uint64_t* arcs, size_t count, int relative);
+/* Decode replaces both output values only on success; caller frees arcs. */
+asn1_status_t asn1_per_decode_oid_ex(asn1_bit_reader_t*, asn1_per_variant_t,
+                                     uint64_t** out_arcs, size_t* out_count, int relative);
 asn1_status_t asn1_per_encode_bitstring_ex(asn1_bit_writer_t*, asn1_per_variant_t, const asn1_per_length_constraint_t*, const asn1_bitstring_t*);
 asn1_status_t asn1_per_decode_bitstring_ex(asn1_bit_reader_t*, asn1_per_variant_t, const asn1_per_length_constraint_t*, asn1_bitstring_t*);
 asn1_status_t asn1_per_encode_octetstring_ex(asn1_bit_writer_t*, asn1_per_variant_t, const asn1_per_length_constraint_t*, asn1_byte_view_t);
 asn1_status_t asn1_per_decode_octetstring_ex(asn1_bit_reader_t*, asn1_per_variant_t, const asn1_per_length_constraint_t*, uint8_t**, size_t*);
+/* Restricted ASN.1 character strings use UTF-8 in memory and X.691 30
+   alphabet codes on the wire. Returned UTF-8 storage is caller-owned. */
+asn1_status_t asn1_per_encode_restricted_string_ex(asn1_bit_writer_t*, asn1_per_variant_t,
+    const asn1_per_length_constraint_t*, asn1_per_string_kind_t, asn1_byte_view_t);
+asn1_status_t asn1_per_decode_restricted_string_ex(asn1_bit_reader_t*, asn1_per_variant_t,
+    const asn1_per_length_constraint_t*, asn1_per_string_kind_t, uint8_t**, size_t*);
+/* X.691 15 REAL: canonical binary64 values are carried as X.690 REAL
+   contents inside the shared PER length determinant. */
+asn1_status_t asn1_per_encode_real_ex(asn1_bit_writer_t*, asn1_per_variant_t, double);
+asn1_status_t asn1_per_decode_real_ex(asn1_bit_reader_t*, asn1_per_variant_t, double*);
 /* Open-type content is already complete-encoded octets. Both variants use
-   the same length/chunk core; APER aligns. Caller pads inner encodings,
-   including one zero octet for an otherwise empty inner encoding.
-   Empty content is rejected rather than silently emitting an invalid open type. */
+   the same length/chunk core; APER aligns. Zero-length complete encodings
+   are valid (for example, NULL has an empty PER encoding). */
 asn1_status_t asn1_per_encode_open_type(asn1_bit_writer_t*, asn1_per_variant_t, asn1_byte_view_t);
 asn1_status_t asn1_per_decode_open_type(asn1_bit_reader_t*, asn1_per_variant_t, uint8_t**, size_t*);
 
@@ -153,14 +224,13 @@ asn1_status_t asn1_per_decode_octetstring(asn1_bit_reader_t* r,
                                          uint8_t** out_buf,
                                          size_t* out_size);
 
-/* Future work: UTF8String / BMPString / etc. text primitives,
-   the presence bitmap for OPTIONAL /
-   DEFAULT fields, and the extension-bit write/read at the top of an
-   extensible SEQUENCE/CHOICE. */
+/* String alphabet mapping (UTF8String, BMPString, etc.) and extensible
+   SEQUENCE/CHOICE extension-addition orchestration are codegen/runtime work;
+   callers must not treat raw OCTET STRING helpers as character-string codecs. */
 
 /* ----- UPER / APER entry points (per codec) ---------------------------- */
-/* Future C emitter supplies per-type entry points in generated headers,
-   rather than declaring nonexistent fixture-specific functions here. */
+/* Generated C headers declare per-type UPER/APER entry points for the
+   explicitly supported profile. This runtime header remains schema-agnostic. */
 
 #ifdef __cplusplus
 }  /* extern "C" */

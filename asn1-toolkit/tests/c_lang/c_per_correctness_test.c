@@ -173,9 +173,9 @@ static void invalid_inputs(void) {
   CHECK(asn1_per_encode_size_ex(w,ASN1_PER_UNALIGNED,&c,16384)==ASN1_ERR_UNSUPPORTED);
   CHECK(asn1_per_encode_length_fragment(w,ASN1_PER_UNALIGNED,16385,1)==ASN1_ERR_INVALID_ARGUMENT);
   CHECK(asn1_per_encode_length_fragment(w,(asn1_per_variant_t)7,0,0)==ASN1_ERR_INVALID_ARGUMENT);
-  CHECK(asn1_per_encode_open_type(w,ASN1_PER_UNALIGNED,asn1_byte_view(NULL,0))==ASN1_ERR_INVALID_ARGUMENT);
+  OK(asn1_per_encode_open_type(w,ASN1_PER_UNALIGNED,asn1_byte_view(NULL,0)));
   asn1_per_size_range_t legacy={0,0}; CHECK(asn1_per_encode_size(w,&legacy,16384)==ASN1_ERR_UNSUPPORTED);
-  CHECK(asn1_bit_writer_bit_size(w)==0); asn1_bit_writer_destroy(w);
+  CHECK(asn1_bit_writer_bit_size(w)==8); asn1_bit_writer_destroy(w);
   const uint8_t invalid[]={0xC0,0xC5,0xFF};
   for(size_t i=0;i<sizeof(invalid);++i) {
     asn1_bit_reader_t* r=NULL; OK(asn1_bit_reader_create(&r,asn1_byte_view(invalid+i,1)));
@@ -217,6 +217,152 @@ static void length_helpers(void) {
   CHECK(asn1_per_decode_size(r,&legacy,&length)==ASN1_ERR_UNSUPPORTED && length==77);
   asn1_bit_reader_destroy(r);
 }
+static void normally_small_and_enumerated(void) {
+  const uint64_t values[]={0,1,63,64,127,255,256,UINT64_C(4294967296),UINT64_MAX};
+  for(int v=0;v<2;++v) for(size_t i=0;i<sizeof(values)/sizeof(*values);++i) {
+    asn1_bit_writer_t* w=NULL; OK(asn1_bit_writer_create(&w));
+    OK(asn1_bit_writer_put_bit(w,1));
+    OK(asn1_per_encode_normally_small_uint_ex(w,(asn1_per_variant_t)v,values[i]));
+    OK(asn1_bit_writer_put_bit(w,1));
+    uint8_t* bytes=NULL; size_t n=0; OK(asn1_bit_writer_take(w,&bytes,&n));
+    asn1_bit_reader_t* r=NULL; OK(asn1_bit_reader_create(&r,asn1_byte_view(bytes,n)));
+    int bit=0; uint64_t decoded=0; OK(asn1_bit_reader_get_bit(r,&bit)); CHECK(bit==1);
+    OK(asn1_per_decode_normally_small_uint_ex(r,(asn1_per_variant_t)v,&decoded)); CHECK(decoded==values[i]);
+    OK(asn1_bit_reader_get_bit(r,&bit)); CHECK(bit==1);
+    free(bytes); asn1_bit_reader_destroy(r); asn1_bit_writer_destroy(w);
+  }
+  for(int v=0;v<2;++v) {
+    const size_t roots=5;
+    for(size_t i=0;i<roots;++i) {
+      asn1_bit_writer_t* w=NULL; OK(asn1_bit_writer_create(&w));
+      OK(asn1_per_encode_enumerated_ex(w,(asn1_per_variant_t)v,i,roots,1,0,0));
+      uint8_t* bytes=NULL; size_t n=0; OK(asn1_bit_writer_take(w,&bytes,&n));
+      asn1_bit_reader_t* r=NULL; OK(asn1_bit_reader_create(&r,asn1_byte_view(bytes,n)));
+      int ext=1; uint64_t ordinal=99;
+      OK(asn1_per_decode_enumerated_ex(r,(asn1_per_variant_t)v,roots,1,&ext,&ordinal));
+      CHECK(!ext && ordinal==i); free(bytes); asn1_bit_reader_destroy(r); asn1_bit_writer_destroy(w);
+    }
+    const uint64_t ext_values[]={0,63,64,500};
+    for(size_t i=0;i<sizeof(ext_values)/sizeof(*ext_values);++i) {
+      asn1_bit_writer_t* w=NULL; OK(asn1_bit_writer_create(&w));
+      OK(asn1_per_encode_enumerated_ex(w,(asn1_per_variant_t)v,0,roots,1,1,ext_values[i]));
+      uint8_t* bytes=NULL; size_t n=0; OK(asn1_bit_writer_take(w,&bytes,&n));
+      asn1_bit_reader_t* r=NULL; OK(asn1_bit_reader_create(&r,asn1_byte_view(bytes,n)));
+      int ext=0; uint64_t ordinal=99;
+      OK(asn1_per_decode_enumerated_ex(r,(asn1_per_variant_t)v,roots,1,&ext,&ordinal));
+      CHECK(ext && ordinal==ext_values[i]); free(bytes); asn1_bit_reader_destroy(r); asn1_bit_writer_destroy(w);
+    }
+  }
+  asn1_bit_writer_t* w=NULL; OK(asn1_bit_writer_create(&w));
+  CHECK(asn1_per_encode_enumerated_ex(w,ASN1_PER_UNALIGNED,5,5,0,0,0)==ASN1_ERR_INVALID_ARGUMENT);
+  CHECK(asn1_per_encode_enumerated_ex(w,ASN1_PER_UNALIGNED,0,5,0,1,0)==ASN1_ERR_INVALID_ARGUMENT);
+  CHECK(asn1_bit_writer_bit_size(w)==0); asn1_bit_writer_destroy(w);
+  /* X.691 10.6/10.7/10.9: the >=64 form contains an octet-aligned
+     semi-constrained value in APER, while UPER appends the fields tightly. */
+  const uint8_t expected_uper[]={0x80,0xA0,0x00};
+  const uint8_t expected_aper[]={0x80,0x01,0x40};
+  for(int v=0;v<2;++v) {
+    OK(asn1_bit_writer_create(&w));
+    OK(asn1_per_encode_normally_small_uint_ex(w,(asn1_per_variant_t)v,64));
+    uint8_t* actual=NULL; size_t size=0; OK(asn1_bit_writer_take(w,&actual,&size));
+    const uint8_t* expected=v?expected_aper:expected_uper;
+    const size_t expected_size=v?sizeof(expected_aper):sizeof(expected_uper);
+    if(size!=expected_size || memcmp(actual,expected,size)!=0) {
+      fprintf(stderr,"normally-small frozen vector variant=%d size=%zu actual=",v,size);
+      for(size_t i=0;i<size;++i) fprintf(stderr,"%02x",actual[i]);
+      fprintf(stderr," expected=");
+      for(size_t i=0;i<expected_size;++i) fprintf(stderr,"%02x",expected[i]);
+      fputc('\n',stderr); CHECK(0);
+    }
+    free(actual); asn1_bit_writer_destroy(w);
+  }
+}
+static void oid_contents(void) {
+  const uint64_t arcs[]={1,2,840,113549};
+  const uint8_t expected[]={6,0x2A,0x86,0x48,0x86,0xF7,0x0D};
+  for(int v=0;v<2;++v) {
+    asn1_bit_writer_t* w=NULL; OK(asn1_bit_writer_create(&w));
+    OK(asn1_per_encode_oid_ex(w,(asn1_per_variant_t)v,arcs,4,0));
+    uint8_t* wire=NULL; size_t n=0; OK(asn1_bit_writer_take(w,&wire,&n));
+    CHECK(n==sizeof(expected) && memcmp(wire,expected,n)==0);
+    asn1_bit_reader_t* r=NULL; OK(asn1_bit_reader_create(&r,asn1_byte_view(wire,n)));
+    uint64_t* decoded=NULL; size_t count=0;
+    OK(asn1_per_decode_oid_ex(r,(asn1_per_variant_t)v,&decoded,&count,0));
+    CHECK(count==4 && memcmp(decoded,arcs,sizeof(arcs))==0);
+    free(decoded); free(wire); asn1_bit_reader_destroy(r); asn1_bit_writer_destroy(w);
+  }
+  asn1_bit_writer_t* w=NULL; OK(asn1_bit_writer_create(&w));
+  const uint64_t invalid[]={3,1};
+  CHECK(asn1_per_encode_oid_ex(w,ASN1_PER_UNALIGNED,invalid,2,0)==ASN1_ERR_CONSTRAINT_VIOLATION);
+  CHECK(asn1_per_encode_oid_ex(w,ASN1_PER_UNALIGNED,arcs,1,0)==ASN1_ERR_INVALID_ARGUMENT);
+  CHECK(asn1_bit_writer_bit_size(w)==0); asn1_bit_writer_destroy(w);
+  const uint8_t malformed[]={1,0x81,0}; asn1_bit_reader_t* r=NULL;
+  OK(asn1_bit_reader_create(&r,asn1_byte_view(malformed,sizeof(malformed))));
+  uint64_t* untouched=(uint64_t*)(uintptr_t)1; size_t untouched_count=77;
+  CHECK(asn1_per_decode_oid_ex(r,ASN1_PER_UNALIGNED,&untouched,&untouched_count,0)==ASN1_ERR_TRUNCATED);
+  CHECK(untouched==(uint64_t*)(uintptr_t)1 && untouched_count==77);
+  asn1_bit_reader_destroy(r);
+  const uint8_t redundant[]={1,0x80,0};
+  OK(asn1_bit_reader_create(&r,asn1_byte_view(redundant,sizeof(redundant))));
+  CHECK(asn1_per_decode_oid_ex(r,ASN1_PER_UNALIGNED,&untouched,&untouched_count,0)==ASN1_ERR_NON_CANONICAL);
+  CHECK(untouched==(uint64_t*)(uintptr_t)1 && untouched_count==77);
+  asn1_bit_reader_destroy(r);
+}
+static void sequence_preamble(void) {
+  const uint8_t optional[]={1,0,1};
+  for(int ext=0;ext<2;++ext) {
+    asn1_bit_writer_t* w=NULL; OK(asn1_bit_writer_create(&w));
+    OK(asn1_per_encode_sequence_preamble(w,ext,ext,optional,3));
+    uint8_t* wire=NULL; size_t n=0; OK(asn1_bit_writer_take(w,&wire,&n));
+    CHECK(n==1 && wire[0]==(ext?0xD0:0xA0));
+    asn1_bit_reader_t* r=NULL; OK(asn1_bit_reader_create(&r,asn1_byte_view(wire,n)));
+    asn1_per_sequence_preamble_t decoded={0};
+    OK(asn1_per_decode_sequence_preamble(r,ext,3,&decoded));
+    CHECK(decoded.extensions_present==ext && decoded.optional_count==3 &&
+          decoded.optional_bits[0]==1 && decoded.optional_bits[1]==0 && decoded.optional_bits[2]==1);
+    asn1_per_sequence_preamble_free(&decoded); free(wire); asn1_bit_reader_destroy(r);
+    asn1_bit_writer_destroy(w);
+  }
+  asn1_bit_writer_t* w=NULL; OK(asn1_bit_writer_create(&w));
+  const uint8_t invalid[]={0,2};
+  CHECK(asn1_per_encode_sequence_preamble(w,1,1,invalid,2)==ASN1_ERR_INVALID_ARGUMENT);
+  CHECK(asn1_bit_writer_bit_size(w)==0); asn1_bit_writer_destroy(w);
+  const uint8_t empty[]={0}; asn1_bit_reader_t* r=NULL;
+  OK(asn1_bit_reader_create(&r,asn1_byte_view(empty,0)));
+  asn1_per_sequence_preamble_t untouched={1,(uint8_t*)(uintptr_t)1,77};
+  CHECK(asn1_per_decode_sequence_preamble(r,1,3,&untouched)==ASN1_ERR_TRUNCATED);
+  CHECK(untouched.extensions_present==1 && untouched.optional_bits==(uint8_t*)(uintptr_t)1 && untouched.optional_count==77);
+  asn1_bit_reader_destroy(r);
+}
+static void restricted_strings(void) {
+  const asn1_per_length_constraint_t unconstrained={ASN1_PER_LENGTH_UNCONSTRAINED,0,0,0};
+  const uint8_t bmp_a[]={0x41};
+  const uint8_t supplementary[]={0xF0,0x9F,0x98,0x80};
+  for(int v=0;v<2;++v) {
+    asn1_bit_writer_t* w=NULL; OK(asn1_bit_writer_create(&w));
+    OK(asn1_per_encode_restricted_string_ex(w,(asn1_per_variant_t)v,&unconstrained,ASN1_PER_STRING_BMP,asn1_byte_view(bmp_a,sizeof(bmp_a))));
+    uint8_t* wire=NULL; size_t n=0; OK(asn1_bit_writer_take(w,&wire,&n));
+    asn1_bit_reader_t* r=NULL; OK(asn1_bit_reader_create(&r,asn1_byte_view(wire,n)));
+    uint8_t* decoded=NULL; size_t decoded_size=0;
+    OK(asn1_per_decode_restricted_string_ex(r,(asn1_per_variant_t)v,&unconstrained,ASN1_PER_STRING_BMP,&decoded,&decoded_size));
+    CHECK(decoded_size==sizeof(bmp_a) && memcmp(decoded,bmp_a,decoded_size)==0);
+    free(decoded); free(wire); asn1_bit_reader_destroy(r); asn1_bit_writer_destroy(w);
+
+    OK(asn1_bit_writer_create(&w));
+    CHECK(asn1_per_encode_restricted_string_ex(w,(asn1_per_variant_t)v,&unconstrained,ASN1_PER_STRING_BMP,asn1_byte_view(supplementary,sizeof(supplementary)))==ASN1_ERR_CONSTRAINT_VIOLATION);
+    CHECK(asn1_bit_writer_bit_size(w)==0); asn1_bit_writer_destroy(w);
+
+    /* A BMPString wire code unit in the surrogate range is invalid. */
+    OK(asn1_bit_writer_create(&w)); OK(asn1_per_encode_size_ex(w,(asn1_per_variant_t)v,&unconstrained,1));
+    if(v==ASN1_PER_ALIGNED) OK(asn1_bit_writer_align_to_octet(w));
+    OK(asn1_bit_writer_put_bits(w,0xD800u,16)); OK(asn1_bit_writer_take(w,&wire,&n));
+    OK(asn1_bit_reader_create(&r,asn1_byte_view(wire,n)));
+    decoded=(uint8_t*)(uintptr_t)1; decoded_size=77;
+    CHECK(asn1_per_decode_restricted_string_ex(r,(asn1_per_variant_t)v,&unconstrained,ASN1_PER_STRING_BMP,&decoded,&decoded_size)==ASN1_ERR_CONSTRAINT_VIOLATION);
+    CHECK(decoded==(uint8_t*)(uintptr_t)1 && decoded_size==77);
+    free(wire); asn1_bit_reader_destroy(r); asn1_bit_writer_destroy(w);
+  }
+}
 static void lifecycle_and_legacy(void) {
   const uint8_t source[]={0x80};
   asn1_byte_reader_t* bytes=NULL; OK(asn1_byte_reader_create(&bytes,asn1_byte_view(source,1)));
@@ -241,7 +387,7 @@ static void lifecycle_and_legacy(void) {
   asn1_xer_reader_t xml; OK(asn1_xer_reader_init(&xml,"<x/>",4)); CHECK(xml.pos==0 && xml.size==4);
 }
 int main(void) {
-  bit_model(); frozen_oracle(); standard_vectors(); aligned_extensions(); fragmentation(); invalid_inputs(); length_helpers(); lifecycle_and_legacy();
+  bit_model(); frozen_oracle(); standard_vectors(); aligned_extensions(); fragmentation(); invalid_inputs(); length_helpers(); normally_small_and_enumerated(); oid_contents(); sequence_preamble(); restricted_strings(); lifecycle_and_legacy();
   printf("C PER correctness: %u checks, %zu frozen oracle vectors PASS (limit=%u)\n",checks,sizeof(oracle_vectors)/sizeof(*oracle_vectors),(unsigned)ASN1_MAX_STRING_BYTES);
   return 0;
 }

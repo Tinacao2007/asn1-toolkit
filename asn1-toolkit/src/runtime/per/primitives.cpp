@@ -419,8 +419,9 @@ Result<std::size_t> decode_normally_small_length(BitReader& in, Variant variant)
   return len.value();
 }
 
-std::size_t encode_length_determinant(BitWriter& out, Variant /*variant*/,
+std::size_t encode_length_determinant(BitWriter& out, Variant variant,
                                       std::size_t length) {
+  if (variant == Variant::Aligned) out.align_to_octet();
   if (length < 128) {
     out.put_octet(static_cast<std::uint8_t>(length));
     return length;
@@ -453,7 +454,10 @@ std::size_t encode_length_determinant(BitWriter& out, Variant /*variant*/,
  *  Parameters  : in — BitReader& in; variant — Variant variant
  *  Returns     : Result<std::size_t>
  */
-Result<std::size_t> decode_length_determinant(BitReader& in, Variant /*variant*/) {
+Result<std::size_t> decode_length_determinant(BitReader& in, Variant variant) {
+  if (variant == Variant::Aligned) {
+    if (auto a = in.align_to_octet(); !a) return a.error();
+  }
   auto first = in.get_octet();
   if (!first) {
     return first.error();

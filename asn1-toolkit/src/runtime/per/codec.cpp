@@ -554,7 +554,7 @@ namespace {
 
 /// X.680 PrintableString alphabet, in PER code order (74 characters).
 constexpr char kPrintableAlphabet[] =
-    " '()+,/-0123456789:=?"
+    " '()+,-./0123456789:=?"
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     "abcdefghijklmnopqrstuvwxyz";
 

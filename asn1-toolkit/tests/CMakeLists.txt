@@ -110,6 +110,9 @@ get_target_property(_c_runtime_sources asn1_c_runtime SOURCES)
 list(TRANSFORM _c_runtime_sources PREPEND "${PROJECT_SOURCE_DIR}/")
 add_executable(asn1_c_runtime_failure_tests
   c_lang/c_runtime_failure_test.c ${_c_runtime_sources})
+if(NOT MSVC)
+  target_link_libraries(asn1_c_runtime_failure_tests PRIVATE m)
+endif()
 target_include_directories(asn1_c_runtime_failure_tests PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_compile_definitions(asn1_c_runtime_failure_tests PRIVATE ASN1_C_RUNTIME_TEST_ALLOCATOR)
 set_target_properties(asn1_c_runtime_failure_tests PROPERTIES
@@ -120,8 +123,100 @@ add_executable(asn1_c_per_correctness c_lang/c_per_correctness_test.c)
 target_link_libraries(asn1_c_per_correctness PRIVATE asn1::c_runtime)
 set_target_properties(asn1_c_per_correctness PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
 add_test(NAME Asn1CPerCorrectness COMMAND asn1_c_per_correctness)
+add_test(NAME CGenBatch4.PerPrimitiveCore COMMAND asn1_c_per_correctness)
+
+# Actual generated-C PDU consumer: constrained scalars, ENUMERATED, BIT/OCTET
+# STRING, OID, root CHOICE, SEQUENCE OF, SET, DEFAULT/OPTIONAL and UPER+APER.
+set(_cgen4_per_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen4-per")
+add_custom_command(OUTPUT "${_cgen4_per_dir}/generated.h" "${_cgen4_per_dir}/generated.c"
+  COMMAND "${ASN1_GENERATOR}" --no-emit-cache --lang c --codec uper,aper --c-prefix cgen4
+    --emit-dir "${_cgen4_per_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch4_basic.asn"
+  DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch4_basic.asn"
+  VERBATIM)
+add_executable(asn1_cgen_batch4_per_tests c_lang/cgen_batch4_per_test.c "${_cgen4_per_dir}/generated.c")
+target_include_directories(asn1_cgen_batch4_per_tests PRIVATE "${_cgen4_per_dir}")
+target_link_libraries(asn1_cgen_batch4_per_tests PRIVATE asn1::c_runtime)
+set_target_properties(asn1_cgen_batch4_per_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch4.GeneratedPdu COMMAND asn1_cgen_batch4_per_tests
+  "${CMAKE_SOURCE_DIR}/tests/per/golden/per_golden_vectors.txt")
+
+# Table-constrained CLASS.&Value retains raw complete PER octets and also gets
+# generated selector-driven typed decode/encode for known object-set entries.
+set(_cgen4_open_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen4-open-type")
+add_custom_command(OUTPUT "${_cgen4_open_dir}/generated.h" "${_cgen4_open_dir}/generated.c"
+  COMMAND "${ASN1_GENERATOR}" --no-emit-cache --lang c --codec uper,aper --emit-dir "${_cgen4_open_dir}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/telecom/table_constraint_ie.asn"
+  DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/telecom/table_constraint_ie.asn"
+  VERBATIM)
+add_executable(asn1_cgen_open_type_tests c_lang/cgen_open_type_test.c "${_cgen4_open_dir}/generated.c")
+target_include_directories(asn1_cgen_open_type_tests PRIVATE "${_cgen4_open_dir}")
+target_link_libraries(asn1_cgen_open_type_tests PRIVATE asn1::c_runtime)
+set_target_properties(asn1_cgen_open_type_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch4.OpenTypeOpaquePayload COMMAND asn1_cgen_open_type_tests)
+
+set(_cgen4_inline_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen4-per-inline")
+add_custom_command(OUTPUT "${_cgen4_inline_dir}/generated.h"
+  COMMAND "${ASN1_GENERATOR}" --no-emit-cache --lang c --codec uper,aper --c-prefix cgen4 --emit-inline
+    --emit-dir "${_cgen4_inline_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch4_basic.asn"
+  DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch4_basic.asn" VERBATIM)
+add_executable(asn1_cgen_batch4_per_inline_tests c_lang/cgen_batch4_per_test.c "${_cgen4_inline_dir}/generated.h")
+target_include_directories(asn1_cgen_batch4_per_inline_tests PRIVATE "${_cgen4_inline_dir}")
+target_link_libraries(asn1_cgen_batch4_per_inline_tests PRIVATE asn1::c_runtime)
+set_target_properties(asn1_cgen_batch4_per_inline_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch4.GeneratedPduInline COMMAND asn1_cgen_batch4_per_inline_tests
+  "${CMAKE_SOURCE_DIR}/tests/per/golden/per_golden_vectors.txt")
+
+set(_cgen4_split_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen4-per-split")
+add_custom_command(OUTPUT "${_cgen4_split_dir}/generated.h" "${_cgen4_split_dir}/c_mM.c"
+  COMMAND "${ASN1_GENERATOR}" --no-emit-cache --lang c --codec uper,aper --c-prefix cgen4 --emit-split
+    --emit-dir "${_cgen4_split_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch4_basic.asn"
+  DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch4_basic.asn" VERBATIM)
+add_executable(asn1_cgen_batch4_per_split_tests c_lang/cgen_batch4_per_test.c "${_cgen4_split_dir}/c_mM.c")
+target_include_directories(asn1_cgen_batch4_per_split_tests PRIVATE "${_cgen4_split_dir}")
+target_link_libraries(asn1_cgen_batch4_per_split_tests PRIVATE asn1::c_runtime)
+set_target_properties(asn1_cgen_batch4_per_split_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch4.GeneratedPduSplit COMMAND asn1_cgen_batch4_per_split_tests
+  "${CMAKE_SOURCE_DIR}/tests/per/golden/per_golden_vectors.txt")
+
+# Compile a private fault-injected C runtime copy and generated decoder together.
+add_executable(asn1_cgen_batch4_per_failure_tests
+  c_lang/cgen_batch4_per_failure_test.c "${_cgen4_per_dir}/generated.c" ${_c_runtime_sources})
+if(NOT MSVC)
+  target_link_libraries(asn1_cgen_batch4_per_failure_tests PRIVATE m)
+endif()
+target_include_directories(asn1_cgen_batch4_per_failure_tests PRIVATE "${_cgen4_per_dir}" "${PROJECT_SOURCE_DIR}/include")
+target_compile_definitions(asn1_cgen_batch4_per_failure_tests PRIVATE ASN1_C_RUNTIME_TEST_ALLOCATOR)
+set_target_properties(asn1_cgen_batch4_per_failure_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch4.GeneratedPduAllocationFailure COMMAND asn1_cgen_batch4_per_failure_tests)
+
+# Build two private runtime variants to prove both cumulative PDU byte and
+# element budgets reject a collection before publishing partial output.
+foreach(_budget_kind IN ITEMS bytes elements)
+  add_executable(asn1_cgen_batch4_per_${_budget_kind}_budget_tests
+    c_lang/cgen_batch4_per_budget_test.c "${_cgen4_per_dir}/generated.c" ${_c_runtime_sources})
+  target_include_directories(asn1_cgen_batch4_per_${_budget_kind}_budget_tests PRIVATE
+    "${_cgen4_per_dir}" "${PROJECT_SOURCE_DIR}/include")
+  if(_budget_kind STREQUAL "bytes")
+    target_compile_definitions(asn1_cgen_batch4_per_${_budget_kind}_budget_tests PRIVATE
+      ASN1_MAX_PDU_ALLOCATION_BYTES=64 ASN1_MAX_PDU_ELEMENTS=1000)
+  else()
+    target_compile_definitions(asn1_cgen_batch4_per_${_budget_kind}_budget_tests PRIVATE
+      ASN1_MAX_PDU_ALLOCATION_BYTES=1048576 ASN1_MAX_PDU_ELEMENTS=32)
+  endif()
+  if(NOT MSVC)
+    target_link_libraries(asn1_cgen_batch4_per_${_budget_kind}_budget_tests PRIVATE m)
+  endif()
+  set_target_properties(asn1_cgen_batch4_per_${_budget_kind}_budget_tests PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+  add_test(NAME CGenBatch4.Cumulative${_budget_kind}Budget
+    COMMAND asn1_cgen_batch4_per_${_budget_kind}_budget_tests)
+endforeach()
+
 # Same tests above the production 64KiB decoder cap, without weakening it.
 add_executable(asn1_c_per_large c_lang/c_per_correctness_test.c ${_c_runtime_sources})
+if(NOT MSVC)
+  target_link_libraries(asn1_c_per_large PRIVATE m)
+endif()
 target_include_directories(asn1_c_per_large PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_compile_definitions(asn1_c_per_large PRIVATE ASN1_MAX_STRING_BYTES=131072)
 set_target_properties(asn1_c_per_large PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
@@ -145,7 +240,7 @@ target_link_libraries(asn1_der_tests PRIVATE asn1::der GTest::gtest_main)
 gtest_discover_tests(asn1_der_tests)
 
 add_executable(asn1_per_tests per/per_primitives_test.cpp)
-target_link_libraries(asn1_per_tests PRIVATE asn1::per GTest::gtest_main)
+target_link_libraries(asn1_per_tests PRIVATE asn1::per asn1::c_runtime GTest::gtest_main)
 gtest_discover_tests(asn1_per_tests)
 
 # Differential PER validation against externally-generated golden vectors
@@ -435,7 +530,8 @@ macro(asn1_fixture_compile_gate name codec lib fixture)
   # 3GPP fixtures. Still ABI-compatible with the runtime libs because
   # -O1 keeps standard calling conventions. Sanitized compile-only gates
   # use -g1: retain line information without multi-GB full debug type graphs.
-  target_compile_options(asn1_${name}_compile PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-O1>
+  target_compile_options(asn1_${name}_compile PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O1>
     $<$<AND:$<BOOL:${ASN1_ENABLE_SANITIZERS}>,$<CXX_COMPILER_ID:GNU,Clang>>:-g1>)
 endmacro()
 
@@ -517,7 +613,8 @@ macro(asn1_fixture_split_gate name codec lib fixture)
   # Same compile-only -O1 optimisation as the flat fixture gate (the
   # aggregate unit .cpp files for S1AP exceed 1 MB and the bottleneck is
   # -O3's inliner/vectoriser pass).
-  target_compile_options(asn1_split_${name} PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-O1>
+  target_compile_options(asn1_split_${name} PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O1>
     $<$<AND:$<BOOL:${ASN1_ENABLE_SANITIZERS}>,$<CXX_COMPILER_ID:GNU,Clang>>:-g1>)
 endmacro()
 

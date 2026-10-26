@@ -1,8 +1,11 @@
-/* Shared C11 UPER/APER core. X.691 (2021) clauses 11, 13, 16, 17.
+/* Shared C11 UPER/APER core. X.691 (2021) clauses 10, 11, 13, 15-19, 23, 30.
  * No compiler/IR or C++ runtime dependency. Legacy wrappers are in per.c. */
 #include <asn1/c_runtime/per.h>
+#include <asn1/c_runtime/limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+#include <float.h>
 #include "alloc_internal.h"
 
 #define TRY(expr) do { asn1_status_t status_ = (expr); if (status_ != ASN1_OK) return status_; } while (0)
@@ -101,6 +104,90 @@ static int in_size(const asn1_per_length_constraint_t* c, size_t n) {
 static int bounded_size(const asn1_per_length_constraint_t* c, int extension) {
   return !extension && c->kind == ASN1_PER_LENGTH_CONSTRAINED && c->upper < 65536u;
 }
+asn1_status_t asn1_per_encode_sequence_preamble(asn1_bit_writer_t* w,
+                                                int extensible,
+                                                int extensions_present,
+                                                const uint8_t* optional_bits,
+                                                size_t optional_count) {
+  if (!w || (extensible != 0 && extensible != 1) ||
+      (extensions_present != 0 && extensions_present != 1) ||
+      (!extensible && extensions_present) ||
+      (optional_count && !optional_bits)) return ASN1_ERR_INVALID_ARGUMENT;
+  if (optional_count > ASN1_MAX_STRING_BYTES) return ASN1_ERR_RESOURCE_LIMIT;
+  for (size_t i = 0; i < optional_count; ++i)
+    if (optional_bits[i] > 1u) return ASN1_ERR_INVALID_ARGUMENT;
+  if (extensible) TRY(asn1_bit_writer_put_bit(w, extensions_present));
+  for (size_t i = 0; i < optional_count; ++i)
+    TRY(asn1_bit_writer_put_bit(w, optional_bits[i]));
+  return ASN1_OK;
+}
+asn1_status_t asn1_per_decode_sequence_preamble(asn1_bit_reader_t* r,
+                                                int extensible,
+                                                size_t optional_count,
+                                                asn1_per_sequence_preamble_t* out) {
+  if (!r || !out || (extensible != 0 && extensible != 1))
+    return ASN1_ERR_INVALID_ARGUMENT;
+  if (optional_count > ASN1_MAX_STRING_BYTES) return ASN1_ERR_RESOURCE_LIMIT;
+  asn1_per_sequence_preamble_t tmp = {0, NULL, 0};
+  if (extensible) {
+    asn1_status_t status = asn1_bit_reader_get_bit(r, &tmp.extensions_present);
+    if (status != ASN1_OK) return status;
+  }
+  if (optional_count) {
+    asn1_status_t budget = asn1_bit_reader_reserve(r, optional_count, 0);
+    if (budget != ASN1_OK) return budget;
+    tmp.optional_bits = (uint8_t*)malloc(optional_count);
+    if (!tmp.optional_bits) return ASN1_ERR_OUT_OF_MEMORY;
+    for (size_t i = 0; i < optional_count; ++i) {
+      int bit = 0;
+      asn1_status_t status = asn1_bit_reader_get_bit(r, &bit);
+      if (status != ASN1_OK) { free(tmp.optional_bits); return status; }
+      tmp.optional_bits[i] = (uint8_t)bit;
+    }
+    tmp.optional_count = optional_count;
+  }
+  *out = tmp;
+  return ASN1_OK;
+}
+void asn1_per_sequence_preamble_free(asn1_per_sequence_preamble_t* value) {
+  if (!value) return;
+  free(value->optional_bits);
+  value->optional_bits = NULL;
+  value->optional_count = 0;
+  value->extensions_present = 0;
+}
+asn1_status_t asn1_per_encode_extension_additions(asn1_bit_writer_t* w, asn1_per_variant_t v,
+    const uint8_t* presence, size_t count, const asn1_byte_view_t* values) {
+  if(!w||!valid_variant(v)||(count&&(!presence||!values)))return ASN1_ERR_INVALID_ARGUMENT;
+  if(!count||count>ASN1_MAX_CHOICE_ALTS)return ASN1_ERR_RESOURCE_LIMIT;
+  int any=0;for(size_t i=0;i<count;++i){if(presence[i]>1u)return ASN1_ERR_INVALID_ARGUMENT;any|=presence[i];}
+  if(!any)return ASN1_ERR_INVALID_ARGUMENT;
+  TRY(asn1_per_encode_normally_small_uint_ex(w,v,(uint64_t)(count-1u)));
+  for(size_t i=0;i<count;++i)TRY(asn1_bit_writer_put_bit(w,presence[i]));
+  for(size_t i=0;i<count;++i)if(presence[i])TRY(asn1_per_encode_open_type(w,v,values[i]));
+  return ASN1_OK;
+}
+void asn1_per_extension_additions_free(asn1_per_extension_additions_t* out) {
+  if(!out)return;
+  if(out->open_type_data)for(size_t i=0;i<out->count;++i)free(out->open_type_data[i]);
+  free(out->open_type_data);free(out->open_type_sizes);free(out->presence);
+  out->open_type_data=NULL;out->open_type_sizes=NULL;out->presence=NULL;out->count=0;
+}
+asn1_status_t asn1_per_decode_extension_additions(asn1_bit_reader_t* r, asn1_per_variant_t v,
+    asn1_per_extension_additions_t* out) {
+  if(!r||!out||!valid_variant(v))return ASN1_ERR_INVALID_ARGUMENT;
+  uint64_t last=0;TRY(asn1_per_decode_normally_small_uint_ex(r,v,&last));
+  if(last>=ASN1_MAX_CHOICE_ALTS)return ASN1_ERR_RESOURCE_LIMIT;
+  asn1_per_extension_additions_t tmp={0};tmp.count=(size_t)last+1u;
+  if(tmp.count>SIZE_MAX/(sizeof(*tmp.open_type_data)+sizeof(*tmp.open_type_sizes)+sizeof(*tmp.presence)))return ASN1_ERR_LENGTH_OVERFLOW;
+  asn1_status_t budget=asn1_bit_reader_reserve(r,tmp.count*(sizeof(*tmp.open_type_data)+sizeof(*tmp.open_type_sizes)+sizeof(*tmp.presence)),tmp.count);if(budget!=ASN1_OK)return budget;
+  tmp.presence=(uint8_t*)calloc(tmp.count,1u);tmp.open_type_data=(uint8_t**)calloc(tmp.count,sizeof(*tmp.open_type_data));tmp.open_type_sizes=(size_t*)calloc(tmp.count,sizeof(*tmp.open_type_sizes));
+  if(!tmp.presence||!tmp.open_type_data||!tmp.open_type_sizes){asn1_per_extension_additions_free(&tmp);return ASN1_ERR_OUT_OF_MEMORY;}
+  int any=0;for(size_t i=0;i<tmp.count;++i){int bit=0;asn1_status_t s=asn1_bit_reader_get_bit(r,&bit);if(s!=ASN1_OK){asn1_per_extension_additions_free(&tmp);return s;}tmp.presence[i]=(uint8_t)bit;any|=bit;}
+  if(!any){asn1_per_extension_additions_free(&tmp);return ASN1_ERR_INVALID_ARGUMENT;}
+  for(size_t i=0;i<tmp.count;++i)if(tmp.presence[i]){asn1_status_t s=asn1_per_decode_open_type(r,v,&tmp.open_type_data[i],&tmp.open_type_sizes[i]);if(s!=ASN1_OK){asn1_per_extension_additions_free(&tmp);return s;}}
+  *out=tmp;return ASN1_OK;
+}
 asn1_status_t asn1_per_encode_size_ex(asn1_bit_writer_t* w, asn1_per_variant_t v,
                                     const asn1_per_length_constraint_t* c, size_t n) {
   if (!w || !valid_variant(v) || !valid_size(c)) return ASN1_ERR_INVALID_ARGUMENT;
@@ -128,6 +215,60 @@ asn1_status_t asn1_per_decode_size_ex(asn1_bit_reader_t* r, asn1_per_variant_t v
   }
   if ((!ext && !in_size(c, n)) || (ext && in_size(c, n))) return ASN1_ERR_CONSTRAINT_VIOLATION;
   *out = n; return ASN1_OK;
+}
+
+asn1_status_t asn1_per_encode_collection_fragment_ex(asn1_bit_writer_t* w,
+    asn1_per_variant_t v, const asn1_per_length_constraint_t* c,
+    size_t remaining, int first, int* is_extension, size_t* chunk, int* more) {
+  if (!w || !valid_variant(v) || !valid_size(c) || !is_extension || !chunk || !more ||
+      (first != 0 && first != 1)) return ASN1_ERR_INVALID_ARGUMENT;
+  if (first) {
+    const int ext = !in_size(c, remaining);
+    if (ext && !c->extensible) return ASN1_ERR_CONSTRAINT_VIOLATION;
+    *is_extension = ext;
+    if (c->extensible) TRY(asn1_bit_writer_put_bit(w, ext));
+    if (bounded_size(c, ext)) {
+      *chunk = remaining; *more = 0;
+      return put_offset(w, v, c->upper - c->lower, remaining - c->lower);
+    }
+  } else if (*is_extension != 0 && *is_extension != 1) return ASN1_ERR_INVALID_ARGUMENT;
+  if (bounded_size(c, *is_extension)) return ASN1_ERR_INVALID_ARGUMENT;
+  size_t part = remaining; int continues = 0;
+  if (remaining >= 16384u) {
+    part = remaining >= 65536u ? 65536u : (remaining / 16384u) * 16384u;
+    continues = 1;
+  }
+  TRY(asn1_per_encode_length_fragment(w, v, part, continues));
+  *chunk = part; *more = continues;
+  return ASN1_OK;
+}
+
+asn1_status_t asn1_per_decode_collection_fragment_ex(asn1_bit_reader_t* r,
+    asn1_per_variant_t v, const asn1_per_length_constraint_t* c,
+    int first, int* is_extension, size_t consumed, size_t* chunk, int* more) {
+  if (!r || !valid_variant(v) || !valid_size(c) || !is_extension || !chunk || !more ||
+      (first != 0 && first != 1)) return ASN1_ERR_INVALID_ARGUMENT;
+  if (first) {
+    int ext = 0;
+    if (c->extensible) TRY(asn1_bit_reader_get_bit(r, &ext));
+    *is_extension = ext;
+    if (bounded_size(c, ext)) {
+      uint64_t offset = 0;
+      TRY(get_offset(r, v, c->upper - c->lower, &offset));
+      *chunk = c->lower + (size_t)offset; *more = 0;
+      if (!in_size(c, *chunk)) return ASN1_ERR_CONSTRAINT_VIOLATION;
+      return ASN1_OK;
+    }
+  } else if (*is_extension != 0 && *is_extension != 1) return ASN1_ERR_INVALID_ARGUMENT;
+  if (bounded_size(c, *is_extension)) return ASN1_ERR_INVALID_ARGUMENT;
+  TRY(asn1_per_decode_length_fragment(r, v, chunk, more));
+  if (consumed > SIZE_MAX - *chunk) return ASN1_ERR_LENGTH_OVERFLOW;
+  if (!*more) {
+    const size_t total = consumed + *chunk;
+    if (*is_extension ? in_size(c, total) : !in_size(c, total))
+      return ASN1_ERR_CONSTRAINT_VIOLATION;
+  }
+  return ASN1_OK;
 }
 
 /* Whole strings and open types share one chunk engine. For BIT STRING each
@@ -186,11 +327,15 @@ static asn1_status_t get_string(asn1_bit_reader_t* r, asn1_per_variant_t v,
     size_t limit = (size_t)ASN1_MAX_STRING_BYTES * (bits ? 8u : 1u);
     if (total > limit || chunk > limit - total) { s = ASN1_ERR_RESOURCE_LIMIT; break; }
     size_t n = bits ? chunk / 8u + (chunk % 8u != 0) : chunk;
+    s = asn1_bit_reader_reserve(r, n, 0);
+    if (s != ASN1_OK) break;
     uint8_t* part = NULL; size_t read = 0;
     s = bits ? asn1_bit_reader_get_bits_as_bytes(r, chunk, &part, &read)
              : asn1_bit_reader_get_octets(r, chunk, &part, &read);
     if (s != ASN1_OK) break;
     size_t position = bits ? total / 8u : total;
+    s = asn1_bit_reader_reserve(r, position + n ? position + n : 1u, 0);
+    if (s != ASN1_OK) { free(part); break; }
     uint8_t* grown = (uint8_t*)realloc(result, position + n ? position + n : 1u);
     if (!grown) { free(part); s = ASN1_ERR_OUT_OF_MEMORY; break; }
     result = grown;
@@ -210,6 +355,182 @@ asn1_status_t asn1_per_encode_octetstring_ex(asn1_bit_writer_t* w, asn1_per_vari
 asn1_status_t asn1_per_decode_octetstring_ex(asn1_bit_reader_t* r, asn1_per_variant_t v, const asn1_per_length_constraint_t* c, uint8_t** out, size_t* n) {
   return get_string(r, v, c, out, n, 0);
 }
+
+static size_t restricted_bits(asn1_per_variant_t v, asn1_per_string_kind_t kind) {
+  size_t bits = kind == ASN1_PER_STRING_NUMERIC ? 4u :
+      (kind == ASN1_PER_STRING_IA5 || kind == ASN1_PER_STRING_PRINTABLE || kind == ASN1_PER_STRING_VISIBLE) ? 7u :
+      kind == ASN1_PER_STRING_BMP ? 16u : 32u;
+  if (v == ASN1_PER_ALIGNED) { size_t b = 1u; while (b < bits) b <<= 1u; return b; }
+  return bits;
+}
+static int printable_char(uint32_t cp) {
+  static const char alphabet[] = " '()+,-./0123456789:=?ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  if (cp > 0x7au) return 0;
+  for (size_t i = 0; alphabet[i]; ++i) if ((uint32_t)(unsigned char)alphabet[i] == cp) return 1;
+  return 0;
+}
+static asn1_status_t utf8_next(asn1_byte_view_t text, size_t* at, uint32_t* cp) {
+  if (!text.data || !at || !cp || *at >= text.size) return ASN1_ERR_INVALID_ARGUMENT;
+  const uint8_t b0 = text.data[(*at)++];
+  if (b0 < 0x80u) { *cp = b0; return ASN1_OK; }
+  size_t n = (b0 & 0xe0u) == 0xc0u ? 1u : (b0 & 0xf0u) == 0xe0u ? 2u : (b0 & 0xf8u) == 0xf0u ? 3u : 99u;
+  if (n == 99u || n > text.size - *at) return ASN1_ERR_INVALID_ARGUMENT;
+  uint32_t value = b0 & (n == 1u ? 0x1fu : n == 2u ? 0x0fu : 0x07u);
+  for (size_t i = 0; i < n; ++i) { const uint8_t b = text.data[(*at)++]; if ((b & 0xc0u) != 0x80u) return ASN1_ERR_INVALID_ARGUMENT; value = (value << 6u) | (b & 0x3fu); }
+  if ((n == 1u && value < 0x80u) || (n == 2u && value < 0x800u) || (n == 3u && value < 0x10000u) || value > 0x10ffffu || (value >= 0xd800u && value <= 0xdfffu)) return ASN1_ERR_INVALID_ARGUMENT;
+  *cp = value; return ASN1_OK;
+}
+static int restricted_code(uint32_t cp, asn1_per_string_kind_t kind, uint32_t* code) {
+  switch (kind) {
+    case ASN1_PER_STRING_IA5: if (cp > 0x7fu) return 0; *code = cp; return 1;
+    case ASN1_PER_STRING_PRINTABLE: if (!printable_char(cp)) return 0; *code = cp; return 1;
+    case ASN1_PER_STRING_VISIBLE: if (cp < 0x20u || cp > 0x7eu) return 0; *code = cp; return 1;
+    case ASN1_PER_STRING_NUMERIC: if (cp == ' ') { *code = 0; return 1; } if (cp >= '0' && cp <= '9') { *code = cp - '0' + 1u; return 1; } return 0;
+    case ASN1_PER_STRING_BMP: if (cp > 0xffffu) return 0; *code = cp; return 1;
+    case ASN1_PER_STRING_UNIVERSAL: *code = cp; return 1;
+  }
+  return 0;
+}
+static asn1_status_t utf8_put(uint8_t* out, size_t cap, size_t* n, uint32_t cp) {
+  uint8_t b[4]; size_t k;
+  if (cp < 0x80u) { b[0]=(uint8_t)cp; k=1; }
+  else if (cp < 0x800u) { b[0]=(uint8_t)(0xc0u|(cp>>6u)); b[1]=(uint8_t)(0x80u|(cp&63u)); k=2; }
+  else if (cp < 0x10000u) { b[0]=(uint8_t)(0xe0u|(cp>>12u)); b[1]=(uint8_t)(0x80u|((cp>>6u)&63u)); b[2]=(uint8_t)(0x80u|(cp&63u)); k=3; }
+  else { b[0]=(uint8_t)(0xf0u|(cp>>18u)); b[1]=(uint8_t)(0x80u|((cp>>12u)&63u)); b[2]=(uint8_t)(0x80u|((cp>>6u)&63u)); b[3]=(uint8_t)(0x80u|(cp&63u)); k=4; }
+  if (*n > cap || k > cap - *n) return ASN1_ERR_LENGTH_OVERFLOW;
+  memcpy(out + *n, b, k); *n += k; return ASN1_OK;
+}
+static int char_data_align(asn1_per_variant_t v, asn1_per_string_kind_t kind, const asn1_per_length_constraint_t* c) {
+  if (v != ASN1_PER_ALIGNED) return 0;
+  const size_t bits = restricted_bits(v,kind);
+  if (c->kind == ASN1_PER_LENGTH_CONSTRAINED && c->lower == c->upper) return c->lower > 16u / bits;
+  if (c->kind == ASN1_PER_LENGTH_CONSTRAINED && !c->extensible) return c->upper >= 16u / bits;
+  return 1;
+}
+asn1_status_t asn1_per_encode_restricted_string_ex(asn1_bit_writer_t* w, asn1_per_variant_t v,
+    const asn1_per_length_constraint_t* c, asn1_per_string_kind_t kind, asn1_byte_view_t text) {
+  if (!w || !valid_variant(v) || !valid_size(c) || (text.size && !text.data) || kind < ASN1_PER_STRING_IA5 || kind > ASN1_PER_STRING_UNIVERSAL) return ASN1_ERR_INVALID_ARGUMENT;
+  if (text.size > ASN1_MAX_STRING_BYTES) return ASN1_ERR_RESOURCE_LIMIT;
+  size_t cap = text.size ? text.size * 2u : 1u;
+  if (cap < text.size) return ASN1_ERR_LENGTH_OVERFLOW;
+  if (cap > SIZE_MAX / sizeof(uint32_t)) return ASN1_ERR_LENGTH_OVERFLOW;
+  uint32_t* codes = (uint32_t*)malloc(cap * sizeof(*codes)); if (!codes) return ASN1_ERR_OUT_OF_MEMORY;
+  size_t at=0,n=0; asn1_status_t s=ASN1_OK;
+  while (at < text.size) {
+    uint32_t cp=0,code=0; s=utf8_next(text,&at,&cp); if(s!=ASN1_OK) break;
+    /* BMPString is restricted to the Basic Multilingual Plane. UTF-16
+       surrogate pairs are not BMPString characters and must not be emitted. */
+    if (kind==ASN1_PER_STRING_BMP && cp>0xffffu) { s=ASN1_ERR_CONSTRAINT_VIOLATION; break; }
+    if(!restricted_code(cp,kind,&code)){s=ASN1_ERR_INVALID_ARGUMENT;break;}
+    if(n==cap){s=ASN1_ERR_RESOURCE_LIMIT;break;} codes[n++]=code;
+  }
+  if(s==ASN1_OK) s=asn1_per_encode_size_ex(w,v,c,n);
+  if(s==ASN1_OK && char_data_align(v,kind,c)) s=align_write(w,v);
+  const size_t bits=restricted_bits(v,kind);
+  for(size_t i=0;s==ASN1_OK && i<n;++i) s=asn1_bit_writer_put_bits(w,codes[i],bits);
+  free(codes); return s;
+}
+asn1_status_t asn1_per_decode_restricted_string_ex(asn1_bit_reader_t* r, asn1_per_variant_t v,
+    const asn1_per_length_constraint_t* c, asn1_per_string_kind_t kind, uint8_t** out, size_t* out_size) {
+  if(!r||!out||!out_size||!valid_variant(v)||!valid_size(c)||kind<ASN1_PER_STRING_IA5||kind>ASN1_PER_STRING_UNIVERSAL) return ASN1_ERR_INVALID_ARGUMENT;
+  size_t count=0; asn1_status_t s=asn1_per_decode_size_ex(r,v,c,&count); if(s!=ASN1_OK) return s;
+  if(count>ASN1_MAX_STRING_BYTES) return ASN1_ERR_RESOURCE_LIMIT;
+  if(char_data_align(v,kind,c)){s=align_read(r,v);if(s!=ASN1_OK)return s;}
+  size_t cap=count<=SIZE_MAX/4u?count*4u:SIZE_MAX; if(cap>ASN1_MAX_STRING_BYTES*4u) return ASN1_ERR_RESOURCE_LIMIT;
+  s=asn1_bit_reader_reserve(r,cap?cap:1u,0);if(s!=ASN1_OK)return s;
+  uint8_t* text=(uint8_t*)malloc(cap?cap:1u); if(!text)return ASN1_ERR_OUT_OF_MEMORY; size_t used=0; const size_t bits=restricted_bits(v,kind); uint32_t high=0;
+  for(size_t i=0;i<count;++i){uint64_t raw=0;s=asn1_bit_reader_get_bits(r,bits,&raw);if(s!=ASN1_OK)break;uint32_t cp=(uint32_t)raw;
+    if(kind==ASN1_PER_STRING_NUMERIC){if(cp==0)cp=' ';else if(cp<=10)cp='0'+cp-1;else{s=ASN1_ERR_CONSTRAINT_VIOLATION;break;}}
+    else if(kind==ASN1_PER_STRING_PRINTABLE&&!printable_char(cp)){s=ASN1_ERR_CONSTRAINT_VIOLATION;break;}
+    else if(kind==ASN1_PER_STRING_VISIBLE&&(cp<0x20u||cp>0x7eu)){s=ASN1_ERR_CONSTRAINT_VIOLATION;break;}
+    else if(kind==ASN1_PER_STRING_IA5&&cp>0x7fu){s=ASN1_ERR_CONSTRAINT_VIOLATION;break;}
+    else if(kind==ASN1_PER_STRING_BMP&&(cp>=0xd800u&&cp<=0xdfffu)){s=ASN1_ERR_CONSTRAINT_VIOLATION;break;}
+    else if(kind==ASN1_PER_STRING_UNIVERSAL&&(cp>0x10ffffu||(cp>=0xd800u&&cp<=0xdfffu))){s=ASN1_ERR_CONSTRAINT_VIOLATION;break;}
+    s=utf8_put(text,cap,&used,cp);if(s!=ASN1_OK)break;
+  }
+  if(s==ASN1_OK&&high)s=ASN1_ERR_CONSTRAINT_VIOLATION;
+  if(s!=ASN1_OK){free(text);return s;} *out=text;*out_size=used;return ASN1_OK;
+}
+
+asn1_status_t asn1_per_encode_real_ex(asn1_bit_writer_t* w, asn1_per_variant_t v, double value) {
+  if(!w||!valid_variant(v)) return ASN1_ERR_INVALID_ARGUMENT;
+  uint8_t content[11]; size_t n=0;
+  if(isnan(value)) content[n++]=0x42u;
+  else if(isinf(value)) content[n++]=signbit(value)?0x41u:0x40u;
+  else if(value==0.0) { if(signbit(value))content[n++]=0x43u; }
+  else {
+    if(sizeof(double)!=sizeof(uint64_t)) return ASN1_ERR_UNSUPPORTED;
+    uint64_t bits=0; memcpy(&bits,&value,sizeof(bits));
+    const int negative=(int)(bits>>63u); const unsigned biased=(unsigned)((bits>>52u)&0x7ffu);
+    uint64_t mant=bits&((UINT64_C(1)<<52u)-1u); int exponent;
+    if(biased==0u) exponent=-1074; else {mant|=UINT64_C(1)<<52u; exponent=(int)biased-1023-52;}
+    while((mant&1u)==0u){mant>>=1u;++exponent;}
+    size_t en=exponent>=-128&&exponent<=127?1u:2u;
+    content[n++]=(uint8_t)(0x80u|(negative?0x40u:0u)|(en==1u?0u:1u));
+    if(en==1u) content[n++]=(uint8_t)exponent;
+    else {content[n++]=(uint8_t)((uint16_t)exponent>>8u);content[n++]=(uint8_t)exponent;}
+    uint8_t m[8];size_t mn=0;do{m[mn++]=(uint8_t)mant;mant>>=8u;}while(mant);
+    while(mn)content[n++]=m[--mn];
+  }
+  const asn1_per_length_constraint_t unconstrained={ASN1_PER_LENGTH_UNCONSTRAINED,0,0,0};
+  return asn1_per_encode_octetstring_ex(w,v,&unconstrained,asn1_byte_view(content,n));
+}
+static asn1_status_t parse_decimal_real(const uint8_t* p,size_t n,double* out) {
+  if(n<2u||p[0]<1u||p[0]>3u)return ASN1_ERR_INVALID_ARGUMENT;
+  const unsigned form=p[0];size_t i=1u;int negative=0;
+  if(i<n&&(p[i]=='+'||p[i]=='-'))negative=p[i++]=='-';
+  long double significand=0.0L;size_t digits=0,fraction=0;int decimal=0,has_exp=0,exp_negative=0,explicit_exp=0;
+  while(i<n&&p[i]!='E'&&p[i]!='e'){
+    const uint8_t c=p[i++];
+    if(c>='0'&&c<='9'){if(digits>=20u)return ASN1_ERR_UNSUPPORTED;significand=significand*10.0L+(long double)(c-'0');++digits;if(decimal)++fraction;continue;}
+    if((c=='.'||c==',')&&!decimal){decimal=1;continue;}
+    return ASN1_ERR_INVALID_ARGUMENT;
+  }
+  if(i<n){if(form!=3u||!digits)return ASN1_ERR_INVALID_ARGUMENT;has_exp=1;++i;if(i<n&&(p[i]=='+'||p[i]=='-'))exp_negative=p[i++]=='-';if(i==n)return ASN1_ERR_INVALID_ARGUMENT;
+    for(;i<n;++i){if(p[i]<'0'||p[i]>'9')return ASN1_ERR_INVALID_ARGUMENT;if(explicit_exp>1000)return ASN1_ERR_UNSUPPORTED;explicit_exp=explicit_exp*10+(int)(p[i]-'0');}}
+  if(!digits||(form==1u&&(decimal||has_exp))||(form==2u&&(!decimal||has_exp))||(form==3u&&!has_exp))return ASN1_ERR_INVALID_ARGUMENT;
+  int power=(exp_negative?-explicit_exp:explicit_exp)-(int)fraction;
+  if(power < -5000 || power > 5000)return ASN1_ERR_UNSUPPORTED;
+  long double magnitude=significand*powl(10.0L,(long double)power);
+  if(!isfinite(magnitude)||magnitude>(long double)DBL_MAX)return ASN1_ERR_UNSUPPORTED;
+  double result=(double)magnitude;
+  if(significand!=0.0L&&result==0.0)return ASN1_ERR_UNSUPPORTED;
+  *out=negative?-result:result;return ASN1_OK;
+}
+asn1_status_t asn1_per_decode_real_ex(asn1_bit_reader_t* r, asn1_per_variant_t v, double* out) {
+  if(!r||!out||!valid_variant(v)) return ASN1_ERR_INVALID_ARGUMENT;
+  const asn1_per_length_constraint_t unconstrained={ASN1_PER_LENGTH_UNCONSTRAINED,0,0,0};
+  uint8_t* data=NULL;size_t n=0;asn1_status_t s=asn1_per_decode_octetstring_ex(r,v,&unconstrained,&data,&n);if(s!=ASN1_OK)return s;
+  double value=0.0;
+  if(n==0) value=0.0;
+  else if(n==1&&data[0]>=0x40u&&data[0]<=0x43u){if(data[0]==0x40u)value=INFINITY;else if(data[0]==0x41u)value=-INFINITY;else if(data[0]==0x42u)value=NAN;else value=-0.0;}
+  else if((data[0]&0x80u)==0) s=parse_decimal_real(data,n,&value);
+  else {
+    const uint8_t control=data[0]; const unsigned base=(control>>4u)&3u,scale=(control>>2u)&3u,ee=control&3u;
+    if(base!=0u||ee==3u) s=ASN1_ERR_UNSUPPORTED;
+    else {
+      const size_t en=ee+1u;
+      if(n<=en) s=ASN1_ERR_INVALID_ARGUMENT;
+      else if(n-en>8u) s=ASN1_ERR_UNSUPPORTED;
+      else {
+        int32_t exponent=0;
+        for(size_t i=0;i<en;++i) exponent=(int32_t)(((uint32_t)exponent<<8u)|data[1u+i]);
+        if(en<4u&&(data[1] & 0x80u)) exponent|=(int32_t)(UINT32_MAX<<(en*8u));
+        uint64_t mant=0;for(size_t i=1u+en;i<n;++i)mant=(mant<<8u)|data[i];
+        if(!mant) s=ASN1_ERR_INVALID_ARGUMENT;
+        else {
+          unsigned trailing=0;while((mant&1u)==0u){mant>>=1u;++trailing;}
+          if(mant>((UINT64_C(1)<<53u)-1u)) s=ASN1_ERR_UNSUPPORTED;
+          else { const int power=exponent+(int)scale+(int)trailing; value=ldexp((double)mant,power);
+            if(!isfinite(value)||value==0.0||ldexp(value,-power)!=(double)mant)s=ASN1_ERR_UNSUPPORTED;
+            else if(control&0x40u)value=-value;
+          }
+        }
+      }
+    }
+  }
+  free(data);if(s==ASN1_OK)*out=value;return s;
+}
 asn1_status_t asn1_per_encode_bitstring_ex(asn1_bit_writer_t* w, asn1_per_variant_t v, const asn1_per_length_constraint_t* c, const asn1_bitstring_t* data) {
   if (!data) return ASN1_ERR_INVALID_ARGUMENT;
   return put_string(w, v, c, asn1_byte_view(data->bits, data->cap_bytes), data->bit_length, 1);
@@ -224,14 +545,12 @@ asn1_status_t asn1_per_decode_bitstring_ex(asn1_bit_reader_t* r, asn1_per_varian
 }
 static const asn1_per_length_constraint_t unconstrained = {ASN1_PER_LENGTH_UNCONSTRAINED, 0, 0, 0};
 asn1_status_t asn1_per_encode_open_type(asn1_bit_writer_t* w, asn1_per_variant_t v, asn1_byte_view_t data) {
-  if (data.size == 0) return ASN1_ERR_INVALID_ARGUMENT;
   return asn1_per_encode_octetstring_ex(w, v, &unconstrained, data);
 }
 asn1_status_t asn1_per_decode_open_type(asn1_bit_reader_t* r, asn1_per_variant_t v, uint8_t** out, size_t* n) {
   if (!out || !n) return ASN1_ERR_INVALID_ARGUMENT;
   uint8_t* bytes = NULL; size_t size = 0;
   TRY(asn1_per_decode_octetstring_ex(r, v, &unconstrained, &bytes, &size));
-  if (!size) { free(bytes); return ASN1_ERR_INVALID_ARGUMENT; }
   *out = bytes; *n = size;
   return ASN1_OK;
 }
@@ -247,6 +566,8 @@ asn1_status_t asn1_per_decode_unbounded_int_ex(asn1_bit_reader_t* r, asn1_per_va
   if (!r || !out || !valid_variant(v)) return ASN1_ERR_INVALID_ARGUMENT;
   uint8_t* data = NULL; size_t n = 0;
   TRY(asn1_per_decode_open_type(r, v, &data, &n));
+  asn1_status_t budget = asn1_bit_reader_reserve(r, n, 0);
+  if (budget != ASN1_OK) { free(data); return budget; }
   asn1_status_t s = asn1_bigint_init_from_twos_complement(out, asn1_byte_view(data, n));
   free(data); return s;
 }
@@ -254,6 +575,166 @@ static int valid_int(const asn1_per_int_range_t* c) {
   return c && (!c->lower_set || !c->upper_set || c->lower <= c->upper) &&
          (c->extensible == 0 || c->extensible == 1);
 }
+
+asn1_status_t asn1_per_encode_normally_small_uint_ex(asn1_bit_writer_t* w,
+                                                      asn1_per_variant_t v,
+                                                      uint64_t value) {
+  if (!w || !valid_variant(v)) return ASN1_ERR_INVALID_ARGUMENT;
+  if (value < 64u) {
+    TRY(asn1_bit_writer_put_bit(w, 0));
+    return asn1_bit_writer_put_bits(w, value, 6u);
+  }
+  TRY(asn1_bit_writer_put_bit(w, 1));
+  size_t used = octets(value);
+  TRY(asn1_per_encode_length_fragment(w, v, used, 0));
+  return asn1_bit_writer_put_bits(w, value, used * 8u);
+}
+
+asn1_status_t asn1_per_decode_normally_small_uint_ex(asn1_bit_reader_t* r,
+                                                      asn1_per_variant_t v,
+                                                      uint64_t* out) {
+  if (!r || !out || !valid_variant(v)) return ASN1_ERR_INVALID_ARGUMENT;
+  int large = 0;
+  TRY(asn1_bit_reader_get_bit(r, &large));
+  if (!large) {
+    uint64_t value = 0;
+    TRY(asn1_bit_reader_get_bits(r, 6u, &value));
+    *out = value;
+    return ASN1_OK;
+  }
+  size_t used = 0;
+  int more = 0;
+  TRY(asn1_per_decode_length_fragment(r, v, &used, &more));
+  if (more || used == 0u || used > 8u) return ASN1_ERR_UNSUPPORTED;
+  uint64_t value = 0;
+  TRY(asn1_bit_reader_get_bits(r, used * 8u, &value));
+  if (used > 1u && value < (UINT64_C(1) << ((used - 1u) * 8u)))
+    return ASN1_ERR_NON_CANONICAL;
+  if (value < 64u) return ASN1_ERR_NON_CANONICAL;
+  *out = value;
+  return ASN1_OK;
+}
+
+asn1_status_t asn1_per_encode_enumerated_ex(asn1_bit_writer_t* w,
+                                             asn1_per_variant_t v,
+                                             size_t root_index,
+                                             size_t root_count,
+                                             int extensible,
+                                             int is_extension,
+                                             uint64_t extension_index) {
+  if (!w || !valid_variant(v) || root_count == 0u ||
+      (extensible != 0 && extensible != 1) ||
+      (is_extension != 0 && is_extension != 1) ||
+      (!extensible && is_extension) || (!is_extension && root_index >= root_count))
+    return ASN1_ERR_INVALID_ARGUMENT;
+  if (extensible) TRY(asn1_bit_writer_put_bit(w, is_extension));
+  if (is_extension) return asn1_per_encode_normally_small_uint_ex(w, v, extension_index);
+  return put_offset(w, v, (uint64_t)(root_count - 1u), (uint64_t)root_index);
+}
+
+asn1_status_t asn1_per_decode_enumerated_ex(asn1_bit_reader_t* r,
+                                             asn1_per_variant_t v,
+                                             size_t root_count,
+                                             int extensible,
+                                             int* is_extension,
+                                             uint64_t* ordinal) {
+  if (!r || !is_extension || !ordinal || !valid_variant(v) || root_count == 0u ||
+      (extensible != 0 && extensible != 1)) return ASN1_ERR_INVALID_ARGUMENT;
+  int extension = 0;
+  if (extensible) TRY(asn1_bit_reader_get_bit(r, &extension));
+  uint64_t value = 0;
+  if (extension) {
+    TRY(asn1_per_decode_normally_small_uint_ex(r, v, &value));
+  } else {
+    TRY(get_offset(r, v, (uint64_t)(root_count - 1u), &value));
+    if (value >= root_count) return ASN1_ERR_CONSTRAINT_VIOLATION;
+  }
+  *is_extension = extension;
+  *ordinal = value;
+  return ASN1_OK;
+}
+
+static size_t oid_subidentifier_octets(uint64_t value) {
+  size_t n = 1;
+  while (value >= 128u) { value >>= 7u; ++n; }
+  return n;
+}
+static void oid_write_subidentifier(uint8_t* out, size_t* position, uint64_t value) {
+  uint8_t groups[10]; size_t n=0;
+  do { groups[n++]=(uint8_t)(value&0x7fu); value>>=7u; } while(value);
+  while(n) { --n; out[(*position)++]=(uint8_t)(groups[n] | (n ? 0x80u : 0u)); }
+}
+asn1_status_t asn1_per_encode_oid_ex(asn1_bit_writer_t* w, asn1_per_variant_t v,
+                                     const uint64_t* arcs, size_t count, int relative) {
+  if(!w || !valid_variant(v) || (relative!=0 && relative!=1) || !arcs ||
+     (relative ? count<1u : count<2u)) return ASN1_ERR_INVALID_ARGUMENT;
+  if(!relative && (arcs[0]>2u || (arcs[0]<2u && arcs[1]>39u)))
+    return ASN1_ERR_CONSTRAINT_VIOLATION;
+  size_t n=0;
+  for(size_t i=relative?0u:1u;i<count;++i) {
+    uint64_t value=arcs[i];
+    if(!relative && i==1u) {
+      if(arcs[0]>(UINT64_MAX-value)/40u) return ASN1_ERR_LENGTH_OVERFLOW;
+      value+=arcs[0]*40u;
+    }
+    const size_t part=oid_subidentifier_octets(value);
+    if(part>ASN1_MAX_STRING_BYTES-n) return ASN1_ERR_RESOURCE_LIMIT;
+    n+=part;
+  }
+  if(!n) return ASN1_ERR_INVALID_ARGUMENT;
+  uint8_t* bytes=(uint8_t*)malloc(n);
+  if(!bytes) return ASN1_ERR_OUT_OF_MEMORY;
+  size_t position=0;
+  for(size_t i=relative?0u:1u;i<count;++i) {
+    uint64_t value=arcs[i];
+    if(!relative && i==1u) value+=arcs[0]*40u;
+    oid_write_subidentifier(bytes,&position,value);
+  }
+  const asn1_per_length_constraint_t unconstrained={ASN1_PER_LENGTH_UNCONSTRAINED,0,0,0};
+  const asn1_status_t status=asn1_per_encode_octetstring_ex(w,v,&unconstrained,asn1_byte_view(bytes,n));
+  free(bytes);
+  return status;
+}
+asn1_status_t asn1_per_decode_oid_ex(asn1_bit_reader_t* r, asn1_per_variant_t v,
+                                     uint64_t** out_arcs, size_t* out_count, int relative) {
+  if(!r || !out_arcs || !out_count || !valid_variant(v) ||
+     (relative!=0 && relative!=1)) return ASN1_ERR_INVALID_ARGUMENT;
+  const asn1_per_length_constraint_t unconstrained={ASN1_PER_LENGTH_UNCONSTRAINED,0,0,0};
+  uint8_t* bytes=NULL; size_t n=0;
+  TRY(asn1_per_decode_octetstring_ex(r,v,&unconstrained,&bytes,&n));
+  if(!n) { free(bytes); return ASN1_ERR_CONSTRAINT_VIOLATION; }
+  if(n==SIZE_MAX) { free(bytes); return ASN1_ERR_LENGTH_OVERFLOW; }
+  size_t capacity=n+(relative?0u:1u);
+  if(capacity>SIZE_MAX/sizeof(uint64_t)) { free(bytes); return ASN1_ERR_LENGTH_OVERFLOW; }
+  asn1_status_t budget=asn1_bit_reader_reserve(r,capacity*sizeof(uint64_t),capacity);
+  if(budget!=ASN1_OK) { free(bytes); return budget; }
+  uint64_t* arcs=(uint64_t*)malloc(capacity*sizeof(*arcs));
+  if(!arcs) { free(bytes); return ASN1_ERR_OUT_OF_MEMORY; }
+  size_t used=0, count=0; asn1_status_t status=ASN1_OK;
+  while(used<n) {
+    uint64_t value=0; size_t start=used;
+    for(;;) {
+      if(used>=n) { status=ASN1_ERR_TRUNCATED; break; }
+      const uint8_t byte=bytes[used++];
+      if(used==start+1u && byte==0x80u) { status=ASN1_ERR_NON_CANONICAL; break; }
+      if(value>(UINT64_MAX-(uint64_t)(byte&0x7fu))/128u) { status=ASN1_ERR_LENGTH_OVERFLOW; break; }
+      value=value*128u+(uint64_t)(byte&0x7fu);
+      if(!(byte&0x80u)) break;
+    }
+    if(status!=ASN1_OK) break;
+    if(relative) arcs[count++]=value;
+    else if(count==0u) {
+      if(value<40u) { arcs[count++]=0; arcs[count++]=value; }
+      else if(value<80u) { arcs[count++]=1; arcs[count++]=value-40u; }
+      else { arcs[count++]=2; arcs[count++]=value-80u; }
+    } else arcs[count++]=value;
+  }
+  free(bytes);
+  if(status!=ASN1_OK || count<(relative?1u:2u)) { free(arcs); return status==ASN1_OK?ASN1_ERR_CONSTRAINT_VIOLATION:status; }
+  *out_arcs=arcs; *out_count=count;
+  return ASN1_OK;
+}
+
 static int in_int(const asn1_per_int_range_t* c, int64_t n) {
   return (!c->lower_set || n >= c->lower) && (!c->upper_set || n <= c->upper);
 }

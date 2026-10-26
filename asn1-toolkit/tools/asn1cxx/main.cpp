@@ -117,7 +117,7 @@ void print_usage(std::ostream& out) {
       << "  --codec <uper|aper|per|ber|der|cer|jer|jeri|xer|exer|oer|coer|cxer>\n"
       << "                         Comma-separated combination (e.g. uper,ber)\n"
       << "                         Codec for --emit-dir (default: uper)\n"
-      << "  --lang <cpp|c>         Target language (default cpp; C codecs unavailable)\n"
+      << "  --lang <cpp|c>         Target language (default cpp; C supports a checked PER subset)\n"
       << "  --types-only          C type/lifecycle artifacts, no codecs\n"
       << "  --split-max-types <N>  C source soft limit in IR types; SCCs stay whole\n"
       << "  --c-prefix <id>        C symbol prefix; requires --lang c\n"
@@ -304,7 +304,7 @@ int emit_code(const std::vector<std::string>& paths, const std::string& dir,
     asn1::codegen::emit_generated_to_dir(model,opt,diag,dir);
     diag.print(std::cerr);
     if(!diag.ok()) return EXIT_FAILURE;
-    std::cerr << "asn1cxx: generated C11 types/lifecycle only; sources in " << dir << "/generated-sources.json\n";
+    std::cerr << "asn1cxx: generated C11 artifacts; sources in " << dir << "/generated-sources.json\n";
     return EXIT_SUCCESS;
   }
   if (emit_split) {

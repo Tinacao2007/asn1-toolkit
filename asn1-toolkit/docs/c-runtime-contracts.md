@@ -77,7 +77,7 @@
 - `encode/decode_length_fragment` 只处理一个 determinant，显式返回/接受 more；
   调用者必须交错处理片段及数据，整片后仍须最终零 determinant。标量 size
   helper 不能表示分片内容，遇到一般长度 >=16K 返回 Unsupported，禁止丢失
-  more 信息。完整 octetstring/bitstring/open_type API 负责完整片段链。
+  more 信息。生成的 OF 路径通过 collection fragment API 交错处理长度和元素。
 - 旧 `encode_octetstring` 编码完整无界 UPER 值；旧 `decode_octetstring(r,length)`
   保留“读取已知长度裸 payload”的 ABI。新代码应配对使用 `_ex` 完整值接口；
   不要把旧 decode 当作能自行消费长度及片段的完整解码器。
@@ -91,7 +91,48 @@
 - decoder 默认保持 64KiB 字节上限；超过返回 ResourceLimit，不提交输出。
   整个 C runtime 可一致使用 `-DASN1_MAX_STRING_BYTES=...` 重新编译，配置必须
   为正且可表示为位数。本次单独的 128KiB 测试目标不改变生产默认值。
+- 生成 C PDU 的 reader 以顶层 decode 为预算根，累计申请字节默认 16 MiB、
+  集合/扩展元素默认 65536；嵌套 open-type reader 共享预算。预算统计申请总量，
+  包含 realloc 的新请求，不仅是最终存活内存。
 
-尚未支持的字符集原语、normally-small helper、完整生成类型编解码及复杂约束
+尚未支持的字符集原语、完整生成类型编解码及复杂约束
 不会因这些原语完成而自动获得支持。测试证据和 oracle 能力边界见
 [c-runtime-test-coverage.md](c-runtime-test-coverage.md)。
+
+## CGEN batch 4 primitive additions
+
+The C runtime exposes the X.691 SEQUENCE/SET preamble as an extension-present
+bit and presence bitmap. The C emitter consumes it for supported non-extensible
+SEQUENCE layouts. Decode owns the returned bitmap and preserves the caller result
+on truncation or allocation failure; release it with
+`asn1_per_sequence_preamble_free`. Encoding validates the bitmap before writing,
+while a later writer failure may leave a prefix.
+
+The shared `asn1_per_variant_t` core provides normally-small non-negative whole
+numbers, ENUMERATED ordinals, and OBJECT IDENTIFIER/RELATIVE-OID contents for
+uint64 arcs. APER large normally-small and OID payloads apply octet alignment;
+UPER remains bit-packed. OID values use BER contents as required by X.691 23 and
+reject invalid roots, malformed base-128 encodings, overflow, and values beyond
+the configured string cap. OID decode preserves caller outputs on failure.
+
+The generated C UPER/APER profile additionally covers recursive SEQUENCE OF graphs,
+extensible SEQUENCE/SET additions (including version-bracket groups), opaque PER
+open-type payloads, selected restricted character strings, and a host-`double` REAL
+profile. Out-of-line, inline and split consumers are covered for the current fixture.
+The supported string profile is NumericString, PrintableString, VisibleString,
+IA5String, BMPString and UniversalString; other string kinds still use the existing
+octet representation and are not claimed as character-set compliant. REAL supports
+binary64 and selected decimal forms, not exact decimal REAL semantics. Known
+table-constrained open fields automatically decode into an owned typed value while
+retaining raw complete-encoding octets. Generated APIs expose its type ID and pointer;
+the matching free helper, copy path, and selected-type re-encoding preserve ownership.
+CGEN-10..12 remain open for the full standard value profiles, the full
+extension/recursive allocation-failure matrix and reader cursor contract, and broader
+independent oracle checks. Collection fragment handling
+and cumulative PDU allocation/element budgets are implemented. A generated public
+decode resets its reader budget; nested readers made for extension open types share
+the root budget. The defaults are 16 MiB of cumulative requested allocation bytes
+and 65536 collection/addition elements. Override with
+`ASN1_MAX_PDU_ALLOCATION_BYTES` and `ASN1_MAX_PDU_ELEMENTS`. The budget counts
+allocation requests over the entire decode, including resized buffers, rather than
+only the final live heap size. See [batch 4 progress](cgen-batch4-validation.md).

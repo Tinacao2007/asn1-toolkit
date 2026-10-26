@@ -22,8 +22,13 @@
 ***************************************************************************/
 #include <asn1/runtime/bit_io.hpp>
 #include <asn1/runtime/per/primitives.hpp>
+#include <asn1/runtime/per/codec.hpp>
+#include <asn1/c_runtime/per.h>
 
 #include <cstdint>
+#include <cstdlib>
+#include <algorithm>
+#include <iterator>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -194,6 +199,132 @@ TEST(PerPrimitives, NormallySmallAndLength) {
   EXPECT_EQ(len3.value(), 70u);
 }
 
+TEST(PerPrimitives, CNormallySmallMatchesCppForBothVariants) {
+  for (const auto variant : {asn1::per::Variant::Unaligned, asn1::per::Variant::Aligned}) {
+    const auto c_variant = variant == asn1::per::Variant::Aligned
+        ? ASN1_PER_ALIGNED : ASN1_PER_UNALIGNED;
+    const std::uint64_t values[] = {0u, 63u, 64u, 255u, 256u, UINT64_C(0x100000000), UINT64_MAX};
+    for (const std::uint64_t value : values) {
+      asn1::BitWriter cpp_writer;
+      asn1::per::encode_normally_small_non_negative_whole_number(cpp_writer, variant, value);
+      const auto cpp_bytes = cpp_writer.take();
+
+      asn1_bit_writer_t* c_writer = nullptr;
+      ASSERT_EQ(asn1_bit_writer_create(&c_writer), ASN1_OK);
+      ASSERT_EQ(asn1_per_encode_normally_small_uint_ex(c_writer, c_variant, value), ASN1_OK);
+      std::uint8_t* c_bytes = nullptr;
+      std::size_t c_size = 0;
+      ASSERT_EQ(asn1_bit_writer_take(c_writer, &c_bytes, &c_size), ASN1_OK);
+      ASSERT_EQ(c_size, cpp_bytes.size());
+      EXPECT_TRUE(std::equal(cpp_bytes.begin(), cpp_bytes.end(), c_bytes));
+      std::free(c_bytes);
+      asn1_bit_writer_destroy(c_writer);
+    }
+  }
+}
+
+TEST(PerPrimitives, CEnumeratedOrdinalsMatchCppForBothVariants) {
+  for (const auto variant : {asn1::per::Variant::Unaligned, asn1::per::Variant::Aligned}) {
+    const auto c_variant = variant == asn1::per::Variant::Aligned
+        ? ASN1_PER_ALIGNED : ASN1_PER_UNALIGNED;
+    for (std::size_t ordinal = 0; ordinal < 5; ++ordinal) {
+      asn1::BitWriter cpp_writer;
+      asn1::per::encode_enumerated(cpp_writer, variant, ordinal, 5, true);
+      asn1_bit_writer_t* c_writer = nullptr;
+      ASSERT_EQ(asn1_bit_writer_create(&c_writer), ASN1_OK);
+      ASSERT_EQ(asn1_per_encode_enumerated_ex(c_writer, c_variant, ordinal, 5, 1, 0, 0), ASN1_OK);
+      std::uint8_t* c_bytes = nullptr; std::size_t c_size = 0;
+      ASSERT_EQ(asn1_bit_writer_take(c_writer, &c_bytes, &c_size), ASN1_OK);
+      const auto cpp_bytes = cpp_writer.take();
+      ASSERT_EQ(c_size, cpp_bytes.size());
+      EXPECT_TRUE(std::equal(cpp_bytes.begin(), cpp_bytes.end(), c_bytes));
+      std::free(c_bytes); asn1_bit_writer_destroy(c_writer);
+    }
+    const std::uint64_t extension_ordinals[] = {0u, 63u, 64u, 500u};
+    for (const std::uint64_t ordinal : extension_ordinals) {
+      asn1::BitWriter cpp_writer;
+      asn1::per::encode_enumerated_extension(cpp_writer, variant, static_cast<std::size_t>(ordinal));
+      asn1_bit_writer_t* c_writer = nullptr;
+      ASSERT_EQ(asn1_bit_writer_create(&c_writer), ASN1_OK);
+      ASSERT_EQ(asn1_per_encode_enumerated_ex(c_writer, c_variant, 0, 5, 1, 1, ordinal), ASN1_OK);
+      std::uint8_t* c_bytes = nullptr; std::size_t c_size = 0;
+      ASSERT_EQ(asn1_bit_writer_take(c_writer, &c_bytes, &c_size), ASN1_OK);
+      const auto cpp_bytes = cpp_writer.take();
+      ASSERT_EQ(c_size, cpp_bytes.size());
+      EXPECT_TRUE(std::equal(cpp_bytes.begin(), cpp_bytes.end(), c_bytes));
+      std::free(c_bytes); asn1_bit_writer_destroy(c_writer);
+    }
+  }
+}
+
+TEST(PerPrimitives, COidMatchesCppForBothVariants) {
+  const std::vector<std::uint64_t> absolute{1, 2, 840, 113549};
+  const std::vector<std::uint64_t> relative{0, 127, 128, UINT64_MAX};
+  for (const auto variant : {asn1::per::Variant::Unaligned, asn1::per::Variant::Aligned}) {
+    const auto c_variant = variant == asn1::per::Variant::Aligned
+        ? ASN1_PER_ALIGNED : ASN1_PER_UNALIGNED;
+    for (const auto* arcs : {&absolute, &relative}) {
+      const bool is_relative = arcs == &relative;
+      asn1::BitWriter cpp_writer;
+      asn1::per::encode_object_identifier(cpp_writer, variant, *arcs, is_relative);
+      const auto cpp_bytes = cpp_writer.take();
+      asn1_bit_writer_t* c_writer = nullptr;
+      ASSERT_EQ(asn1_bit_writer_create(&c_writer), ASN1_OK);
+      ASSERT_EQ(asn1_per_encode_oid_ex(c_writer, c_variant, arcs->data(), arcs->size(), is_relative), ASN1_OK);
+      std::uint8_t* c_bytes = nullptr; std::size_t c_size = 0;
+      ASSERT_EQ(asn1_bit_writer_take(c_writer, &c_bytes, &c_size), ASN1_OK);
+      ASSERT_EQ(c_size, cpp_bytes.size());
+      EXPECT_TRUE(std::equal(cpp_bytes.begin(), cpp_bytes.end(), c_bytes));
+      asn1_bit_writer_destroy(c_writer);
+      asn1_bit_reader_t* reader = nullptr;
+      ASSERT_EQ(asn1_bit_reader_create(&reader, asn1_byte_view(c_bytes, c_size)), ASN1_OK);
+      std::uint64_t* decoded = nullptr; std::size_t decoded_count = 0;
+      ASSERT_EQ(asn1_per_decode_oid_ex(reader, c_variant, &decoded, &decoded_count, is_relative), ASN1_OK);
+      ASSERT_EQ(decoded_count, arcs->size());
+      EXPECT_TRUE(std::equal(arcs->begin(), arcs->end(), decoded));
+      std::free(decoded); std::free(c_bytes); asn1_bit_reader_destroy(reader);
+    }
+  }
+}
+
+TEST(PerPrimitives, CSequencePreambleMatchesCppAndPreservesFailureOutput) {
+  const std::uint8_t optional_bits[] = {1, 0, 1};
+  for (const bool extensible : {false, true}) {
+    asn1::BitWriter cpp_writer;
+    asn1::per::encode_sequence_preamble(
+        cpp_writer, asn1::per::Variant::Unaligned, extensible, extensible,
+        asn1::Span<const std::uint8_t>(optional_bits, 3));
+    const auto expected = cpp_writer.take();
+    asn1_bit_writer_t* writer = nullptr;
+    ASSERT_EQ(asn1_bit_writer_create(&writer), ASN1_OK);
+    ASSERT_EQ(asn1_per_encode_sequence_preamble(writer, extensible, extensible,
+                                                optional_bits, 3), ASN1_OK);
+    std::uint8_t* actual = nullptr; std::size_t size = 0;
+    ASSERT_EQ(asn1_bit_writer_take(writer, &actual, &size), ASN1_OK);
+    ASSERT_EQ(size, expected.size());
+    EXPECT_TRUE(std::equal(expected.begin(), expected.end(), actual));
+    asn1_bit_reader_t* reader = nullptr;
+    ASSERT_EQ(asn1_bit_reader_create(&reader, asn1_byte_view(actual, size)), ASN1_OK);
+    asn1_per_sequence_preamble_t decoded{};
+    ASSERT_EQ(asn1_per_decode_sequence_preamble(reader, extensible, 3, &decoded), ASN1_OK);
+    EXPECT_EQ(decoded.extensions_present, extensible);
+    ASSERT_EQ(decoded.optional_count, 3u);
+    EXPECT_TRUE(std::equal(std::begin(optional_bits), std::end(optional_bits), decoded.optional_bits));
+    asn1_per_sequence_preamble_free(&decoded);
+    asn1_bit_reader_destroy(reader); asn1_bit_writer_destroy(writer); std::free(actual);
+  }
+
+  const std::uint8_t empty = 0;
+  asn1_bit_reader_t* reader = nullptr;
+  ASSERT_EQ(asn1_bit_reader_create(&reader, asn1_byte_view(&empty, 0)), ASN1_OK);
+  asn1_per_sequence_preamble_t untouched{1, reinterpret_cast<std::uint8_t*>(1), 77};
+  EXPECT_EQ(asn1_per_decode_sequence_preamble(reader, true, 3, &untouched), ASN1_ERR_TRUNCATED);
+  EXPECT_EQ(untouched.extensions_present, 1);
+  EXPECT_EQ(untouched.optional_bits, reinterpret_cast<std::uint8_t*>(1));
+  EXPECT_EQ(untouched.optional_count, 77u);
+  asn1_bit_reader_destroy(reader);
+}
+
 TEST(PerPrimitives, LengthDeterminant) {
   asn1::BitWriter w;
   EXPECT_EQ(asn1::per::encode_length_determinant(w, asn1::per::Variant::Unaligned, 5), 5u);
@@ -247,4 +378,18 @@ TEST(PerPrimitives, OpenTypeAperAligns) {
   auto ot = asn1::per::decode_open_type(r, asn1::per::Variant::Aligned);
   ASSERT_TRUE(ot.ok());
   expect_bytes(ot.value(), hex({0x11, 0x22}));
+}
+
+TEST(PerPrimitives, PrintableStringIncludesPeriod) {
+  asn1::per::SizeConstraint size;
+  size.lower=0; size.upper=8;
+  asn1::BitWriter writer;
+  ASSERT_TRUE(asn1::per::encode_restricted_string(writer,asn1::per::Variant::Unaligned,
+      "A.B",asn1::per::CharStringKind::PrintableString,size).ok());
+  const auto wire=writer.take();
+  asn1::BitReader reader(wire);
+  auto decoded=asn1::per::decode_restricted_string(reader,asn1::per::Variant::Unaligned,
+      asn1::per::CharStringKind::PrintableString,size);
+  ASSERT_TRUE(decoded.ok());
+  EXPECT_EQ(decoded.value(),"A.B");
 }

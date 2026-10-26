@@ -67,12 +67,12 @@ README（根目录）→ [usage-guide.md](usage-guide.md) 快速开始与 CLI �
 
 CGEN batch 1: [C ABI design](c-generated-abi.md),
 [twelve-entry runtime gaps](c-runtime-codegen-gaps.md), and
-[execution evidence](cgen-batch1-validation.md). ordinary C codec requests still fail explicitly; type-only output is described below.
+[execution evidence](cgen-batch1-validation.md). the current C codec subset and its limits are described below.
 
 CGEN batch 2: [type/lifecycle acceptance](cgen-batch2-validation.md), including
 owning DEFAULT, generated shared-plan consumers and explicit value profiles.
-This does not enable CLI C codec generation.
+These layout facilities do not expand the wire codec subset.
 
 CGEN batch 3: [C type-only output, shards and CMake lists](c-codegen-output.md),
 [acceptance and limits](cgen-batch3-validation.md). Explicit `--types-only` is
-available; ordinary C codecs and complete PDU interoperability remain pending.
+available; a limited C UPER/APER PDU subset is implemented, while complete PER coverage and independent PDU interoperability remain pending.

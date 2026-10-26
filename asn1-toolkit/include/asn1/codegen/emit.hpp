@@ -138,9 +138,9 @@ struct EmitOptions {
   std::filesystem::path emit_dir;
   /// Appended to preserve existing positional aggregate initialization.
   TargetLanguage language = TargetLanguage::Cpp;
-  /// Empty selects asn1_gen for explicit type-only C output; codecs remain Unsupported.
+  /// Empty selects asn1_gen for C output.
   std::string c_prefix;
-  /// Explicit C type/lifecycle generation, with no codec functions.
+  /// Explicit C type/lifecycle-only generation; incompatible with --codec.
   bool c_types_only = false;
   /// C source budget in reachable IR types; zero means no count limit.
   /// Dependency SCCs are indivisible and may exceed this soft limit.

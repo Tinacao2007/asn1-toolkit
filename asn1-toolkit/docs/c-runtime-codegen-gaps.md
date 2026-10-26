@@ -5,8 +5,10 @@ Audit date: 2026-10-24. Implementation inspection covers `src/c_runtime/*.c`,
 execution is [the declaration register](c-runtime-test-coverage.md),
 [REV-01..03](rev01-03-validation.md) and [REV-04..09](rev04-09-validation.md).
 A header name, a TODO comment or reader initialization does not count as a codec.
-All twelve generated C entries are currently Unsupported. No runtime API was
-added in batch 1; the gaps are dependencies of later batches, not successful stubs.
+The C runtime headers and most generated C entries remain unsupported. Batch 4 now
+has a tested UPER/APER generated-PDU subset; the rows below distinguish reusable
+PER primitives from generated schema consumption. No non-PER entry should be
+inferred as implemented from its header.
 
 Legend: R = existing reusable implementation, M = implementation required,
 U = outside the currently supported value/instruction domain and must diagnose.
@@ -36,8 +38,8 @@ location and resource requirements. M entries are not currently callable APIs.
 
 | Entry | Primitives (R / M / U) | Containers (M) | Policy (R / M) | Complete decode | Error location | Resource enforcement |
 |---|---|---|---|---|---|---|
-| uper | R bool, int64/BigInt, length fragments, bits/octets/open bytes; M enum/normally-small, OID, REAL, characters; U general REAL/unsupported constraints | preambles, CHOICE/OF, extension groups, selector dispatch | R unaligned Variant; M schema membership/defaults | R listed scalar/string values; M generated PDU and inner open decode | R bit-reader position; M field path/first error | R string/limb limits, overflow checks; M cumulative bytes/count/depth |
-| aper | same reusable PER primitives and missing value families as uper | same orchestration using shared plan | R aligned Variant; M schema/default checks | R listed values with alignment; M PDU | R bit-reader position; M field path | R primitive caps; M cumulative PDU budgets |
+| uper | R bool, int64/BigInt, fragments, bits/octets, open bytes, normally-small, ENUMERATED, uint64-arc OID, common REAL and restricted strings; M full string repertoire/profile | R tested root/extension CHOICE, OF, recursive SEQUENCE OF, trailing-root, collection fragmentation, extensible SEQUENCE/SET additions and version groups, opaque and selector-driven typed open payload; M unsupported unknown extension preservation | R unaligned Variant; M complete schema membership/default coverage | R tested generated PDU paths; M broader interop | R bit offset; M field path/first error | R primitive caps/depth and cumulative bytes/count budget; M complete fault matrix |
+| aper | same reusable PER primitives and value families as uper | same schema orchestration using shared Variant; same unsupported structures | R aligned Variant; M complete schema/default checks | R tested aligned PDU cases; M broader interop | R primitive caps; M field path | M aggregate bytes/count budget |
 | ber | R tag/length, BigInt signed conversion; M bool/null/int/OID/REAL/string TLV values | explicit/implicit tags, SET/CHOICE/OF, indefinite/EOC, unknown members | R tag/length syntax only; M base-rule validation | M byte reader operations and full TLV/value decode | R helper consumed on success; M byte cursor/path/error location | R helper arithmetic caps; M nesting/aggregate content/count |
 | der | R BER helpers; M value codecs | BER structures plus canonical SET/SET OF | M minimal integers/lengths, definite form, DEFAULT omission, canonical REAL/order | M strict DER decode | M byte cursor/path | M aggregate/depth limits; reuse primitive caps |
 | cer | R BER helpers; M values and constructed string chunks | BER structures plus indefinite forms, EOC and fragments | M 1000-octet rules, canonical order/DEFAULT/REAL/tail bits | M strict CER decode and fragment accounting | M byte cursor/path | M nested/cumulative fragment/depth limits |
@@ -79,6 +81,17 @@ by the batch 2 generated-C consumers.
 
 
 Batch 3 adds explicit type-only artifact generation, static-inline/module/source
-shapes, verified cache and source-list publication. No missing wire primitive in
-this audit is thereby implemented; all twelve ordinary C codec requests still
-reject. See [C artifact contract](c-codegen-output.md).
+shapes, verified cache and source-list publication. Batch 4 now has checked C
+UPER/APER paths for recursive SEQUENCE OF, plain extension additions, version-bracket
+groups, opaque complete-encoding open payloads, Numeric/IA5 strings, and binary64
+plus decimal NR REAL decode. Out-of-line, inline and split generated C consumers
+compile, link and run. Known table-constrained open fields retain raw octets and
+automatically decode into an owned selected type; typed values are re-encoded by type.
+Choice extensions and trailing-root are covered. The declared first PER profile is
+closed; representative asn1c UPER vectors cover fragmentation, extension CHOICE and
+trailing-root. Full restricted alphabet/string-fragmentation coverage, the complete
+generated-allocation/cursor fault matrix and independent oracle vectors for every
+schema shape remain open profile extensions. Collection fragmentation, cumulative
+PDU budgets and collection-growth fault injection are implemented. The CLI accepts
+only the supported profile and diagnoses unsupported shapes before publication.
+See [C artifact contract](c-codegen-output.md) and [batch 4 evidence](cgen-batch4-validation.md).

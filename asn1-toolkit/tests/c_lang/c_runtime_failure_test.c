@@ -278,6 +278,17 @@ static void per_allocation_failures(void) {
     CHECK(at < 16);
   }
   normal();
+  {
+    const uint8_t preamble_wire=0xA0;
+    asn1_bit_reader_t* r=NULL;
+    CHECK(asn1_bit_reader_create(&r,asn1_byte_view(&preamble_wire,1))==ASN1_OK);
+    asn1_per_sequence_preamble_t out={1,(uint8_t*)(uintptr_t)1,77};
+    size_t baseline=live; inject(0);
+    CHECK(asn1_per_decode_sequence_preamble(r,0,3,&out)==ASN1_ERR_OUT_OF_MEMORY);
+    CHECK(out.extensions_present==1 && out.optional_bits==(uint8_t*)(uintptr_t)1 &&
+          out.optional_count==77 && live==baseline);
+    normal(); asn1_bit_reader_destroy(r); CHECK(live==0);
+  }
   uint8_t zero = 0;
   for (size_t at = 0; at < 2; ++at) {
     asn1_bit_reader_t* r = NULL;

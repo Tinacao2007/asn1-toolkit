@@ -17,6 +17,8 @@ void free、只读查询等无失败状态的函数不虚构错误返回。
 | 旧 PER bool/int/unbounded_int/size/constrained_size/bitstring/octetstring | smoke/failure/correctness，经 UPER 包装 | 旧烟测补实际解码；兼容入口的字节/结果 | 分配失败、显式 Unsupported 的片段 scalar、非法范围 |
 | PER int_ex/unbounded_int_ex | correctness/failure/live oracle | UPER/APER、有界/无界/半约束/扩展/full int64 与大整数 | 非法范围、冗余 signed content、OOM、超资源 |
 | PER size_ex/length_fragment | correctness | root/extension、fixed/var/semi、继续标记与结束零 | 无效标记、无效 variant、scalar 不冒充片段链 |
+| PER normally-small/ENUMERATED/OID ex | C correctness + C/C++ parity | 两 Variant normally-small 边界、root/extension ordinal、OID BER contents 与 X.691 23 长度编码 | 非法根 arc、uint64 溢出、非最短/截断 base-128、失败输出不变 |
+| PER SEQUENCE/SET preamble | C correctness + C/C++ parity/failure | 扩展标志与 OPTIONAL/DEFAULT presence bitmap | 截断、OOM、非法位、失败输出不变、超上限 |
 | PER octetstring_ex/bitstring_ex | correctness/large/failure/live oracle | 短值冻结向量、16K/64K 阈值、多片、后续字段位置 | 截断、源容量、根约束、生产上限、后片 OOM 清理 |
 | PER open_type | correctness/large/failure | 前置 1 bit 下两 variant 对齐及内容、完整分片 | 继承共享片段引擎的坏长度/截断/OOM；调用者提供完整内层编码 |
 | JER writer init/puts/printf、reader init | smoke/failure | 固定文本输出；reader 只绑定输入 | 缓冲区不足、NULL 输入；printf 未提交尾部可改写 |
@@ -43,6 +45,11 @@ BOOLEAN 能揭示对齐及片段消费错误；184 个短向量冻结在
    本次按 11.9.3.8.3 验证整片后零及多片，保留正确编码。
 4. APER 有界变长零长度：oracle 对不存在的内容仍 align；按 11.9.3.3 及其
    Note 2 验证前置/后置 BOOLEAN 的线路位置。
+
+本表新增的 normally-small、ENUMERATED ordinal 和 OID C 原语目前以冻结标准向量
+及 C/C++ 两 Variant 字节一致性验证；尚未加入独立 asn1tools/asn1c primitive
+differential。枚举映射由调用方提供排序后的 root/extension ordinal，不能据此推断
+生成器已支持 ENUMERATED 值映射或生成 PDU 编解码。
 
 这些项在脚本输出中逐条 EXCLUDED，不计入通过的独立差分用例。条文来源：
 [ITU-T X.691 (02/2021)](https://www.itu.int/rec/T-REC-X.691-202102-I/en)。

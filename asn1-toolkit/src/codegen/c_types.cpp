@@ -71,6 +71,8 @@ class Types {
   Diagnostics& diag;
   bool external_helpers = false;
   bool inline_functions = false;
+  bool c_uper = false;
+  bool c_aper = false;
   std::string linkage(bool helper = false) const {
     return inline_functions ? "static inline " : helper && !external_helpers ? "static " : "";
   }
@@ -147,6 +149,27 @@ class Types {
       id=model.arena.get(id).referenced.resolved;
     }
     return id;
+  }
+  TypeId scalar_underlying(TypeId id) const {
+    std::set<TypeId> seen;
+    while(seen.insert(id).second) {
+      const auto& t=model.arena.get(id);
+      if(t.kind==TypeKind::Referenced) id=t.referenced.resolved;
+      else if(t.kind==TypeKind::ObjectClassField && !t.object_class_field.open_type) id=t.object_class_field.fixed_type;
+      else return id;
+    }
+    return kInvalidType;
+  }
+  std::string scalar_value_path(TypeId id,std::string path) const {
+    std::set<TypeId> seen;
+    while(seen.insert(id).second) {
+      const auto& t=model.arena.get(id);
+      if(t.kind==TypeKind::Referenced) { path += ".value"; id=t.referenced.resolved; }
+      else if(t.kind==TypeKind::ObjectClassField && !t.object_class_field.open_type) { path += ".value"; id=t.object_class_field.fixed_type; }
+      else if(t.kind==TypeKind::Integer || t.kind==TypeKind::Enumerated) return path+".value";
+      else return {};
+    }
+    return {};
   }
   bool owning_default(const Field& field) const {
     if (!field.default_value || *field.default_value >= model.arena.value_count()) return false;
@@ -264,6 +287,12 @@ class Types {
   }
   void metadata(TypeId id, std::ostream& s) const {
     const auto n=name(id); const auto fs=planning::fields(model.arena.get(id));
+    const auto& parent=model.arena.get(id);
+    if(parent.kind==TypeKind::Sequence || parent.kind==TypeKind::Set) {
+      const auto& seq=per_sequence(parent);
+      for(const auto* fields:{&seq.root,&seq.trailing_root})
+        for(const auto& field:*fields) emit_selector_free(id,field,s);
+    }
     for (std::size_t i=0;i<fs.size();++i) if (fs[i].selector && !fs[i].selector->entries.empty()) {
       s << "static const " << prefix << "_selector_entry " << n << "_select" << i << "[] = {\n";
       for (const auto& entry: fs[i].selector->entries)
@@ -363,6 +392,12 @@ class Types {
       h << " };\n";
     }
     h << "struct " << n << " {\n";
+    if(t.kind==TypeKind::Sequence||t.kind==TypeKind::Set) {
+      const auto& seq=per_sequence(t);
+      for(const auto* fields:{&seq.root,&seq.trailing_root}) for(const auto& field:*fields)
+        if(typed_open_field(field))
+          h << "  uint32_t " << decoded_type_member(field) << "; void* " << decoded_value_member(field) << ";\n";
+    }
     if (t.kind == TypeKind::Boolean) h << "  int value;\n";
     else if (big_integer(t)) h << "  asn1_bigint_t value;\n";
     else if (t.kind == TypeKind::Integer || t.kind == TypeKind::Enumerated) h << "  int64_t value;\n";
@@ -397,29 +432,608 @@ class Types {
   void helper_declarations(std::ostream& s) const {
     for (const auto& item : names) {
       const auto& n=item.second;
+      const auto& t=model.arena.get(item.first);
       s << linkage(true) << "asn1_status_t " << n << "_copy_at(const " << n << "*, " << n << "*, size_t);\n"
         << linkage(true) << "asn1_status_t " << n << "_defaults_at(" << n << "*, size_t);\n";
+      for (const auto* variant : {"uper", "aper"}) {
+        if ((std::string(variant)=="uper" && c_uper) || (std::string(variant)=="aper" && c_aper))
+          s << linkage(true) << "asn1_status_t " << n << "_encode_" << variant << "_at(asn1_bit_writer_t*,const " << n << "*,size_t);\n"
+            << linkage(true) << "asn1_status_t " << n << "_decode_" << variant << "_at(asn1_bit_reader_t*," << n << "*,size_t);\n";
+      }
+      if(t.kind==TypeKind::Sequence || t.kind==TypeKind::Set) {
+        const auto& seq=per_sequence(t);
+        for(const auto* fields:{&seq.root,&seq.trailing_root})
+          for(const auto& field:*fields) if(typed_open_field(field))
+            for(const auto* variant:{"uper","aper"})
+              if((std::string(variant)=="uper"&&c_uper)||(std::string(variant)=="aper"&&c_aper))
+                s << linkage(true) << "asn1_status_t " << n << "_decode_selected_" << selector_function_suffix(field) << "_" << variant << "_impl(const " << n << "*,uint32_t*,void**,asn1_bit_reader_t*);\n";
+      }
+    }
+  }
+  std::string per_variant(const char* variant) const {
+    return std::string("ASN1_PER_") + (std::string(variant)=="aper" ? "ALIGNED" : "UNALIGNED");
+  }
+  std::string per_int_range(const Type& t) const {
+    const auto& c=t.integer.constraint;
+    if (c.root_ranges.size()>1) return {};
+    std::optional<std::int64_t> lower,upper;
+    if(c.lower) { if(!c.lower->as_i64) return {}; lower=*c.lower->as_i64; }
+    if(c.upper) { if(!c.upper->as_i64) return {}; upper=*c.upper->as_i64; }
+    std::ostringstream out;
+    out << "{" << (lower?literal(*lower):"0") << "," << bool(lower) << ","
+        << (upper?literal(*upper):"0") << "," << bool(upper) << "," << c.extensible << "}";
+    return out.str();
+  }
+  std::string per_size_range(const ConstraintDesc& c) const {
+    if(c.empty || c.root_ranges.size()>1 ||
+       (c.lower && (!c.lower->as_i64 || *c.lower->as_i64<0)) ||
+       (c.upper && (!c.upper->as_i64 || *c.upper->as_i64<0))) return {};
+    std::ostringstream out;
+    const auto kind=c.per_kind();
+    const auto kind_name=kind==PerBoundKind::Constrained?"ASN1_PER_LENGTH_CONSTRAINED":
+      kind==PerBoundKind::SemiConstrained?"ASN1_PER_LENGTH_SEMI_CONSTRAINED":"ASN1_PER_LENGTH_UNCONSTRAINED";
+    out << "{" << kind_name << "," << (c.lower?"(size_t)UINT64_C("+std::to_string(static_cast<std::uint64_t>(*c.lower->as_i64))+")":"0")
+        << "," << (c.upper?"(size_t)UINT64_C("+std::to_string(static_cast<std::uint64_t>(*c.upper->as_i64))+")":"0")
+        << "," << c.extensible << "}";
+    return out.str();
+  }
+  const SequenceDesc& per_sequence(const Type& t) const {
+    return t.kind==TypeKind::Set?t.set:t.sequence;
+  }
+  std::vector<const ExtensionGroup*> per_extension_groups(const SequenceDesc& desc) const {
+    std::vector<const ExtensionGroup*> out;
+    for(const auto& group:desc.extension_groups) out.push_back(&group);
+    return out;
+  }
+  std::string per_group_present(const ExtensionGroup& group,const std::string& value) const {
+    std::string out="(";
+    for(std::size_t i=0;i<group.fields.size();++i){if(i)out+=" || ";out+=value+".has_f"+spell(group.fields[i].name);}
+    return out+")";
+  }
+  std::string per_default_test(const Field& field, const std::string& expression) const {
+    if (!field.default_value || *field.default_value>=model.arena.value_count()) return {};
+    TypeId id=field.type; std::set<TypeId> seen; std::string value=expression;
+    while(model.arena.get(id).kind==TypeKind::Referenced) {
+      if(!seen.insert(id).second) return {};
+      value += ".value"; id=model.arena.get(id).referenced.resolved;
+    }
+    const auto& t=model.arena.get(id); const auto& def=model.arena.get_value(*field.default_value);
+    if(t.kind==TypeKind::Boolean && def.kind==ValueKind::Boolean)
+      return "("+value+".value == "+(def.boolean?"1":"0")+")";
+    if(t.kind==TypeKind::Integer && !big_integer(t) && def.kind==ValueKind::Integer && def.integer.as_i64)
+      return "("+value+".value == "+literal(*def.integer.as_i64)+")";
+    if(t.kind==TypeKind::Enumerated && def.kind==ValueKind::Reference) {
+      for(const auto* list:{&t.enumerated.root,&t.enumerated.extensions})
+        for(const auto& item:*list) if(item.name==def.name && item.value.as_i64)
+          return "("+value+".value == "+literal(*item.value.as_i64)+")";
+    }
+    return {};
+  }
+  bool c_per_supported(TypeId id, std::set<TypeId>& active, bool diagnose) const {
+    if (!active.insert(id).second) {
+      // Cycles are represented through pointer-bearing generated C structs;
+      // the depth-checked *_at helpers terminate traversal at runtime.
+      return true;
+    }
+    const auto& t=model.arena.get(id); bool ok=true;
+    switch(t.kind) {
+      case TypeKind::Boolean: case TypeKind::Null: case TypeKind::Real: break;
+      case TypeKind::ObjectClassField:
+        if(!t.object_class_field.open_type && !c_per_supported(t.object_class_field.fixed_type,active,diagnose)) ok=false;
+        break;
+      case TypeKind::BitString:
+        if(!t.bit_string.named_bits.empty() || t.bit_string.containing!=kInvalidType ||
+           per_size_range(t.bit_string.size).empty()) ok=false;
+        break;
+      case TypeKind::OctetString:
+        if(t.octet_string.containing!=kInvalidType || per_size_range(t.octet_string.size).empty()) ok=false;
+        break;
+      case TypeKind::String:
+        if(per_size_range(t.string.size).empty()) ok=false;
+        break;
+      case TypeKind::ObjectIdentifier: case TypeKind::RelativeOid: break;
+      case TypeKind::Integer:
+        if(big_integer(t)) {
+          if(t.integer.constraint.lower || t.integer.constraint.upper || t.integer.constraint.extensible) ok=false;
+        } else if(per_int_range(t).empty()) ok=false;
+        break;
+      case TypeKind::Enumerated:
+        if(t.enumerated.root.empty()) ok=false;
+        for(const auto* list:{&t.enumerated.root,&t.enumerated.extensions})
+          for(const auto& value:*list) if(!value.value.as_i64) ok=false;
+        break;
+      case TypeKind::Choice:
+        if(t.choice.alternatives.empty()) ok=false;
+        for(const auto& field:t.choice.alternatives)
+          if(!c_per_supported(field.type,active,diagnose)) ok=false;
+        for(const auto& field:t.choice.extensions)
+          if(!c_per_supported(field.type,active,diagnose)) ok=false;
+        break;
+      case TypeKind::Referenced:
+        ok=c_per_supported(t.referenced.resolved,active,diagnose); break;
+      case TypeKind::SequenceOf: case TypeKind::SetOf: {
+        const auto element=t.kind==TypeKind::SequenceOf?t.sequence_of.element:t.set_of.element;
+        const auto& size=t.kind==TypeKind::SequenceOf?t.sequence_of.size:t.set_of.size;
+        if(per_size_range(size).empty()) ok=false;
+        if(!c_per_supported(element,active,diagnose)) ok=false;
+        break;
+      }
+      case TypeKind::Sequence: case TypeKind::Set: {
+        const auto& sequence=per_sequence(t);
+        auto check_selectors=[&](const std::vector<Field>& fields) {
+          for(const auto& field:fields) if(field.table_constraint) {
+            const auto field_type=underlying(field.type);
+            if(field_type==kInvalidType) { ok=false; continue; }
+            if(model.arena.get(field_type).kind!=TypeKind::ObjectClassField ||
+               !model.arena.get(field_type).object_class_field.open_type) continue;
+            const Field* governor=nullptr;
+            for(const auto* list:{&sequence.root,&sequence.trailing_root})
+              for(const auto& candidate:*list)
+                if(candidate.name==field.table_constraint->governor_field_name) governor=&candidate;
+            if(!governor || scalar_underlying(governor->type)==kInvalidType) { ok=false; continue; }
+            const auto scalar=scalar_underlying(governor->type);
+            if(big_integer(model.arena.get(scalar))) { ok=false; continue; }
+            const auto governor_kind=model.arena.get(scalar).kind;
+            if(governor_kind!=TypeKind::Integer && governor_kind!=TypeKind::Enumerated) ok=false;
+            for(const auto& entry:field.table_constraint->entries)
+              if(!entry.has_id_value || !entry.id_value.as_i64 || !c_per_supported(entry.type,active,diagnose)) ok=false;
+          }
+        };
+        check_selectors(sequence.root);
+        check_selectors(sequence.trailing_root);
+        for(const auto& group:sequence.extension_groups) {
+          if(group.fields.empty() || (!group.version_bracket && group.fields.size()!=1)) ok=false;
+          for(const auto& f:group.fields) {
+            if(f.presence==Presence::Default && default_assignment(f,"v").empty()) ok=false;
+            if(!c_per_supported(f.type,active,diagnose)) ok=false;
+          }
+        }
+        for(const auto& field:sequence.root) {
+          if(field.presence==Presence::Default && default_assignment(field,"v").empty()) ok=false;
+          if(field.presence==Presence::Default) {
+            const auto dep=underlying(field.type);
+            const auto kind=dep==kInvalidType?TypeKind::Null:model.arena.get(dep).kind;
+            if(kind!=TypeKind::Boolean && kind!=TypeKind::Integer && kind!=TypeKind::Enumerated) ok=false;
+          }
+          if(!c_per_supported(field.type,active,diagnose)) ok=false;
+        }
+        for(const auto& field:sequence.trailing_root) {
+          if(field.presence==Presence::Default && default_assignment(field,"v").empty()) ok=false;
+          if(field.presence==Presence::Default) {
+            const auto dep=underlying(field.type);
+            const auto kind=dep==kInvalidType?TypeKind::Null:model.arena.get(dep).kind;
+            if(kind!=TypeKind::Boolean && kind!=TypeKind::Integer && kind!=TypeKind::Enumerated) ok=false;
+          }
+          if(!c_per_supported(field.type,active,diagnose)) ok=false;
+        }
+        break;
+      }
+      default: ok=false; break;
+    }
+    active.erase(id);
+    if(!ok && diagnose) diag.error({},"Unsupported C PER value layout for " + (t.name.empty()?std::string("anonymous type"):t.name));
+    return ok;
+  }
+  std::string selector_function_suffix(const Field& field) const { return spell(field.name); }
+  bool typed_open_field(const Field& field) const {
+    if(!field.table_constraint) return false;
+    const auto u=underlying(field.type);
+    return u!=kInvalidType && model.arena.get(u).kind==TypeKind::ObjectClassField &&
+           model.arena.get(u).object_class_field.open_type;
+  }
+  std::string decoded_type_member(const Field& field) const { return "decoded_type_f"+spell(field.name); }
+  std::string decoded_value_member(const Field& field) const { return "decoded_value_f"+spell(field.name); }
+  void emit_selector_decoder(TypeId id,const Field& field,const char* variant,
+                             std::ostream& s) const {
+    if(!typed_open_field(field) || field.table_constraint->entries.empty()) return;
+    const auto& t=model.arena.get(id); const auto& seq=per_sequence(t);
+    const Field* governor=nullptr;
+    for(const auto* list:{&seq.root,&seq.trailing_root})
+      for(const auto& candidate:*list)
+        if(candidate.name==field.table_constraint->governor_field_name) governor=&candidate;
+    if(!governor) return;
+    const std::string key=scalar_value_path(governor->type,"value->f"+spell(governor->name));
+    if(key.empty()) return;
+    const auto suffix=selector_function_suffix(field);
+    const auto func=name(id)+"_decode_selected_"+suffix+"_"+variant;
+    const auto impl=func+"_impl";
+    s << linkage(true) << "asn1_status_t " << impl << "(const " << name(id)
+      << "* value,uint32_t* out_type,void** out_value,asn1_bit_reader_t* budget_parent) { if(!value||!out_type||!out_value) return ASN1_ERR_INVALID_ARGUMENT; if(value->f"
+      << spell(field.name) << ".count>value->f" << spell(field.name) << ".capacity || (value->f" << spell(field.name)
+      << ".count && !value->f" << spell(field.name) << ".data)) return ASN1_ERR_INVALID_ARGUMENT; switch(" << key << ") {\n";
+    for(const auto& entry:field.table_constraint->entries) {
+      if(!entry.has_id_value || !entry.id_value.as_i64) continue;
+      const auto selected=name(entry.type);
+      s << "case " << literal(*entry.id_value.as_i64) << ": { " << selected << "* decoded=NULL; asn1_bit_reader_t* sub=NULL; asn1_status_t status=asn1_bit_reader_create(&sub,asn1_byte_view(value->f"
+        << spell(field.name) << ".data,value->f" << spell(field.name) << ".count)); if(status==ASN1_OK) status=budget_parent?asn1_bit_reader_share_budget(sub,budget_parent):asn1_bit_reader_begin_decode(sub); if(status==ASN1_OK) status=asn1_bit_reader_reserve(sub,sizeof(*decoded),1); if(status==ASN1_OK) { decoded=(" << selected << "*)calloc(1,sizeof(*decoded)); if(!decoded) status=ASN1_ERR_OUT_OF_MEMORY; else " << selected << "_init(decoded); } if(status==ASN1_OK) status=" << selected
+        << "_decode_" << variant << "_at(sub,decoded,0); if(status==ASN1_OK) { size_t rem=asn1_bit_reader_bit_remaining(sub); uint64_t pad=0; if(rem>7u) status=ASN1_ERR_INVALID_ARGUMENT; else if(rem) { status=asn1_bit_reader_get_bits(sub,rem,&pad); if(status==ASN1_OK && pad) status=ASN1_ERR_NON_CANONICAL; } } asn1_bit_reader_destroy(sub); if(status!=ASN1_OK) { " << selected << "_free(decoded); free(decoded); return status; } *out_type=UINT32_C(" << entry.type << "); *out_value=decoded; return ASN1_OK; }\n";
+    }
+    s << "default: return ASN1_ERR_CONSTRAINT_VIOLATION; } }\n"
+      << linkage() << "asn1_status_t " << func << "(const " << name(id) << "* value,uint32_t* type,void** decoded) { return " << impl << "(value,type,decoded,NULL); }\n";
+  }
+  void emit_selector_free(TypeId id,const Field& field,std::ostream& s) const {
+    if(!typed_open_field(field)) return;
+    const auto suffix=selector_function_suffix(field);
+    s << linkage() << "void " << name(id) << "_free_selected_" << suffix << "(uint32_t type,void* value) { if(!value) return; switch(type) {\n";
+    std::set<TypeId> emitted_types;
+    for(const auto& entry:field.table_constraint->entries) if(entry.has_id_value && entry.id_value.as_i64 && emitted_types.insert(entry.type).second)
+      s << "case UINT32_C(" << entry.type << "): " << name(entry.type) << "_free((" << name(entry.type) << "*)value); break;\n";
+    s << "default: break; } free(value); }\n";
+  }
+  void emit_selector_encode(TypeId id,const Field& field,const std::string& value,
+                            const char* variant,std::ostream& s,const std::string& ind) const {
+    const auto& seq=per_sequence(model.arena.get(id));
+    const Field* governor=nullptr;
+    for(const auto* fields:{&seq.root,&seq.trailing_root})
+      for(const auto& candidate:*fields)
+        if(candidate.name==field.table_constraint->governor_field_name) governor=&candidate;
+    if(!governor) { s << ind << "return ASN1_ERR_UNSUPPORTED;\n"; return; }
+    const auto key=scalar_value_path(governor->type,"("+value+").f"+spell(governor->name));
+    if(key.empty()) { s << ind << "return ASN1_ERR_UNSUPPORTED;\n"; return; }
+    const auto type_member=decoded_type_member(field), value_member=decoded_value_member(field);
+    s << ind << "if(" << value << "." << value_member << ") { switch(" << value << "." << type_member << ") {\n";
+    std::set<TypeId> emitted_types;
+    for(const auto& entry:field.table_constraint->entries) if(entry.has_id_value && entry.id_value.as_i64 && emitted_types.insert(entry.type).second) {
+      const auto selected=name(entry.type);
+      s << ind << "case UINT32_C(" << entry.type << "): if(!(";
+      bool first_key=true;
+      for(const auto& allowed:field.table_constraint->entries) if(allowed.type==entry.type && allowed.has_id_value && allowed.id_value.as_i64) {
+        if(!first_key) s << " || ";
+        first_key=false;
+        s << key << "==" << literal(*allowed.id_value.as_i64);
+      }
+      s << ")) return ASN1_ERR_CONSTRAINT_VIOLATION; { asn1_bit_writer_t* ew=NULL; uint8_t* data=NULL; size_t size=0; status=asn1_bit_writer_create(&ew); if(status==ASN1_OK) status=" << selected << "_encode_" << variant << "_at(ew,(const " << selected << "*)" << value << "." << value_member << ",depth+1); if(status==ASN1_OK) status=asn1_bit_writer_take(ew,&data,&size); asn1_bit_writer_destroy(ew); if(status==ASN1_OK) status=asn1_per_encode_open_type(w," << per_variant(variant) << ",asn1_byte_view(data,size)); free(data); if(status!=ASN1_OK) return status; } break;\n";
+    }
+    const auto raw=value+".f"+spell(field.name);
+    s << ind << "default: return ASN1_ERR_INVALID_ARGUMENT; } } else { if(" << raw << ".count>" << raw << ".capacity || (" << raw << ".count && !" << raw << ".data)) return ASN1_ERR_INVALID_ARGUMENT; status=asn1_per_encode_open_type(w," << per_variant(variant)
+      << ",asn1_byte_view(" << raw << ".data," << raw << ".count)); if(status!=ASN1_OK) return status; }\n";
+  }
+  void emit_per_encode_value(TypeId id, const std::string& value,
+                             const char* variant, std::ostream& s,
+                             const std::string& ind) const {
+    const auto& t=model.arena.get(id); const auto v=per_variant(variant);
+    switch(t.kind) {
+      case TypeKind::Boolean:
+        s << ind << "if(" << value << ".value!=0 && " << value << ".value!=1) return ASN1_ERR_INVALID_ARGUMENT; status=asn1_bit_writer_put_bit(w," << value << ".value); if(status!=ASN1_OK) return status;\n"; break;
+      case TypeKind::Null: break;
+      case TypeKind::ObjectClassField:
+        if(t.object_class_field.open_type)
+          s << ind << "if(" << value << ".count>" << value << ".capacity || (" << value << ".count && !" << value << ".data)) return ASN1_ERR_INVALID_ARGUMENT; status=asn1_per_encode_open_type(w," << v << ",asn1_byte_view(" << value << ".data," << value << ".count)); if(status!=ASN1_OK) return status;\n";
+        else s << ind << "status=" << name(t.object_class_field.fixed_type) << "_encode_" << variant << "_at(w,&" << value << ".value,depth+1); if(status!=ASN1_OK) return status;\n";
+        break;
+      case TypeKind::Real:
+        s << ind << "status=asn1_per_encode_real_ex(w," << v << "," << value << ".value); if(status!=ASN1_OK) return status;\n"; break;
+      case TypeKind::BitString:
+        s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(t.bit_string.size) << "; status=asn1_per_encode_bitstring_ex(w," << v << ",&size,&" << value << ".value); if(status!=ASN1_OK) return status; }\n"; break;
+      case TypeKind::OctetString:
+        s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(t.octet_string.size) << "; if(" << value << ".count>" << value << ".capacity || (" << value << ".count && !" << value << ".data)) return ASN1_ERR_INVALID_ARGUMENT; status=asn1_per_encode_octetstring_ex(w," << v << ",&size,asn1_byte_view(" << value << ".data," << value << ".count)); if(status!=ASN1_OK) return status; }\n"; break;
+      case TypeKind::String: {
+        const bool restricted = t.string.kind==StringKind::IA5String || t.string.kind==StringKind::PrintableString ||
+          t.string.kind==StringKind::VisibleString || t.string.kind==StringKind::NumericString ||
+          t.string.kind==StringKind::BMPString || t.string.kind==StringKind::UniversalString;
+        const char* sk = t.string.kind==StringKind::IA5String?"ASN1_PER_STRING_IA5":
+          t.string.kind==StringKind::PrintableString?"ASN1_PER_STRING_PRINTABLE":
+          t.string.kind==StringKind::VisibleString?"ASN1_PER_STRING_VISIBLE":
+          t.string.kind==StringKind::NumericString?"ASN1_PER_STRING_NUMERIC":
+          t.string.kind==StringKind::BMPString?"ASN1_PER_STRING_BMP":"ASN1_PER_STRING_UNIVERSAL";
+        s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(t.string.size) << "; if(" << value << ".count>" << value << ".capacity || (" << value << ".count && !" << value << ".data)) return ASN1_ERR_INVALID_ARGUMENT; status=asn1_per_" << (restricted?"encode_restricted_string_ex(w,":"encode_octetstring_ex(w,") << v << ",&size,";
+        if(restricted) s << sk << ",";
+        s << "asn1_byte_view(" << value << ".data," << value << ".count)); if(status!=ASN1_OK) return status; }\n";
+        break;
+      }
+      case TypeKind::ObjectIdentifier: case TypeKind::RelativeOid:
+        s << ind << "if(" << value << ".count>" << value << ".capacity || (" << value << ".count && !" << value << ".data)) return ASN1_ERR_INVALID_ARGUMENT; status=asn1_per_encode_oid_ex(w," << v << "," << value << ".data," << value << ".count," << (t.kind==TypeKind::RelativeOid?1:0) << "); if(status!=ASN1_OK) return status;\n"; break;
+      case TypeKind::Integer:
+        if(big_integer(t))
+          s << ind << "status=asn1_per_encode_unbounded_int_ex(w," << v << ",&" << value << ".value); if(status!=ASN1_OK) return status;\n";
+        else
+          s << ind << "{ const asn1_per_int_range_t range=" << per_int_range(t) << "; status=asn1_per_encode_int_ex(w," << v << ",&range," << value << ".value); if(status!=ASN1_OK) return status; }\n";
+        break;
+      case TypeKind::Enumerated: {
+        std::vector<std::pair<std::int64_t,std::size_t>> roots;
+        for(std::size_t i=0;i<t.enumerated.root.size();++i) roots.push_back({*t.enumerated.root[i].value.as_i64,i});
+        std::sort(roots.begin(),roots.end());
+        s << ind << "switch(" << value << ".value) {\n";
+        for(std::size_t i=0;i<roots.size();++i)
+          s << ind << "case " << literal(roots[i].first) << ": status=asn1_per_encode_enumerated_ex(w," << v << "," << i << "," << roots.size() << "," << t.enumerated.extensible << ",0,0); break;\n";
+        for(std::size_t i=0;i<t.enumerated.extensions.size();++i)
+          s << ind << "case " << literal(*t.enumerated.extensions[i].value.as_i64) << ": status=asn1_per_encode_enumerated_ex(w," << v << ",0," << roots.size() << "," << t.enumerated.extensible << ",1," << i << "); break;\n";
+        s << ind << "default: return ASN1_ERR_CONSTRAINT_VIOLATION; } if(status!=ASN1_OK) return status;\n";
+        break;
+      }
+      case TypeKind::Referenced:
+        if(pointer(id,t.referenced.resolved)) s << ind << "if(!" << value << ".value) return ASN1_ERR_INVALID_ARGUMENT; status=" << name(t.referenced.resolved) << "_encode_" << variant << "_at(w," << value << ".value,depth+1); if(status!=ASN1_OK) return status;\n";
+        else s << ind << "status=" << name(t.referenced.resolved) << "_encode_" << variant << "_at(w,&" << value << ".value,depth+1); if(status!=ASN1_OK) return status;\n";
+        break;
+      case TypeKind::Sequence: case TypeKind::Set: {
+        const auto& sequence=per_sequence(t);
+        const auto groups=per_extension_groups(sequence);
+        std::vector<const Field*> presence;
+        for(const auto& f:sequence.root) if(f.presence!=Presence::Mandatory) presence.push_back(&f);
+        for(const auto& f:sequence.trailing_root) if(f.presence!=Presence::Mandatory) presence.push_back(&f);
+        for(const auto* group:groups) for(const auto& f:group->fields)
+          s << ind << "if(" << value << ".has_f" << spell(f.name) << "!=0 && " << value << ".has_f" << spell(f.name) << "!=1) return ASN1_ERR_INVALID_ARGUMENT;\n";
+        for(const auto* group:groups) if(group->version_bracket) for(const auto& f:group->fields)
+          if(f.presence==Presence::Mandatory)
+            s << ind << "if(" << per_group_present(*group,value) << " && !" << value << ".has_f" << spell(f.name) << ") return ASN1_ERR_CONSTRAINT_VIOLATION;\n";
+        for(const auto* f:presence) if(f->presence==Presence::Optional)
+          s << ind << "if(" << value << ".has_f" << spell(f->name) << "!=0 && " << value << ".has_f" << spell(f->name) << "!=1) return ASN1_ERR_INVALID_ARGUMENT;\n";
+        if(!presence.empty()) {
+          s << ind << "{ const uint8_t present[" << std::max<std::size_t>(1,presence.size()) << "]={";
+          for(std::size_t i=0;i<presence.size();++i) {
+            const auto& f=*presence[i]; if(i) s << ',';
+            const auto member=value+".f"+spell(f.name);
+            if(f.presence==Presence::Optional) s << "(uint8_t)(" << value << ".has_f" << spell(f.name) << "!=0)";
+            else s << "(uint8_t)!(" << per_default_test(f,member) << ")";
+          }
+          s << "}; status=asn1_per_encode_sequence_preamble(w," << sequence.extensible << ",";
+          if(sequence.extensible&&!groups.empty()) { s << "("; for(std::size_t i=0;i<groups.size();++i){if(i)s<<" || ";s<<per_group_present(*groups[i],value);} s << ")"; }
+          else s << "0";
+          s << ",present," << presence.size() << "); if(status!=ASN1_OK) return status; }\n";
+        } else {
+          s << ind << "status=asn1_per_encode_sequence_preamble(w," << sequence.extensible << ",";
+          if(sequence.extensible&&!groups.empty()) { s << "("; for(std::size_t i=0;i<groups.size();++i){if(i)s<<" || ";s<<per_group_present(*groups[i],value);} s << ")"; }
+          else s << "0";
+          s << ",NULL,0); if(status!=ASN1_OK) return status;\n";
+        }
+        auto emit_root_encode=[&](const std::vector<Field>& fields) { for(const auto& f:fields) {
+          const auto member=value+".f"+spell(f.name);
+          if(f.presence==Presence::Optional) s << ind << "if(" << value << ".has_f" << spell(f.name) << ") {\n";
+          else if(f.presence==Presence::Default) s << ind << "if(!( " << per_default_test(f,member) << ")) {\n";
+          s << ind << ((f.presence==Presence::Mandatory)?"":"  ");
+          if(typed_open_field(f)) emit_selector_encode(id,f,value,variant,s,ind+((f.presence==Presence::Mandatory)?"":"  "));
+          else if(pointer(id,f.type)) s << "if(!" << member << ") return ASN1_ERR_INVALID_ARGUMENT; status=" << name(f.type) << "_encode_" << variant << "_at(w," << member << ",depth+1); if(status!=ASN1_OK) return status;\n";
+          else s << "status=" << name(f.type) << "_encode_" << variant << "_at(w,&" << member << ",depth+1); if(status!=ASN1_OK) return status;\n";
+          if(f.presence!=Presence::Mandatory) s << ind << "}\n";
+        }};
+        emit_root_encode(sequence.root);
+        emit_root_encode(sequence.trailing_root);
+        if(!groups.empty()) {
+          s << ind << "{ const size_t extension_count=" << groups.size() << "; uint8_t extension_presence[" << groups.size() << "]={";
+          for(std::size_t i=0;i<groups.size();++i){if(i)s<<',';s<<"(uint8_t)"<<per_group_present(*groups[i],value);}
+          s << "}; asn1_byte_view_t extension_values[" << groups.size() << "]={{0}}; uint8_t* extension_data[" << groups.size() << "]={0};\n";
+          for(std::size_t i=0;i<groups.size();++i) {
+            const auto& group=*groups[i];
+            s << ind << "  if(extension_presence[" << i << "]) { asn1_bit_writer_t* ew=NULL; status=asn1_bit_writer_create(&ew); if(status!=ASN1_OK) { for(size_t k=0;k<" << groups.size() << ";++k) free(extension_data[k]); return status; }\n";
+            if(group.version_bracket) {
+              std::vector<const Field*> group_presence;
+              for(const auto& f:group.fields) if(f.presence!=Presence::Mandatory) group_presence.push_back(&f);
+              s << ind << "    { const uint8_t gopt[" << std::max<std::size_t>(1,group_presence.size()) << "]={";
+              for(std::size_t j=0;j<group_presence.size();++j){if(j)s<<',';s<<"(uint8_t)"<<value<<".has_f"<<spell(group_presence[j]->name);}
+              s << "}; status=asn1_per_encode_sequence_preamble(ew,0,0," << (group_presence.empty()?"NULL":"gopt") << "," << group_presence.size() << "); }\n";
+            }
+            for(const auto& f:group.fields) {
+              const auto member=value+".f"+spell(f.name);
+              if(group.version_bracket && f.presence!=Presence::Mandatory) s << ind << "    if(" << value << ".has_f" << spell(f.name) << ") {\n";
+              const std::string target=pointer(id,f.type)?member:"&"+member;
+              if(pointer(id,f.type)) s << ind << (group.version_bracket&&f.presence!=Presence::Mandatory?"      ":"    ") << "if(!" << member << ") { status=ASN1_ERR_INVALID_ARGUMENT; } else status=" << name(f.type) << "_encode_" << variant << "_at(ew," << target << ",depth+1);\n";
+              else s << ind << (group.version_bracket&&f.presence!=Presence::Mandatory?"      ":"    ") << "status=" << name(f.type) << "_encode_" << variant << "_at(ew," << target << ",depth+1);\n";
+              s << ind << (group.version_bracket&&f.presence!=Presence::Mandatory?"      ":"    ") << "if(status!=ASN1_OK) { asn1_bit_writer_destroy(ew); for(size_t k=0;k<" << groups.size() << ";++k) free(extension_data[k]); return status; }\n";
+              if(group.version_bracket && f.presence!=Presence::Mandatory) s << ind << "    }\n";
+            }
+            s << ind << "    status=asn1_bit_writer_take(ew,&extension_data[" << i << "],&extension_values[" << i << "].size); asn1_bit_writer_destroy(ew); if(status!=ASN1_OK) { for(size_t k=0;k<" << groups.size() << ";++k) free(extension_data[k]); return status; } extension_values[" << i << "].data=extension_data[" << i << "]; }\n";
+          }
+          s << ind << "  int any_extension=0; for(size_t k=0;k<extension_count;++k) any_extension|=extension_presence[k]; if(any_extension) status=asn1_per_encode_extension_additions(w," << v << ",extension_presence,extension_count,extension_values); for(size_t k=0;k<extension_count;++k) free(extension_data[k]); if(status!=ASN1_OK) return status; }\n";
+        }
+        break;
+      }
+      case TypeKind::SequenceOf: case TypeKind::SetOf: {
+        const auto dep=t.kind==TypeKind::SequenceOf?t.sequence_of.element:t.set_of.element;
+        const auto& constraint=t.kind==TypeKind::SequenceOf?t.sequence_of.size:t.set_of.size;
+        s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(constraint) << "; if(" << value << ".count>" << value << ".capacity || (" << value << ".count && !" << value << ".data)) return ASN1_ERR_INVALID_ARGUMENT; size_t remaining=" << value << ".count,offset=0,chunk=0; int more=0,first=1,is_extension=0; do { status=asn1_per_encode_collection_fragment_ex(w," << v << ",&size,remaining,first,&is_extension,&chunk,&more); if(status!=ASN1_OK) return status; for(size_t i=0;i<chunk;++i) { status=" << name(dep) << "_encode_" << variant << "_at(w,&" << value << ".data[offset+i],depth+1); if(status!=ASN1_OK) return status; } remaining-=chunk; offset+=chunk; first=0; } while(more); }\n";
+        break;
+      }
+      case TypeKind::Choice: {
+        const auto root_count=t.choice.alternatives.size();
+        s << ind << "{ int is_extension=0; size_t root_index=0; uint64_t extension_index=0; switch(" << value << ".kind) {\n";
+        for(std::size_t i=0;i<root_count;++i)
+          s << ind << "case " << name(id) << "_arm_f" << spell(t.choice.alternatives[i].name) << ": root_index=" << i << "; break;\n";
+        for(std::size_t i=0;i<t.choice.extensions.size();++i)
+          s << ind << "case " << name(id) << "_arm_f" << spell(t.choice.extensions[i].name) << ": is_extension=1; extension_index=" << i << "; break;\n";
+        s << ind << "default: return ASN1_ERR_INVALID_ARGUMENT; } status=asn1_per_encode_enumerated_ex(w," << v << ",root_index," << root_count << "," << t.choice.extensible << ",is_extension,extension_index); if(status!=ASN1_OK) return status; switch(" << value << ".kind) {\n";
+        for(const auto& field:t.choice.alternatives)
+          s << ind << "case " << name(id) << "_arm_f" << spell(field.name) << ": status=" << name(field.type) << "_encode_" << variant << "_at(w,&" << value << ".value.f" << spell(field.name) << ",depth+1); break;\n";
+        for(const auto& field:t.choice.extensions) {
+          s << ind << "case " << name(id) << "_arm_f" << spell(field.name) << ": { asn1_bit_writer_t* ew=NULL; uint8_t* data=NULL; size_t size=0; status=asn1_bit_writer_create(&ew); if(status==ASN1_OK) status=" << name(field.type) << "_encode_" << variant << "_at(ew,&" << value << ".value.f" << spell(field.name) << ",depth+1); if(status==ASN1_OK) status=asn1_bit_writer_take(ew,&data,&size); asn1_bit_writer_destroy(ew); if(status==ASN1_OK) status=asn1_per_encode_open_type(w," << v << ",asn1_byte_view(data,size)); free(data); break; }\n";
+        }
+        s << ind << "default: return ASN1_ERR_INVALID_ARGUMENT; } if(status!=ASN1_OK) return status; }\n";
+        break;
+      }
+      default: s << ind << "return ASN1_ERR_UNSUPPORTED;\n"; break;
+    }
+  }
+  void emit_per_decode_value(TypeId id, const std::string& value,
+                             const char* variant, std::ostream& s,
+                             const std::string& ind, const std::string& fail) const {
+    const auto& t=model.arena.get(id); const auto v=per_variant(variant);
+    switch(t.kind) {
+      case TypeKind::Boolean:
+        s << ind << "{ int bit=0; status=asn1_bit_reader_get_bit(r,&bit); if(status!=ASN1_OK) " << fail << " " << value << ".value=bit; }\n"; break;
+      case TypeKind::Null: break;
+      case TypeKind::ObjectClassField:
+        if(t.object_class_field.open_type)
+          s << ind << "{ uint8_t* decoded=NULL; size_t count=0; status=asn1_per_decode_open_type(r," << v << ",&decoded,&count); if(status!=ASN1_OK) " << fail << " " << value << ".data=decoded; " << value << ".count=" << value << ".capacity=count; }\n";
+        else s << ind << "status=" << name(t.object_class_field.fixed_type) << "_decode_" << variant << "_at(r,&" << value << ".value,depth+1); if(status!=ASN1_OK) " << fail << "\n";
+        break;
+      case TypeKind::Real:
+        s << ind << "status=asn1_per_decode_real_ex(r," << v << ",&" << value << ".value); if(status!=ASN1_OK) " << fail << "\n"; break;
+      case TypeKind::BitString:
+        s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(t.bit_string.size) << "; status=asn1_per_decode_bitstring_ex(r," << v << ",&size,&" << value << ".value); if(status!=ASN1_OK) " << fail << " }\n"; break;
+      case TypeKind::OctetString:
+        s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(t.octet_string.size) << "; uint8_t* decoded=NULL; size_t count=0; status=asn1_per_decode_octetstring_ex(r," << v << ",&size,&decoded,&count); if(status!=ASN1_OK) " << fail << " " << value << ".data=decoded; " << value << ".count=" << value << ".capacity=count; }\n"; break;
+      case TypeKind::String: {
+        const bool restricted = t.string.kind==StringKind::IA5String || t.string.kind==StringKind::PrintableString ||
+          t.string.kind==StringKind::VisibleString || t.string.kind==StringKind::NumericString ||
+          t.string.kind==StringKind::BMPString || t.string.kind==StringKind::UniversalString;
+        const char* sk = t.string.kind==StringKind::IA5String?"ASN1_PER_STRING_IA5":
+          t.string.kind==StringKind::PrintableString?"ASN1_PER_STRING_PRINTABLE":
+          t.string.kind==StringKind::VisibleString?"ASN1_PER_STRING_VISIBLE":
+          t.string.kind==StringKind::NumericString?"ASN1_PER_STRING_NUMERIC":
+          t.string.kind==StringKind::BMPString?"ASN1_PER_STRING_BMP":"ASN1_PER_STRING_UNIVERSAL";
+        s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(t.string.size) << "; uint8_t* decoded=NULL; size_t count=0; status=asn1_per_" << (restricted?"decode_restricted_string_ex(r,":"decode_octetstring_ex(r,") << v << ",&size,";
+        if(restricted) s << sk << ",";
+        s << "&decoded,&count); if(status!=ASN1_OK) " << fail << " " << value << ".data=decoded; " << value << ".count=" << value << ".capacity=count; }\n";
+        break;
+      }
+      case TypeKind::ObjectIdentifier: case TypeKind::RelativeOid:
+        s << ind << "{ uint64_t* arcs=NULL; size_t count=0; status=asn1_per_decode_oid_ex(r," << v << ",&arcs,&count," << (t.kind==TypeKind::RelativeOid?1:0) << "); if(status!=ASN1_OK) " << fail << " " << value << ".data=arcs; " << value << ".count=" << value << ".capacity=count; }\n"; break;
+      case TypeKind::Integer:
+        if(big_integer(t))
+          s << ind << "status=asn1_per_decode_unbounded_int_ex(r," << v << ",&" << value << ".value); if(status!=ASN1_OK) " << fail << "\n";
+        else
+          s << ind << "{ const asn1_per_int_range_t range=" << per_int_range(t) << "; status=asn1_per_decode_int_ex(r," << v << ",&range,&" << value << ".value); if(status!=ASN1_OK) " << fail << " }\n";
+        break;
+      case TypeKind::Enumerated:
+        s << ind << "{ int is_extension=0; uint64_t ordinal=0; status=asn1_per_decode_enumerated_ex(r," << v << "," << t.enumerated.root.size() << "," << t.enumerated.extensible << ",&is_extension,&ordinal); if(status!=ASN1_OK) " << fail << "\n"
+          << ind << "  if(is_extension) { switch(ordinal) {\n";
+        for(std::size_t i=0;i<t.enumerated.extensions.size();++i)
+          s << ind << "  case " << i << ": " << value << ".value=" << literal(*t.enumerated.extensions[i].value.as_i64) << "; break;\n";
+        s << ind << "  default: status=ASN1_ERR_UNSUPPORTED; " << fail << " } } else { switch(ordinal) {\n";
+        {
+          std::vector<std::int64_t> roots; for(const auto& e:t.enumerated.root) roots.push_back(*e.value.as_i64);
+          std::sort(roots.begin(),roots.end());
+          for(std::size_t i=0;i<roots.size();++i) s << ind << "  case " << i << ": " << value << ".value=" << literal(roots[i]) << "; break;\n";
+        }
+        s << ind << "  default: status=ASN1_ERR_CONSTRAINT_VIOLATION; " << fail << " } } }\n";
+        break;
+      case TypeKind::Referenced:
+        if(pointer(id,t.referenced.resolved)) s << ind << "status=asn1_bit_reader_reserve(r,sizeof(*" << value << ".value),1); if(status!=ASN1_OK) " << fail << " " << value << ".value=(" << name(t.referenced.resolved) << "*)calloc(1,sizeof(*" << value << ".value)); if(!" << value << ".value) { status=ASN1_ERR_OUT_OF_MEMORY; " << fail << " } " << name(t.referenced.resolved) << "_init(" << value << ".value); status=" << name(t.referenced.resolved) << "_decode_" << variant << "_at(r," << value << ".value,depth+1); if(status!=ASN1_OK) " << fail << "\n";
+        else s << ind << "status=" << name(t.referenced.resolved) << "_decode_" << variant << "_at(r,&" << value << ".value,depth+1); if(status!=ASN1_OK) " << fail << "\n";
+        break;
+      case TypeKind::Sequence: case TypeKind::Set: {
+        const auto& sequence=per_sequence(t);
+        const auto groups=per_extension_groups(sequence);
+        std::vector<const Field*> presence; for(const auto& f:sequence.root) if(f.presence!=Presence::Mandatory) presence.push_back(&f);
+        for(const auto& f:sequence.trailing_root) if(f.presence!=Presence::Mandatory) presence.push_back(&f);
+        s << ind << "{ asn1_per_sequence_preamble_t pre={0}; status=asn1_per_decode_sequence_preamble(r," << sequence.extensible << "," << presence.size() << ",&pre); if(status!=ASN1_OK) return status;\n";
+        std::size_t i=0;
+        auto emit_root_decode=[&](const std::vector<Field>& fields) { for(const auto& f:fields) {
+          const auto member=value+".f"+spell(f.name);
+          if(f.presence!=Presence::Mandatory) {
+            if(f.presence==Presence::Optional) s << ind << "  " << value << ".has_f" << spell(f.name) << "=pre.optional_bits[" << i << "];\n";
+            s << ind << "  if(pre.optional_bits[" << i << "]) {\n";
+          }
+          s << ind << (f.presence==Presence::Mandatory?"  ":"    ");
+          if(pointer(id,f.type)) s << "status=asn1_bit_reader_reserve(r,sizeof(*" << member << "),1); if(status!=ASN1_OK) goto per_fail; " << member << "=(" << name(f.type) << "*)calloc(1,sizeof(*" << member << ")); if(!" << member << ") { status=ASN1_ERR_OUT_OF_MEMORY; goto per_fail; } " << name(f.type) << "_init(" << member << "); status=" << name(f.type) << "_decode_" << variant << "_at(r," << member << ",depth+1); if(status!=ASN1_OK) goto per_fail;\n";
+          else s << "status=" << name(f.type) << "_decode_" << variant << "_at(r,&" << member << ",depth+1); if(status!=ASN1_OK) goto per_fail;\n";
+          if(f.presence!=Presence::Mandatory) s << ind << "  }\n";
+          if(f.presence!=Presence::Mandatory) ++i;
+        }};
+        emit_root_decode(sequence.root);
+        emit_root_decode(sequence.trailing_root);
+        if(sequence.extensible) {
+          s << ind << "  if(pre.extensions_present) { asn1_per_extension_additions_t ext={0}; status=asn1_per_decode_extension_additions(r," << v << ",&ext); if(status!=ASN1_OK) goto per_fail;\n";
+          for(std::size_t i=0;i<groups.size();++i) {
+            const auto& group=*groups[i];
+            s << ind << "    if(ext.count>" << i << " && ext.presence[" << i << "]) { asn1_bit_reader_t* er=NULL; status=asn1_bit_reader_reserve(r,ext.open_type_sizes[" << i << "],0); if(status==ASN1_OK) status=asn1_bit_reader_create(&er,asn1_byte_view(ext.open_type_data[" << i << "],ext.open_type_sizes[" << i << "])); if(status==ASN1_OK) status=asn1_bit_reader_share_budget(er,r); if(status!=ASN1_OK) { asn1_bit_reader_destroy(er); asn1_per_extension_additions_free(&ext); goto per_fail; }\n";
+            if(group.version_bracket) {
+              std::vector<const Field*> group_presence;
+              for(const auto& f:group.fields) if(f.presence!=Presence::Mandatory) group_presence.push_back(&f);
+              s << ind << "      asn1_per_sequence_preamble_t gp={0}; status=asn1_per_decode_sequence_preamble(er,0," << group_presence.size() << ",&gp); if(status!=ASN1_OK) { asn1_bit_reader_destroy(er); asn1_per_extension_additions_free(&ext); goto per_fail; }\n";
+            }
+            std::size_t opt_i=0;
+            for(const auto& f:group.fields) {
+              const auto member=value+".f"+spell(f.name);
+              const bool optional=f.presence!=Presence::Mandatory;
+              if(group.version_bracket&&optional) s << ind << "      " << value << ".has_f" << spell(f.name) << "=gp.optional_bits[" << opt_i << "]; if(gp.optional_bits[" << opt_i << "]) {\n";
+              else s << ind << "      " << value << ".has_f" << spell(f.name) << "=1;\n";
+              if(pointer(id,f.type)) s << ind << (group.version_bracket&&optional?"        ":"      ") << "status=asn1_bit_reader_reserve(er,sizeof(*" << member << "),1); if(status==ASN1_OK) { " << member << "=(" << name(f.type) << "*)calloc(1,sizeof(*" << member << ")); if(!" << member << ") status=ASN1_ERR_OUT_OF_MEMORY; else { " << name(f.type) << "_init(" << member << "); status=" << name(f.type) << "_decode_" << variant << "_at(er," << member << ",depth+1); } }\n";
+              else s << ind << (group.version_bracket&&optional?"        ":"      ") << "status=" << name(f.type) << "_decode_" << variant << "_at(er,&" << member << ",depth+1);\n";
+              s << ind << (group.version_bracket&&optional?"        ":"      ") << "if(status!=ASN1_OK) { ";
+              if(group.version_bracket) s << "asn1_per_sequence_preamble_free(&gp); ";
+              s << "asn1_bit_reader_destroy(er); asn1_per_extension_additions_free(&ext); goto per_fail; }\n";
+              if(group.version_bracket&&optional) s << ind << "      }\n";
+              if(optional) ++opt_i;
+            }
+            if(group.version_bracket) s << ind << "      asn1_per_sequence_preamble_free(&gp);\n";
+            s << ind << "      while(asn1_bit_reader_bit_remaining(er)>0) { uint64_t pad=0; size_t rem=asn1_bit_reader_bit_remaining(er); if(rem>7u) { status=ASN1_ERR_INVALID_ARGUMENT; break; } status=asn1_bit_reader_get_bits(er,rem,&pad); if(status!=ASN1_OK||pad) { if(status==ASN1_OK) status=ASN1_ERR_NON_CANONICAL; break; } } asn1_bit_reader_destroy(er); if(status!=ASN1_OK) { asn1_per_extension_additions_free(&ext); goto per_fail; } }\n";
+          }
+          s << ind << "    asn1_per_extension_additions_free(&ext); }\n";
+        }
+        for(const auto* fields:{&sequence.root,&sequence.trailing_root})
+          for(const auto& field:*fields) if(typed_open_field(field))
+            for(const auto* selected_variant:{"uper","aper"}) if(std::string(selected_variant)==variant) {
+              s << ind << "  { uint32_t selected_type=0; void* selected_value=NULL; status=" << name(id) << "_decode_selected_" << selector_function_suffix(field) << "_" << variant << "_impl(value,&selected_type,&selected_value,r); if(status==ASN1_OK) { value->" << decoded_type_member(field) << "=selected_type; value->" << decoded_value_member(field) << "=selected_value; } else if(status==ASN1_ERR_CONSTRAINT_VIOLATION) status=ASN1_OK; else goto per_fail; }\n";
+            }
+        s << ind << "  goto per_done; per_fail: asn1_per_sequence_preamble_free(&pre); return status; per_done: asn1_per_sequence_preamble_free(&pre); }\n";
+        break;
+      }
+      case TypeKind::SequenceOf: case TypeKind::SetOf: {
+        const auto dep=t.kind==TypeKind::SequenceOf?t.sequence_of.element:t.set_of.element;
+        const auto& constraint=t.kind==TypeKind::SequenceOf?t.sequence_of.size:t.set_of.size;
+        s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(constraint) << "; size_t count=0,chunk=0,total=0; int more=0,first=1,is_extension=0; do { status=asn1_per_decode_collection_fragment_ex(r," << v << ",&size,first,&is_extension,count,&chunk,&more); if(status!=ASN1_OK) return status; if(chunk>ASN1_MAX_PDU_ELEMENTS-count || chunk>SIZE_MAX-count) return ASN1_ERR_RESOURCE_LIMIT; total=count+chunk; if(total>SIZE_MAX/sizeof(*" << value << ".data)) return ASN1_ERR_LENGTH_OVERFLOW; if(total>count) { status=asn1_bit_reader_reserve(r,total*sizeof(*" << value << ".data),chunk); if(status!=ASN1_OK) return status; " << name(dep) << "* grown=(" << name(dep) << "*)realloc(" << value << ".data,total*sizeof(*" << value << ".data)); if(!grown) { for(size_t j=0;j<count;++j) " << name(dep) << "_free(&" << value << ".data[j]); free(" << value << ".data); " << value << ".data=NULL; " << value << ".count=" << value << ".capacity=0; return ASN1_ERR_OUT_OF_MEMORY; } " << value << ".data=grown; memset(" << value << ".data+count,0,chunk*sizeof(*" << value << ".data)); " << value << ".count=" << value << ".capacity=total; } for(size_t i=count;i<total;++i) { status=" << name(dep) << "_decode_" << variant << "_at(r,&" << value << ".data[i],depth+1); if(status!=ASN1_OK) { for(size_t j=0;j<total;++j) " << name(dep) << "_free(&" << value << ".data[j]); free(" << value << ".data); " << value << ".data=NULL; " << value << ".count=" << value << ".capacity=0; return status; } } count=total; first=0; } while(more); }\n";
+        break;
+      }
+      case TypeKind::Choice: {
+        const auto root_count=t.choice.alternatives.size();
+        s << ind << "{ int is_extension=0; uint64_t ordinal=0; status=asn1_per_decode_enumerated_ex(r," << v << "," << root_count << "," << t.choice.extensible << ",&is_extension,&ordinal); if(status!=ASN1_OK) " << fail << " if(is_extension) { uint8_t* raw=NULL; size_t raw_size=0; asn1_bit_reader_t* cr=NULL; status=asn1_per_decode_open_type(r," << v << ",&raw,&raw_size); if(status==ASN1_OK) status=asn1_bit_reader_create(&cr,asn1_byte_view(raw,raw_size)); if(status==ASN1_OK) status=asn1_bit_reader_share_budget(cr,r); if(status==ASN1_OK) switch(ordinal) {\n";
+        for(std::size_t i=0;i<t.choice.extensions.size();++i) {
+          const auto& field=t.choice.extensions[i];
+          s << ind << "case UINT64_C(" << i << "): " << value << ".kind=" << name(id) << "_arm_f" << spell(field.name) << "; status=" << name(field.type) << "_decode_" << variant << "_at(cr,&" << value << ".value.f" << spell(field.name) << ",depth+1); break;\n";
+        }
+        s << ind << "default: status=ASN1_ERR_UNSUPPORTED; break; } if(status==ASN1_OK) { size_t rem=asn1_bit_reader_bit_remaining(cr); uint64_t pad=0; if(rem>7u) status=ASN1_ERR_INVALID_ARGUMENT; else if(rem) { status=asn1_bit_reader_get_bits(cr,rem,&pad); if(status==ASN1_OK && pad) status=ASN1_ERR_NON_CANONICAL; } } asn1_bit_reader_destroy(cr); free(raw); if(status!=ASN1_OK) " << fail << " } else switch(ordinal) {\n";
+        for(std::size_t i=0;i<root_count;++i) {
+          const auto& field=t.choice.alternatives[i];
+          s << ind << "case UINT64_C(" << i << "): " << value << ".kind=" << name(id) << "_arm_f" << spell(field.name) << "; status=" << name(field.type) << "_decode_" << variant << "_at(r,&" << value << ".value.f" << spell(field.name) << ",depth+1); if(status!=ASN1_OK) " << fail << " break;\n";
+        }
+        s << ind << "default: status=ASN1_ERR_CONSTRAINT_VIOLATION; " << fail << " } }\n";
+        break;
+      }
+      default: s << ind << "return ASN1_ERR_UNSUPPORTED;\n"; break;
+    }
+  }
+  void emit_per_codec(TypeId id, const char* variant, std::ostream& s) const {
+    const auto n=name(id);
+    s << linkage(true) << "asn1_status_t " << n << "_encode_" << variant << "_at(asn1_bit_writer_t *w,const " << n << " *value,size_t depth) { asn1_status_t status=ASN1_OK; if(!w||!value) return ASN1_ERR_INVALID_ARGUMENT; if(depth>=ASN1_MAX_RECURSION_DEPTH) return ASN1_ERR_RESOURCE_LIMIT;\n";
+    emit_per_encode_value(id,"(*value)",variant,s,"  ");
+    s << "  return ASN1_OK; }\n" << linkage() << "asn1_status_t " << n << "_encode_" << variant << "(asn1_bit_writer_t *w,const " << n << " *value) { return " << n << "_encode_" << variant << "_at(w,value,0); }\n";
+    s << linkage(true) << "asn1_status_t " << n << "_decode_" << variant << "_at(asn1_bit_reader_t *r," << n << " *value,size_t depth) { asn1_status_t status=ASN1_OK; if(!r||!value) return ASN1_ERR_INVALID_ARGUMENT; if(depth>=ASN1_MAX_RECURSION_DEPTH) return ASN1_ERR_RESOURCE_LIMIT;\n";
+    emit_per_decode_value(id,"(*value)",variant,s,"  ","return status;");
+    s << "  return ASN1_OK; }\n" << linkage() << "asn1_status_t " << n << "_decode_" << variant << "(asn1_bit_reader_t *r," << n << " *out) { if(!r||!out) return ASN1_ERR_INVALID_ARGUMENT; asn1_status_t status=asn1_bit_reader_begin_decode(r); if(status!=ASN1_OK) return status; " << n << " tmp; " << n << "_init(&tmp); status=" << n << "_decode_" << variant << "_at(r,&tmp,0); if(status!=ASN1_OK) { " << n << "_free(&tmp); return status; } " << n << "_free(out); *out=tmp; return ASN1_OK; }\n";
+    if(model.arena.get(id).kind==TypeKind::Sequence || model.arena.get(id).kind==TypeKind::Set) {
+      const auto& seq=per_sequence(model.arena.get(id));
+      for(const auto* fields:{&seq.root,&seq.trailing_root})
+        for(const auto& field:*fields) if(field.table_constraint) emit_selector_decoder(id,field,variant,s);
     }
   }
   void header(std::ostream& h) const {
-  h << "/* Generated C11 types only; no codec implementation. */\n#ifndef " << prefix << "_types_h\n#define " << prefix
-    << "_types_h\n#define " << prefix << "_GENERATED_ABI_VERSION 1\n"
-    << "#include <asn1/c_runtime/asn1_c_common.h>\n#include <asn1/c_runtime/bit_string.h>\n#include <asn1/c_runtime/limits.h>\n#include <stdlib.h>\n#include <string.h>\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n";
+  h << (c_uper||c_aper?"/* Generated C11 types and supported PER codecs. */\n":"/* Generated C11 types only; no codec implementation. */\n") << "#ifndef " << prefix << "_types_h\n#define " << prefix
+    << "_types_h\n#define " << prefix << "_GENERATED_ABI_VERSION 2\n"
+    << "#include <asn1/c_runtime/asn1_c_common.h>\n#include <asn1/c_runtime/bit_string.h>\n#include <asn1/c_runtime/limits.h>\n";
+  if(c_uper||c_aper) h << "#include <asn1/c_runtime/per.h>\n";
+  h << "#include <stdlib.h>\n#include <string.h>\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n";
   h << "typedef struct { int has_key; const char *decimal_key; uint32_t type_id; } " << prefix << "_selector_entry;\n"
     << "typedef struct { const char *name; unsigned tag_class; uint64_t tag_number; int explicit_tag; size_t presence_index,extension_group; int nested_sequence; size_t ordinal; const char *governor; size_t selector_count; const " << prefix << "_selector_entry *entries; } " << prefix << "_field_plan;\n";
   for (const auto& item : names) h << "typedef struct " << item.second << ' ' << item.second << ";\n";
   for (auto id : order) declaration(id,h);
   for (const auto& item : names) {
     const auto& n = item.second;
+    const auto& t = model.arena.get(item.first);
     h << linkage() << "void " << n << "_init(" << n << "*);\n" << linkage() << "void " << n << "_free(" << n << "*);\n"
       << linkage() << "asn1_status_t " << n << "_copy(const " << n << "*, " << n << "*);\n"
       << linkage() << "asn1_status_t " << n << "_reset_defaults(" << n << "*);\n"
       << linkage() << "size_t " << n << "_field_count(void);\n" << linkage() << "const " << prefix << "_field_plan *" << n << "_field(size_t);\n"
       << linkage() << "asn1_status_t " << n << "_select(size_t,const char*,uint32_t*);\n";
+    if(c_uper) h << linkage() << "asn1_status_t " << n << "_encode_uper(asn1_bit_writer_t*,const " << n << "*);\n" << linkage() << "asn1_status_t " << n << "_decode_uper(asn1_bit_reader_t*," << n << "*);\n";
+    if(c_aper) h << linkage() << "asn1_status_t " << n << "_encode_aper(asn1_bit_writer_t*,const " << n << "*);\n" << linkage() << "asn1_status_t " << n << "_decode_aper(asn1_bit_reader_t*," << n << "*);\n";
+    if(t.kind==TypeKind::Sequence || t.kind==TypeKind::Set) {
+      const auto& seq=per_sequence(t);
+      for(const auto* fields:{&seq.root,&seq.trailing_root})
+        for(const auto& field:*fields) if(typed_open_field(field)) {
+          const auto suffix=selector_function_suffix(field);
+          if(c_uper) h << linkage() << "asn1_status_t " << n << "_decode_selected_" << suffix << "_uper(const " << n << "*,uint32_t*,void**);\n";
+          if(c_aper) h << linkage() << "asn1_status_t " << n << "_decode_selected_" << suffix << "_aper(const " << n << "*,uint32_t*,void**);\n";
+          h << linkage() << "void " << n << "_free_selected_" << suffix << "(uint32_t,void*);\n";
+        }
+    }
   }
   if (inline_functions) {
     helper_declarations(h);
     for (auto id : order) { body(id,h); defaults_body(id,h); metadata(id,h); }
+    for (auto id : order) {
+      if(c_uper) emit_per_codec(id,"uper",h);
+      if(c_aper) emit_per_codec(id,"aper",h);
+    }
   }
   h << "#ifdef __cplusplus\n}\n#endif\n#endif\n";
   }
@@ -571,6 +1185,18 @@ class Types {
             << "if (src->has_" << path << ") {\n";
         // Even absent fields can own storage during partial construction.
         child(id,m.field->type,path,s,copy);
+        if(typed_open_field(*m.field)) {
+          const auto type_member=decoded_type_member(*m.field), value_member=decoded_value_member(*m.field);
+          if(copy) {
+            s << "if(src->" << value_member << ") { switch(src->" << type_member << ") {\n";
+            std::set<TypeId> emitted_types;
+            for(const auto& entry:m.field->table_constraint->entries) if(entry.has_id_value && emitted_types.insert(entry.type).second)
+              s << "case UINT32_C(" << entry.type << "): tmp." << value_member << "=(void*)calloc(1,sizeof(" << name(entry.type) << ")); if(!tmp." << value_member << ") { status=ASN1_ERR_OUT_OF_MEMORY; goto fail; } " << name(entry.type) << "_init((" << name(entry.type) << "*)tmp." << value_member << "); status=" << name(entry.type) << "_copy_at((const " << name(entry.type) << "*)src->" << value_member << ",( " << name(entry.type) << "*)tmp." << value_member << ",depth+1); if(status!=ASN1_OK) goto fail; tmp." << type_member << "=src->" << type_member << "; break;\n";
+            s << "default: status=ASN1_ERR_INVALID_ARGUMENT; goto fail; } }\n";
+          } else {
+            s << "if(v->" << value_member << ") " << n << "_free_selected_" << selector_function_suffix(*m.field) << "(v->" << type_member << ",v->" << value_member << ");\n";
+          }
+        }
         if (copy && present) s << "}\n";
       }
     } else if (copy) {
@@ -593,6 +1219,39 @@ class Types {
     }
   }
 };
+std::string rewrite_generated_allocations(std::string text, const std::string& prefix) {
+  const std::pair<const char*,const char*> operations[]={{"malloc(","malloc"},{"calloc(","calloc"},{"realloc(","realloc"},{"free(","free"}};
+  for(const auto& op:operations) {
+    const std::string from=op.first; const std::string to=prefix+"_alloc_"+op.second+"(";
+    std::size_t at=0;
+    while((at=text.find(from,at))!=std::string::npos){
+      const bool identifier_before=at>0 && ((text[at-1]>='a'&&text[at-1]<='z') ||
+        (text[at-1]>='A'&&text[at-1]<='Z') || (text[at-1]>='0'&&text[at-1]<='9') || text[at-1]=='_');
+      if(identifier_before){at+=from.size();continue;}
+      text.replace(at,from.size(),to);at+=to.size();
+    }
+  }
+  return text;
+}
+std::string add_generated_allocator_aliases(std::string header,const std::string& prefix) {
+  const std::string marker="#include <string.h>\n";
+  const auto at=header.find(marker);
+  if(at==std::string::npos)return header;
+  std::ostringstream aliases;
+  aliases << "#ifdef ASN1_C_RUNTIME_TEST_ALLOCATOR\n"
+          << "#ifdef __cplusplus\nextern \"C\" {\n#endif\n"
+          << "void* asn1_test_generated_malloc(size_t); void* asn1_test_generated_calloc(size_t,size_t);\n"
+          << "void* asn1_test_generated_realloc(void*,size_t); void asn1_test_generated_free(void*);\n"
+          << "#ifdef __cplusplus\n}\n#endif\n"
+          << "#define " << prefix << "_alloc_malloc asn1_test_generated_malloc\n"
+          << "#define " << prefix << "_alloc_calloc asn1_test_generated_calloc\n"
+          << "#define " << prefix << "_alloc_realloc asn1_test_generated_realloc\n"
+          << "#define " << prefix << "_alloc_free asn1_test_generated_free\n"
+          << "#else\n#define " << prefix << "_alloc_malloc malloc\n#define " << prefix << "_alloc_calloc calloc\n"
+          << "#define " << prefix << "_alloc_realloc realloc\n#define " << prefix << "_alloc_free free\n#endif\n";
+  header.insert(at+marker.size(),aliases.str());
+  return header;
+}
 }
 void emit_c_types(const ir::Model& model, const std::string& prefix,
                   const std::string& header_name, Diagnostics& diag,
@@ -629,7 +1288,8 @@ void emit_c_types(const ir::Model& model, const std::string& prefix,
     << "*, " << item.second << "*, size_t);\n";
   for (const auto& item : types.names) s << "static asn1_status_t " << item.second << "_defaults_at(" << item.second << "*, size_t);\n";
   for (auto id : types.order) { types.body(id,s); types.defaults_body(id,s); types.metadata(id,s); }
-  header << h.str(); source << s.str();
+  header << add_generated_allocator_aliases(rewrite_generated_allocations(h.str(),prefix),prefix);
+  source << rewrite_generated_allocations(s.str(),prefix);
   if (!header || !source) diag.error({}, "C types: failed writing generated streams");
 } catch (const std::length_error& ex) {
   diag.error({}, std::string("C types capacity exceeded: ")+ex.what());
@@ -639,8 +1299,11 @@ void emit_c_types(const ir::Model& model, const std::string& prefix,
 std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
                                                const EmitOptions& opt, Diagnostics& diag) try {
   if (!validate_emit_options(opt,diag)) return {};
-  if(opt.language!=TargetLanguage::C || !opt.c_types_only || opt.codec!=CodecKind::None) {
-    diag.error({},"C artifact rendering requires explicit type-only C options without codecs"); return {};
+  const unsigned requested=static_cast<unsigned>(opt.codec);
+  const unsigned per_mask=static_cast<unsigned>(CodecKind::Uper|CodecKind::Aper);
+  if(opt.language!=TargetLanguage::C || (opt.c_types_only && opt.codec!=CodecKind::None) ||
+     (!opt.c_types_only && opt.codec==CodecKind::None) || (requested&~per_mask)!=0) {
+    diag.error({},"C artifact rendering requires type-only mode or the supported UPER/APER codec subset"); return {};
   }
   const auto prefix=opt.c_prefix.empty()?std::string("asn1_gen"):opt.c_prefix;
   // Share the existing model/name/profile preflight, including untouched streams.
@@ -654,8 +1317,18 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
   if (!types.prepare()) return {};
   types.external_helpers=true;
   types.inline_functions=opt.emit_inline;
+  types.c_uper=static_cast<unsigned>(opt.codec&CodecKind::Uper)!=0;
+  types.c_aper=static_cast<unsigned>(opt.codec&CodecKind::Aper)!=0;
+  if(types.c_uper||types.c_aper) {
+    for(auto id:model.exported_types) {
+      std::set<TypeId> active;
+      types.c_per_supported(id,active,true);
+    }
+    if(!diag.ok()) return {};
+  }
   std::ostringstream h; types.header(h);
-  std::vector<CGeneratedFile> files{{opt.basename+".h",h.str(),types.names.size(),opt.emit_inline?types.names.size()*9:0}};
+  const std::size_t per_functions=(types.c_uper?4u:0u)+(types.c_aper?4u:0u);
+  std::vector<CGeneratedFile> files{{opt.basename+".h",add_generated_allocator_aliases(rewrite_generated_allocations(h.str(),prefix),prefix),types.names.size(),opt.emit_inline?types.names.size()*(9u+per_functions):0}};
   if (!opt.emit_inline) {
     std::ostringstream internal;
     internal << "/* Generated C11 internal declarations. */\n#ifndef " << prefix << "_internal_h\n#define " << prefix
@@ -713,9 +1386,13 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
         std::string stem=opt.emit_split?module.first:opt.basename;
         if(opt.split_max_types){std::ostringstream suffix;suffix << '_' << std::setw(4) << std::setfill('0') << i+1;stem+=suffix.str();}
         std::ostringstream source;
-        source << "/* Generated C11 types only; no codec implementation. */\n#include \"" << opt.basename << "_internal.h\"\n#include <stdlib.h>\n#include <string.h>\n";
-        for(auto id:chunks[i]){types.body(id,source);types.defaults_body(id,source);types.metadata(id,source);}
-        files.push_back({stem+".c",source.str(),chunks[i].size(),chunks[i].size()*9});
+      source << (types.c_uper||types.c_aper?"/* Generated C11 types and PER codecs. */\n":"/* Generated C11 types only; no codec implementation. */\n") << "#include \"" << opt.basename << "_internal.h\"\n#include <stdlib.h>\n#include <string.h>\n";
+      for(auto id:chunks[i]){
+        types.body(id,source);types.defaults_body(id,source);types.metadata(id,source);
+        if(types.c_uper) types.emit_per_codec(id,"uper",source);
+        if(types.c_aper) types.emit_per_codec(id,"aper",source);
+      }
+      files.push_back({stem+".c",rewrite_generated_allocations(source.str(),prefix),chunks[i].size(),chunks[i].size()*(9u+per_functions)});
       }
     }
   }
@@ -727,7 +1404,7 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
     auto key=file.name;for(auto& c:key)if(c>='A'&&c<='Z')c=char(c-'A'+'a');
     if(!unique.insert(key).second){diag.error({},"C output filename collision: "+file.name);return {};}}
   std::ostringstream json,cmake;
-  json << "{\"format\":1,\"language\":\"c\",\"types_only\":true,\"codec_mask\":0,\"inline\":"
+  json << "{\"format\":1,\"language\":\"c\",\"types_only\":" << (opt.codec==CodecKind::None?"true":"false") << ",\"codec_mask\":" << static_cast<unsigned>(opt.codec) << ",\"inline\":"
     << (opt.emit_inline?"true":"false") << ",\"split_modules\":" << (opt.emit_split?"true":"false")
     << ",\"split_max_types\":" << opt.split_max_types << ",\"sources\":[";
   cmake << "# Generated by asn1cxx; reconfigure after changing the schema/options.\nset(ASN1_GENERATED_SOURCES\n";

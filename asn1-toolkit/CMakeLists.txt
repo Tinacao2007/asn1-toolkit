@@ -339,6 +339,9 @@ target_include_directories(asn1_c_runtime PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+if(NOT MSVC)
+  target_link_libraries(asn1_c_runtime PUBLIC m)
+endif()
 # The pure C target has no C++ link dependencies. C11 properties are
 # applied by asn1_configure_target; no per-source GNU flags are required.
 endif()

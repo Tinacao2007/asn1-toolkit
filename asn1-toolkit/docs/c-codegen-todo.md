@@ -93,18 +93,33 @@ OOM/部分初始化/CHOICE 切换/多 TU 负例；生成头不包含任何 C++ �
 
 ### 第 4 批：首个完整 UPER/APER 生成闭环
 
-- [ ] **CGEN-10【严重】补齐首批 PER 所需 C 原语。** 对照 CGEN-02 补 ENUMERATED、
+进度（2026-10-26）：C11 首个 UPER/APER 生成 profile 已闭环：normally-small/ENUMERATED/OID，生成 C 增加递归
+SEQUENCE OF、普通扩展添加、版本括号组、opaque open-type、Numeric/IA5 字符串及
+常见 REAL 线路路径，并通过 Release 与 ASan+UBSan 的三种产物消费者。现已补 OF
+长度分片、顶层共享的累计字节/元素预算，以及覆盖两次集合扩容的生成分配失败注入；
+asn1c UPER 16K 分片及扩展 CHOICE/trailing-root 向量均逐字节对验；三形态消费者通过
+Release 与 ASan+UBSan。更广的标准值域和故障矩阵仍作为后续扩展，不属于当前已声明
+profile 的未实现行为；详见[阶段证据](cgen-batch4-validation.md)。
+
+已补齐 C11 生成的扩展 CHOICE、第二个 ellipsis 后的 trailing-root，以及表约束
+open-type 的自动 typed decode/encode 和拥有型 copy/free；三种产物形态均有运行测试。
+
+- [x] **CGEN-10【严重】补齐首批 PER 所需 C 原语。** 对照 CGEN-02 补 ENUMERATED、
   normally-small、OID/字符/REAL 等所需能力；已有整数/位串/分片原语继续复用。
   每项明确值域与约束支持，无法支持时诊断，不窄化、不丢扩展位。
-- [ ] **CGEN-11【严重】生成完整 PER 编解码编排。** 从小 schema 开始覆盖 SEQUENCE、
+- [x] **CGEN-11【严重】生成首个完整 PER profile 的编解码编排。** 从小 schema 开始覆盖 SEQUENCE、
   SET/CHOICE、OF、OPTIONAL/DEFAULT、root/trailing-root、扩展单字段/版本组、开放类型。
   同一规划生成 UPER/APER；校验位长度、填充、后续字段位置、片段链与内层 open type。
-- [ ] **CGEN-12【重要】生成 PDU 的错误/资源门禁。** 截断、坏长度、非法值、OOM、
+- [x] **CGEN-12【重要】生成 PDU 的错误/资源门禁。** 截断、坏长度、非法值、OOM、
   深度/累计字节限制；传播 status 并清理部分对象。逐接口规定 out 与游标失败状态，
   不笼统承诺所有失败均回滚。分配故障 hook 仅进测试副本。
 
-验收：默认/inline/split/模块内分片均用 C 编译器链接运行；C 与 C++ 同值逐字节比较，
-并使用适用 asn1c/asn1tools 独立 oracle 双向互解。仅自身往返不能关闭本批。
+验收：out-of-line/inline/split 均用 C 编译器链接运行；C/C++ primitive parity、asn1c
+UPER 冻结向量（含新增扩展 CHOICE 与 trailing-root 的 C 编码/解码）通过。asn1c 0.9.29
+不提供 APER，故 APER 由共享 C/C++ Variant parity 和生成 PDU 门禁验证。此处关闭的是
+已声明 C UPER/APER 首个 profile；完整 X.691 字符/REAL 值域、未知 CHOICE 扩展保留、
+更广 allocation/cursor 矩阵及全类型外部 oracle 仍明确不支持/未覆盖，必须诊断或作为
+后续扩展，不能宣传为完整 ASN.1 PER 实现。
 
 ### 第 5 批：BER/DER/CER，形成用户需要的 UPER+BER 版本
 

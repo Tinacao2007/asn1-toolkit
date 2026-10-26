@@ -58,8 +58,12 @@ bool validate_emit_options(const EmitOptions& opt, Diagnostics& diag) {
     if (!valid_c_prefix(opt.c_prefix.empty()?"asn1_gen":opt.c_prefix)) {
       diag.error({},"C types: invalid non-reserved symbol prefix");return false;
     }
-    if (!opt.c_types_only || opt.codec != CodecKind::None) {
-      diag.error({}, "Unsupported: C11 codec generation is not implemented; use --types-only without --codec for lifecycle artifacts");
+    const auto c_mask=static_cast<unsigned>(opt.codec);
+    const auto per_mask=static_cast<unsigned>(CodecKind::Uper|CodecKind::Aper);
+    if ((opt.c_types_only && opt.codec != CodecKind::None) ||
+        (!opt.c_types_only && opt.codec == CodecKind::None) ||
+        (c_mask & ~per_mask) != 0) {
+      diag.error({}, "C output supports --types-only without a codec, or the currently implemented UPER/APER C codec subset");
       return false;
     }
     if (opt.emit_inline && (opt.emit_split || opt.split_max_types)) {
@@ -200,10 +204,10 @@ void emit_directory(const ir::Model& model, EmitOptions opt, Diagnostics& diag,
       source_order+=std::to_string(dependency.string().size())+":"+dependency.string();
     }
     ContentCache c_cache(stage);
-    const std::vector<std::string> extras={"language=c","types_only=1","codec="+std::to_string(static_cast<unsigned>(opt.codec)),
+    const std::vector<std::string> extras={"language=c","types_only="+std::to_string(opt.c_types_only),"codec="+std::to_string(static_cast<unsigned>(opt.codec)),
       "prefix="+opt.c_prefix,"basename="+opt.basename,"inline="+std::to_string(opt.emit_inline),
       "split="+std::to_string(split),"max_types="+std::to_string(opt.split_max_types),
-      "order="+sha256_hex(source_order),"format=c-artifacts-1","generator=" ASN1_GENERATOR_REVISION};
+      "order="+sha256_hex(source_order),"format=c-artifacts-2","generator=" ASN1_GENERATOR_REVISION};
     std::size_t hits=0;
     for(const auto& file:files){
       if(!artifact_name(file.name)){diag.error({},"non-portable C output name: "+file.name);return;}

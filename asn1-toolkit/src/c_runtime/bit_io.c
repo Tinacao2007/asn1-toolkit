@@ -337,6 +337,9 @@ struct asn1_bit_reader {
   uint8_t* buf;     /* owned copy of source */
   size_t   size;    /* byte count */
   size_t   bit_pos; /* read cursor in bits */
+  size_t   budget_bytes;
+  size_t   budget_elements;
+  struct asn1_bit_reader* budget_owner;
 };
 
 asn1_status_t asn1_bit_reader_create(asn1_bit_reader_t** out,
@@ -358,7 +361,36 @@ asn1_status_t asn1_bit_reader_create(asn1_bit_reader_t** out,
     memcpy(r->buf, src.data, src.size);
     r->size = src.size;
   }
+  r->budget_owner = r;
   *out = r;
+  return ASN1_OK;
+}
+
+asn1_status_t asn1_bit_reader_begin_decode(asn1_bit_reader_t* r) {
+  if (!r) return ASN1_ERR_INVALID_ARGUMENT;
+  asn1_bit_reader_t* owner = r->budget_owner ? r->budget_owner : r;
+  if (owner != r) return ASN1_ERR_INVALID_ARGUMENT;
+  owner->budget_bytes = 0;
+  owner->budget_elements = 0;
+  return ASN1_OK;
+}
+asn1_status_t asn1_bit_reader_share_budget(asn1_bit_reader_t* child,
+                                           asn1_bit_reader_t* parent) {
+  if (!child || !parent) return ASN1_ERR_INVALID_ARGUMENT;
+  child->budget_owner = parent->budget_owner ? parent->budget_owner : parent;
+  return ASN1_OK;
+}
+asn1_status_t asn1_bit_reader_reserve(asn1_bit_reader_t* r,
+                                      size_t bytes, size_t elements) {
+  if (!r) return ASN1_ERR_INVALID_ARGUMENT;
+  asn1_bit_reader_t* owner = r->budget_owner ? r->budget_owner : r;
+  if (owner->budget_bytes > ASN1_MAX_PDU_ALLOCATION_BYTES ||
+      bytes > ASN1_MAX_PDU_ALLOCATION_BYTES - owner->budget_bytes ||
+      owner->budget_elements > ASN1_MAX_PDU_ELEMENTS ||
+      elements > ASN1_MAX_PDU_ELEMENTS - owner->budget_elements)
+    return ASN1_ERR_RESOURCE_LIMIT;
+  owner->budget_bytes += bytes;
+  owner->budget_elements += elements;
   return ASN1_OK;
 }
 

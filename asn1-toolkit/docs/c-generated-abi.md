@@ -88,8 +88,9 @@ prefix and module; headers include only C standard and C runtime headers, with
 extern-C guards for C++ consumers. No C++ types, exceptions, RTTI or standard
 library linkage are allowed in generated C.
 
-Generated headers will declare a prefixed `GENERATED_ABI_VERSION` macro, initially
-1, and the required C runtime ABI version. No generated ABI is exported yet.
+Generated headers declare a prefixed `GENERATED_ABI_VERSION` macro (currently 2)
+and the required C runtime ABI version. Version 2 adds selector-decoded typed views
+for table-constrained open fields while retaining their raw open-type octets.
 Layout/signature/ownership changes require a generated ABI major increment and
 regeneration/recompilation of all consumers; no stable binary interchange across
 compiler/CRT, architecture, packing or ABI versions is promised. Runtime ABI is
@@ -104,10 +105,10 @@ intended layouts; no generated type or lifecycle implementation exists yet.
 |---|---|---|
 | INTEGER | wrapper containing int64_t when normalized domain fits; otherwise asn1_bigint_t | check root membership and host range before conversion; BigInt discrete/bounded domains need checked comparisons, not narrowing |
 | BOOLEAN / NULL | wrapper containing int (0/1); NULL wrapper with one reserved uint8_t | invalid BOOLEAN rejected; NULL emits no payload where the encoding requires none |
-| ENUMERATED | int64_t root/known value plus explicit extension representation | unknown extension ordinal must be preserved or diagnosed; PER enum/normally-small helpers missing |
+| ENUMERATED | int64_t root/known value plus explicit extension representation | unknown extension ordinal must be preserved or diagnosed; PER ordinal helpers now exist, generated dispatch remains pending |
 | OCTET STRING / character strings | owned uint8_t* data, size_t count/capacity; length-delimited, never dependent on NUL | character repertoire/UTF validation and transcoding absent; full ASN.1 character domains unsupported |
 | BIT STRING | asn1_bitstring_t, bit count separate from storage capacity | unused tail bits normalized; NamedBitList trimming needs schema semantics |
-| OBJECT IDENTIFIER / RELATIVE-OID | owned array of unsigned arc values with count/capacity | arc representation must preserve the supported domain; arbitrary-size arcs unsupported until explicitly implemented; no C OID codec yet |
+| OBJECT IDENTIFIER / RELATIVE-OID | owned array of unsigned arc values with count/capacity | PER runtime primitive now handles BER contents for uint64 arcs; arbitrary-size arcs and generated codec dispatch remain unsupported |
 | REAL | wrapper containing double for declared binary64 profile | arbitrary-precision ASN.1 REAL unsupported; reject unrepresentable mantissa/range, preserve negative zero; C REAL codec missing |
 | SEQUENCE / SET | struct in declaration order; members use generated wrappers | wire order, effective tags and extension grouping come from shared plan, not C struct order |
 | OPTIONAL / DEFAULT | OPTIONAL has explicit has_field; DEFAULT stores semantic value initialized to default | absent DEFAULT materializes default, encoding compares semantic equality; no pointer-as-presence convention |

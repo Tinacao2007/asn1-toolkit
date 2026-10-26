@@ -6,6 +6,34 @@
 
 ## 近期变更详录
 
+### 2026-10-26 (CGEN batch 4 C11 UPER/APER profile complete)
+
+- Add generated collection length fragmentation with interleaved elements, shared
+  cumulative PDU allocation/element budgets, and test-only generated allocator hooks
+  with failures injected at both collection growth points. Release and ASan+UBSan
+  consumers pass; asn1c 0.9.29 UPER 16K-boundary output matches the frozen vector.
+  Also generate CHOICE extensions, trailing-root components and automatic typed
+  open-type decode/encode with owning copy/free. asn1c v0.9.29 UPER reference
+  vectors cover collection fragmentation, extension CHOICE and trailing-root; C
+  encoders match byte-for-byte and C decoders consume the same reference wire.
+  APER uses shared C/C++ Variant parity because this asn1c version has no APER.
+  CGEN-10..12 are closed for the declared C profile; broader standard-domain and
+  failure-matrix coverage remains explicitly out of profile.
+
+- Add shared C UPER/APER normally-small non-negative whole number, ENUMERATED
+  ordinal and uint64-arc OID primitives. Fix aligned PER length determinant
+  octet alignment in the C++ reference core; X.691 10.6–10.9 require the large form to
+  use a semi-constrained whole number and octet-aligned fields.
+- Add C/C++ byte parity and C boundary/extension tests. Extend generated C UPER/APER
+  to recursive SEQUENCE OF, plain extension additions, version-bracket groups,
+  opaque open-type payloads, restricted character strings and common REAL forms.
+  Out-of-line, inline and split C11 consumer gates pass under MSVC Release and GCC
+  ASan+UBSan (**7/7** each). `powl` adds conditional `libm` linkage for non-MSVC C
+  targets. Collection fragmentation, cumulative PDU budgets, collection-growth
+  allocation injection, CHOICE extensions, trailing-root and selector-driven typed
+  open decode are covered. This earlier same-day progress snapshot predates the
+  asn1c CHOICE/trailing-root vector checks below.
+  [Progress and limits](cgen-batch4-validation.md).
 ### 2026-10-24 (CGEN batch 3 complete: C type-only shapes and source shards)
 
 - Open explicit `--lang c --types-only`, rejecting codec requests instead of

@@ -1,0 +1,41 @@
+M DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+Pdu ::= SEQUENCE {
+  flag BOOLEAN,
+  count INTEGER (0..7),
+  optionalValue INTEGER (0..3) OPTIONAL,
+  defaultFlag BOOLEAN DEFAULT FALSE
+}
+Mode ::= ENUMERATED { idle, active, failed }
+Counts ::= SEQUENCE (SIZE (0..8)) OF INTEGER (0..7)
+LargeFlags ::= SEQUENCE (SIZE (0..70000)) OF BOOLEAN
+TwoLists ::= SEQUENCE {
+  first SEQUENCE (SIZE (0..100)) OF BOOLEAN,
+  second SEQUENCE (SIZE (0..100)) OF BOOLEAN
+}
+ExtendedChoice ::= CHOICE {
+  rootFlag BOOLEAN,
+  ...,
+  extensionValue INTEGER (0..255),
+  extensionText IA5String (SIZE (1..20))
+}
+TrailingRoot ::= SEQUENCE {
+  head BOOLEAN,
+  ...,
+  extensionValue INTEGER (0..15),
+  ...,
+  tail BOOLEAN OPTIONAL
+}
+Payload ::= CHOICE { small INTEGER (0..7), flag BOOLEAN }
+Oid ::= OBJECT IDENTIFIER
+Relative ::= RELATIVE-OID
+Bits ::= BIT STRING (SIZE (3..8))
+Octets ::= OCTET STRING (SIZE (1..4))
+Pair ::= SET { left INTEGER (0..7), right BOOLEAN }
+Digits ::= NumericString (SIZE (1..8))
+Label ::= IA5String (SIZE (0..16))
+Printed ::= PrintableString (SIZE (0..8))
+Tree ::= SEQUENCE { value INTEGER (0..255), children SEQUENCE (SIZE (0..4)) OF Tree }
+Measurement ::= REAL
+Extensible ::= SEQUENCE { root INTEGER (0..7), ..., extra BOOLEAN OPTIONAL }
+Versioned ::= SEQUENCE { base INTEGER (0..7), ..., [[ added INTEGER (0..15), note IA5String (SIZE (0..8)) OPTIONAL ]] }
+END

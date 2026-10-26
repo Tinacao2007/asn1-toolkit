@@ -238,3 +238,48 @@ pulls libstdc++, so its dependency is not evidence of a product runtime leak.
 Keep sanitizer execution fully instrumented. A missing compiler is unexecuted
 coverage, not a passing result; preserve later toolchain checkboxes. Evidence:
 [batch 3 validation](../../cgen-batch3-validation.md).
+
+## CGEN batch 4 PER codec work
+
+Batch 4 remains open; keep CGEN-10..12 unchecked until the full profile, independent
+vectors, allocation/limit failures, and oracle checks pass. The checked C UPER/APER
+subset now includes BOOLEAN, NULL, constrained INTEGER/ENUMERATED, BIT/OCTET STRING,
+OID/RELATIVE-OID (uint64 arcs), root CHOICE, OF types, recursive SEQUENCE OF,
+extensible SEQUENCE/SET additions and version-bracket groups, opaque open-type
+payloads, Numeric/IA5 strings and common REAL forms. Unsupported graphs must fail
+before artifact publication; never describe this subset as complete PER. A version
+group is one extension bitmap slot containing a nested SEQUENCE preamble. Open
+payloads are complete-encoding octets. A known table selector now automatically
+decodes to an owned typed view while preserving the raw octets; generated copy/free
+and typed re-encode follow the selected type and validate its governor key.
+The C PER runtime uses one `asn1_per_variant_t` core for UPER/APER. Normally-small,
+ENUMERATED ordinal, and uint64-arc OID primitives are shared across both variants.
+The C runtime's SEQUENCE/SET preamble and extension-addition bitmap are consumed by
+generated SEQUENCE and SET code. Release and ASan+UBSan tests exercise out-of-line,
+inline and split C11 consumers, unknown SEQUENCE extension skipping (unknown
+CHOICE extension ordinals return `UNSUPPORTED`), recursive depth,
+version-group preambles, opaque open payloads, malformed restricted characters,
+REAL vectors, truncation and presence validation. Collection length fragmentation,
+cumulative PDU byte/element budgets and allocation-failure injection across both
+collection growth steps are implemented and gated. The broader nested-extension
+allocation/cursor failure matrix, full string fragmentation profile and independent
+C-PDU oracle coverage remain required before closing the batch.
+Check large forms at non-octet offsets: X.691 10.6–10.9 use a length determinant and
+octet-aligned semi-constrained value for normally-small values >=64. Compare the
+C primitive against both a frozen standard vector and the C++ variant; keep a
+regression test for aligned PER octet alignment. OID uses BER contents, strict
+base-128 minimality and uint64 overflow checks; test absolute and relative arcs,
+malformed tails and unchanged outputs on decode failure.
+
+Only expose the explicitly validated C subset through the CLI/API; diagnose unsupported
+REAL profiles, character alphabets or constraints before publishing
+any artifact. The current generated PER subset includes recursive SEQUENCE OF,
+SEQUENCE/SET extension additions and version groups, opaque open types, six restricted
+string kinds, and a limited host-double REAL representation. Do not imply this means
+full REAL or all character-string kinds are supported. For generated PDU decode, test
+truncation, invalid enum/index, bad extension/open-type lengths, depth/aggregate
+allocation caps, allocator faults, and document whether output and reader cursor can
+change on failure. Keep only test-local allocator hooks. Cross-check encoded bytes
+with asn1c/asn1tools where their semantics match X.691; distinguish unavailable oracle
+coverage from a pass.
+Progress evidence: [batch 4 validation](../../cgen-batch4-validation.md).

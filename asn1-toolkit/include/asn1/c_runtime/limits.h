@@ -33,6 +33,12 @@ extern "C" {
 #endif
 
 #define ASN1_MAX_RECURSION_DEPTH      256   /* ASN1_MAX_RECURSION_DEPTH */
+#ifndef ASN1_MAX_PDU_ALLOCATION_BYTES
+#define ASN1_MAX_PDU_ALLOCATION_BYTES (16u * 1024u * 1024u)
+#endif
+#ifndef ASN1_MAX_PDU_ELEMENTS
+#define ASN1_MAX_PDU_ELEMENTS         65536u
+#endif
 #ifndef ASN1_MAX_STRING_BYTES
 #define ASN1_MAX_STRING_BYTES         (64u * 1024u) /* decoder allocation cap */
 #endif

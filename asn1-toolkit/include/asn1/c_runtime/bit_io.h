@@ -83,6 +83,14 @@ typedef struct asn1_bit_reader asn1_bit_reader_t;
 asn1_status_t asn1_bit_reader_create(asn1_bit_reader_t** out,
                                      asn1_byte_view_t src);
 void          asn1_bit_reader_destroy(asn1_bit_reader_t* r);
+/* A generated top-level decode resets the reader's cumulative budget once.
+   Nested open-type readers share that budget; direct users may use reserve
+   to account for allocations made by their own decoding layer. */
+asn1_status_t asn1_bit_reader_begin_decode(asn1_bit_reader_t* r);
+asn1_status_t asn1_bit_reader_share_budget(asn1_bit_reader_t* child,
+                                           asn1_bit_reader_t* parent);
+asn1_status_t asn1_bit_reader_reserve(asn1_bit_reader_t* r,
+                                      size_t bytes, size_t elements);
 
 asn1_status_t asn1_bit_reader_get_bit(asn1_bit_reader_t* r, int* out_bit);
 asn1_status_t asn1_bit_reader_get_bits(asn1_bit_reader_t* r,
