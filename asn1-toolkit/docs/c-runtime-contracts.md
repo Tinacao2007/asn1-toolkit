@@ -126,9 +126,9 @@ binary64 and selected decimal forms, not exact decimal REAL semantics. Known
 table-constrained open fields automatically decode into an owned typed value while
 retaining raw complete-encoding octets. Generated APIs expose its type ID and pointer;
 the matching free helper, copy path, and selected-type re-encoding preserve ownership.
-CGEN-10..12 remain open for the full standard value profiles, the full
-extension/recursive allocation-failure matrix and reader cursor contract, and broader
-independent oracle checks. Collection fragment handling
+Beyond the closed CGEN-10..12 declared profile, full standard value domains,
+the broader extension/recursive fault matrix and independent oracle checks
+remain future coverage. Collection fragment handling
 and cumulative PDU allocation/element budgets are implemented. A generated public
 decode resets its reader budget; nested readers made for extension open types share
 the root budget. The defaults are 16 MiB of cumulative requested allocation bytes
@@ -136,3 +136,20 @@ and 65536 collection/addition elements. Override with
 `ASN1_MAX_PDU_ALLOCATION_BYTES` and `ASN1_MAX_PDU_ELEMENTS`. The budget counts
 allocation requests over the entire decode, including resized buffers, rather than
 only the final live heap size. See [batch 4 progress](cgen-batch4-validation.md).
+
+## C TLV policy and byte stream APIs (CGEN batch 5)
+
+`byte_io.h` now supplies read/view/remaining/skip and an owning byte writer.
+Failed reads/skips do not advance; failed append does not change logical bytes.
+`tlv.h` parses one complete TLV and returns borrowed content/encoding views.
+The source reader/input must outlive those views. Primitive integer decode
+requires an empty initialized BigInt destination; octet decode transfers a new
+malloc buffer on success. Outputs remain unchanged on failure.
+
+Generated BER/DER/CER public decode calls are transactional for both initialized
+value and byte reader cursor. Success consumes exactly one TLV and replaces/frees
+the previous value. The per-call decode budget includes nested payload allocation
+and collection/indirect nodes; reader input copies are separately bounded.
+Policies share one engine. See [batch 5 contracts, tested limits and exceptions](cgen-batch5-validation.md).
+`asn1_ber_tag_t.number` widened from uint32_t to uint64_t: rebuild runtime and all
+consumers together; do not mix old object files with the new header.

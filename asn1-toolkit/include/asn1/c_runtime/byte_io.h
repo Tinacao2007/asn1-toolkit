@@ -57,7 +57,21 @@ asn1_status_t asn1_byte_reader_create(asn1_byte_reader_t** out,
                                       asn1_byte_view_t src);
 void          asn1_byte_reader_destroy(asn1_byte_reader_t* r);
 
-/* TODO sub-task 2: byte-aligned read helpers for BER/DER/CER. */
+/* Read/skip are transactional: failure preserves cursor and output. The view
+   borrows reader storage and expires when the reader is destroyed. */
+size_t asn1_byte_reader_position(const asn1_byte_reader_t* r);
+size_t asn1_byte_reader_remaining(const asn1_byte_reader_t* r);
+asn1_byte_view_t asn1_byte_reader_view(const asn1_byte_reader_t* r);
+asn1_status_t asn1_byte_reader_read(asn1_byte_reader_t* r, size_t count, asn1_byte_view_t* out);
+asn1_status_t asn1_byte_reader_skip(asn1_byte_reader_t* r, size_t count);
+
+typedef struct asn1_byte_writer asn1_byte_writer_t;
+asn1_status_t asn1_byte_writer_create(asn1_byte_writer_t** out);
+void asn1_byte_writer_destroy(asn1_byte_writer_t* w);
+asn1_status_t asn1_byte_writer_append(asn1_byte_writer_t* w, asn1_byte_view_t bytes);
+asn1_byte_view_t asn1_byte_writer_view(const asn1_byte_writer_t* w);
+/* Transfers ownership; use the same C allocator/CRT to free the result. */
+asn1_status_t asn1_byte_writer_take(asn1_byte_writer_t* w, uint8_t** out, size_t* size);
 
 #ifdef __cplusplus
 }  /* extern "C" */

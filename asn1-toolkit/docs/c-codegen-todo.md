@@ -1,13 +1,13 @@
 # 纯 C11 代码生成后端执行清单
 
-Created 2026-10-23. Batches 1–3 (CGEN-01..09) complete as of 2026-10-24.
-Explicit C type/lifecycle-only CLI output now supports static-inline, module
-sources and SCC-preserving within-module shards, verified cache and transactional
-source-list publication. Ordinary C codec requests remain Unsupported.
-See [output contract](c-codegen-output.md) and [batch 3 evidence](cgen-batch3-validation.md).
+Created 2026-10-23; updated 2026-10-26. Batches 1–5 complete for their declared
+profiles; batch 5 implements C BER/DER/CER and whole-RRC UPER+BER, with final gate
+results in [batch 5 evidence](cgen-batch5-validation.md). C type/lifecycle-only and
+supported codec profiles share all output forms, shards, manifests and publication.
 本清单细化 [P2-4](todo.md#p2-4--c-语言代码生成器-lang-c) sub-task 3+，
 承接 [共享规划](emission-planning.md) 与 REV-27，不另建一套前端或 runtime。
-Ordinary C codec dispatch reports Unsupported; historical evidence: [batch 1](cgen-batch1-validation.md).
+Unsupported C codec/profile requests diagnose before publication; historical
+initial-dispatch evidence: [batch 1](cgen-batch1-validation.md).
 
 ## 目标与现状
 
@@ -16,12 +16,12 @@ Ordinary C codec dispatch reports Unsupported; historical evidence: [batch 1](cg
 保留原有 C++ 后端及默认行为，不通过修改文件扩展名或包装 C++ runtime 冒充 C 后端。
 
 当前已有 C11 原语、失败契约、PER 两 Variant 与部分独立 oracle；
-[声明覆盖登记](c-runtime-test-coverage.md) 显示 BER 仍以 tag/length helper 为主，
-ByteReader 尚无完整 byte decode API，JER/XER reader 只绑定输入。
+[声明覆盖登记](c-runtime-test-coverage.md) 已登记 PER/TLV 值、结构与 byte decode；
+JER/XER C reader 仍只绑定输入。
 因此不能直接把 C++ emitter 的函数名替换为 C 前缀，也不能假定 C runtime 已支持全部类型。
 
 C++ `--emit-split` 仍按模块；显式 C `--types-only` 可叠加 `--split-max-types N`，
-已解决类型产物的模块内源分片。完整 codec 编排仍在后续批次。
+已解决类型及支持 codec 产物的模块内源分片。其他 codec 家族仍在后续批次。
 既有 RRC 是 LTE EUTRA fixture，不是 TS 38.331；NR 全文测试须另行引入明确版本的输入。
 
 ## 必须保留的约束
@@ -123,19 +123,26 @@ UPER 冻结向量（含新增扩展 CHOICE 与 trailing-root 的 C 编码/解码
 
 ### 第 5 批：BER/DER/CER，形成用户需要的 UPER+BER 版本
 
-- [ ] **CGEN-13【严重】补齐 byte reader、BER 值与构造值 API。** 不能只使用 tag/length
+- [x] **CGEN-13【严重】补齐 byte reader、BER 值与构造值 API。** 不能只使用 tag/length
   helper；覆盖高 tag、长/不定长、EOC、符号整数、字符串、SET/CHOICE、显式/隐式标签、
   未知成员与资源边界；共享底层表示和错误处理。
-- [ ] **CGEN-14【严重】生成 BER/DER/CER 并保留规范策略。** DER/CER 的 DEFAULT、
+- [x] **CGEN-14【严重】生成 BER/DER/CER 并保留规范策略。** DER/CER 的 DEFAULT、
   排序、长度、REAL、字符串构造/分片等按 schema 与策略共同处理，不把基础 BER 成功
   当作规范规则合规；原语与结构级负例分开。
-- [ ] **CGEN-15【重要】UPER+BER 组合与电信接入。** 小 PDU 先验证单 codec/组合、
+- [x] **CGEN-15【重要】UPER+BER 组合与电信接入。** 小 PDU 先验证单 codec/组合、
   C/C++、三形态/分片线路一致，再推进 RRC slice、RRC 全模块、LPP/S1AP。
   全模块遇到的类型/runtime 缺口必须补齐或列为阻断，不能生成未实现 stub。
 
 里程碑 M1：`--lang c --codec uper,ber` 真正生成纯 C 并链接运行；
 **RRC 全模块可生成、多 `.c` 编译链接，且代表 PDU 通过真实编解码与独立对验**。
 先用 RRC slice 通过不能声称全模块已通过；全模块可编译也不能声称所有 PDU 已验证。
+
+完成记录（2026-10-26）：CGEN-13..15 按上述验收完成，M1 的整份 RRC
+1037 类型/9 个 C 源文件已编译链接，代表 PDU 的 UPER/BER 与 live asn1c 0.9.29
+字节一致并互解。三形态/分片及单 codec/组合 C/C++ 有 21 个实际消费者。
+LPP/S1AP 按 CGEN-15 允许的口径登记明确阻断，不计为通过；完整值域不据此扩大。
+Release 461/461、ASan+UBSan 494/494、原 C++ 7×12 语法矩阵 84/84。
+详见 [第 5 批验收和限制](cgen-batch5-validation.md)。第 6/7 批仍未完成。
 
 ### 第 6 批：OER/COER 与 XML/JSON 家族
 

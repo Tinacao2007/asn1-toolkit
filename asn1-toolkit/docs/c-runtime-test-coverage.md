@@ -65,3 +65,14 @@ fields in cache keys. The future `.h/.c` layout/ownership/ABI contract is in
 [c-runtime-codegen-gaps.md](c-runtime-codegen-gaps.md). No generated C value codec
 or additional runtime implementation is enabled. Evidence:
 [cgen-batch1-validation.md](cgen-batch1-validation.md).
+
+## CGEN batch 5 additions
+
+`byte_io.h`, `tlv.h`, `tlv_schema.h`, and `value_content.h` are executable APIs,
+covered by `CGenBatch5.TlvCore`, generated three-form consumers, allocation faults,
+resource limits, entry/shape matrix and whole RRC live asn1c comparison. Primitive
+headers are also independently included under C11/C++17 by PublicHeaders.
+[Acceptance evidence and explicit unsupported profiles](cgen-batch5-validation.md)
+separate envelope checks from canonical value/schema checks and independent oracle
+from standard-derived CER vectors. Older skeleton descriptions above are historical
+for these new APIs; non-PER/TLV C families remain incomplete.

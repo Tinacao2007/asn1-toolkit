@@ -261,24 +261,24 @@ oracle 路径）。P1-3 是把这些 oracle 从"综合构造 per_golden"扩到"�
 
 ## P2-4 — C 语言代码生成器（`--lang c`）
 
-详细执行清单见 [纯 C11 后端 TODO](c-codegen-todo.md)：7 批、CGEN-01～24，包含模块内源文件分片。该清单为后续规划，不代表已实现。
+详细执行清单见 [纯 C11 后端 TODO](c-codegen-todo.md)：7 批、CGEN-01～24，包含模块内源文件分片。各批状态以该清单及对应验收记录为准，未勾选项不代表已实现。
 
-当前 Phase49 仅完成 sub-task 1/2：纯 C11 公共头、原语实现、链接 smoke、失败契约和
-PER 独立差分。生产目标是 `asn1_c_runtime`（`asn1::c_runtime`），不链接 C++ 标准库。
+当前 Phase49 已有纯 C11 公共头、原语实现、生成类型/生命周期和已声明 PER/TLV
+PDU profile，并有真实 RRC UPER+BER 独立差分；其余 codec 家族仍待后续批次。生产目标是 `asn1_c_runtime`（`asn1::c_runtime`），不链接 C++ 标准库。
 C++17 使用项目 `Span` 与 `Result<T>`；C 使用 `asn1_status_t`（0 成功，其他为已登记
 错误）和 out 参数，业务失败不使用异常，也不是进程全局 errno。
 
 | 子任务 | 状态与下一步 | 必需验收 |
 |---|---|---|
 | 1/2 C11 头与 runtime | 已落地；具体原语边界见 [声明登记](c-runtime-test-coverage.md) | C11/C++17 独立头、纯 C 链接、失败/资源边界、PER 两 Variant 与独立 oracle |
-| 规划前置（REV-27） | 最小 `codegen/plan.hpp` 已建立并接入 C++ PER/整数检查；C 后端接入未实现 | [共享规划](emission-planning.md)；不可声称已验证生成 C PDU |
-| 3 C emitter | 未实现；按 codec 分步渲染同一规划，避免复制标签/presence/约束/扩展/selector 决定 | 生成 C11 多 TU 编译链接、状态传播、所有权和真实编解码 |
-| 4 CLI/dispatch | CGEN-03: `--lang cpp|c`, C-only prefix, conflicts and unified dispatch implemented; C generation explicitly Unsupported | [Batch 1 evidence](cgen-batch1-validation.md); real C emission remains later work |
-| 5/6 C fixture 门禁 | 未实现；按已支持 codec 开放，不预设只需 5 codec | 7 fixture ×12 入口能力登记、生成 C 的编译/链接/运行；不能用手写 smoke 替代 |
-| 7 oracle 复用 | 未实现：生成 C/C++ 同 schema/value 使用同一独立 oracle | 字节与双向互解，工具无覆盖时登记条文证据和局限 |
+| 规划前置（REV-27） | 最小 `codegen/plan.hpp` 已建立并接入 C++ PER/整数检查；C 后端已消费共享规划 | [共享规划](emission-planning.md)；PDU 证据另见 CGEN 第 4/5 批 |
+| 3 C emitter | 已实现类型/生命周期及声明的 PER/TLV profile；其他 codec 待续 | 生成 C11 多 TU 编译链接、状态传播、所有权和真实编解码 |
+| 4 CLI/dispatch | CGEN-03: `--lang cpp|c`, C-only prefix, conflicts and unified dispatch implemented; supported C PER/TLV generation enabled; unsupported profiles reject | [Batch 1 evidence](cgen-batch1-validation.md); current wire evidence: [batch 5](cgen-batch5-validation.md) |
+| 5/6 C fixture 门禁 | 支持 profile 已有三形态、分片和 RRC PDU；最终 12 入口矩阵仍未完成 | 7 fixture ×12 入口能力登记、生成 C 的编译/链接/运行；不能用手写 smoke 替代 |
+| 7 oracle 复用 | PER 冻结向量及 RRC UPER/BER live asn1c 已有；完整矩阵待续 | 字节与双向互解，工具无覆盖时登记条文证据和局限 |
 | 8/9/10 集成收尾 | 后续每步同步 | Release + ASan+UBSan 全量、各形态 ODR、文档/安装、P1-3 独立运行 |
 
-继续 sub-task 3 前维持 REV-01..07 的失败传播与 PER 修复；见
+继续后续 C 家族时维持 REV-01..07 的失败传播与 PER 修复；见
 [第一批](rev01-03-validation.md)、[第二批](rev04-09-validation.md)。
 C/C++ runtime 平行实现各自语言的算法和状态接口；共享的是语义规划与测试向量，
 不能把 compiler 链到任一 runtime，也不通过 C++ 包装代替纯 C。

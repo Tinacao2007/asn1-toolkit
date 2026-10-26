@@ -6,6 +6,20 @@
 
 ## 近期变更详录
 
+### 2026-10-26 (CGEN batch 5 C BER/DER/CER and whole RRC)
+
+- Add transactional byte I/O and shared policy-based C TLV value/schema runtime,
+  canonical DEFAULT/order/length/REAL/string validation, recursive values and
+  cumulative resource/fault gates. PER reuses separate REAL/OID content helpers.
+- Generate real C BER/DER/CER entries in all shapes/shards; whole LTE RRC generates
+  1037 types in 9 C sources and RRCConnectionRequest UPER/BER matches live asn1c
+  0.9.29 with independent decoding. Keep LPP time/S1AP PER/typed-open blockers.
+- Fix automatic CHOICE wrapping, OCTET STRING child tags for constructed character
+  strings, UTF8 character-count SIZE and high-tag truncation. Widening the runtime
+  tag struct requires rebuilding consumers. Docs and remediation skill updated.
+- Full gate counts, tool availability and precise supported profile are recorded
+  in [batch 5 evidence](cgen-batch5-validation.md); this is not full X.690 coverage.
+
 ### 2026-10-26 (CGEN batch 4 C11 UPER/APER profile complete)
 
 - Add generated collection length fragmentation with interleaved elements, shared

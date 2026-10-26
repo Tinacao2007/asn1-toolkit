@@ -241,8 +241,8 @@ coverage, not a passing result; preserve later toolchain checkboxes. Evidence:
 
 ## CGEN batch 4 PER codec work
 
-Batch 4 remains open; keep CGEN-10..12 unchecked until the full profile, independent
-vectors, allocation/limit failures, and oracle checks pass. The checked C UPER/APER
+Batch 4 is closed for the declared profile in its validation record. Preserve its
+limits; do not expand this into a complete PER conformance claim. The checked C UPER/APER
 subset now includes BOOLEAN, NULL, constrained INTEGER/ENUMERATED, BIT/OCTET STRING,
 OID/RELATIVE-OID (uint64 arcs), root CHOICE, OF types, recursive SEQUENCE OF,
 extensible SEQUENCE/SET additions and version-bracket groups, opaque open-type
@@ -283,3 +283,25 @@ change on failure. Keep only test-local allocator hooks. Cross-check encoded byt
 with asn1c/asn1tools where their semantics match X.691; distinguish unavailable oracle
 coverage from a pass.
 Progress evidence: [batch 4 validation](../../cgen-batch4-validation.md).
+
+## CGEN batch 5 TLV work
+
+Read [TLV/RRC acceptance and remaining telecom blockers](../../cgen-batch5-validation.md).
+Use one per-call BER/DER/CER policy engine. A combined codec mask must not select
+one global canonical policy. Generated metadata may describe runtime storage;
+runtime must never include IR/AST or link compiler libraries.
+
+Retain selected alternative tags inside explicitly wrapped untagged CHOICEs,
+including automatically tagged CHOICE fields. For CER, sort an untagged CHOICE
+SET component by its static minimum possible tag; DER uses the selected tag.
+Restricted character-string fragments have OCTET STRING child tags. UTF8 SIZE
+counts characters, not storage octets. Test these against explicit vectors;
+a self-roundtrip can hide matching encoder/decoder mistakes.
+
+When changing TLV allocation paths, run every-allocation failure tests on owning
+DEFAULT, recursive collections and CER fragments. Verify destination/cursor and
+writer commit boundaries. Re-run the 21-consumer entry/shape matrix and whole
+RRC generation/build/PDU/live-asn1c oracle. RRC slice/types-only compilation alone
+does not satisfy M1; whole-module PDU success does not prove every PDU. Preserve
+LPP time and S1AP PER/typed-open blockers until their actual gates pass. CER
+standard-derived vectors must stay distinguished from independent oracle results.

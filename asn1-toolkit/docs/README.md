@@ -76,3 +76,5 @@ These layout facilities do not expand the wire codec subset.
 CGEN batch 3: [C type-only output, shards and CMake lists](c-codegen-output.md),
 [acceptance and limits](cgen-batch3-validation.md). Explicit `--types-only` is
 available; a limited C UPER/APER PDU subset is implemented, while complete PER coverage and independent PDU interoperability remain pending.
+
+CGEN batch 5: [C BER/DER/CER, whole RRC PDU/oracle evidence and telecom blockers](cgen-batch5-validation.md).

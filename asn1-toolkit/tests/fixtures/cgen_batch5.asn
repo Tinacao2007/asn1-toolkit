@@ -1,0 +1,27 @@
+C5 DEFINITIONS IMPLICIT TAGS ::= BEGIN
+Pdu ::= SEQUENCE {
+  flag [0] BOOLEAN,
+  count [1] INTEGER (0..7),
+  optionalValue [2] INTEGER (0..3) OPTIONAL,
+  defaultFlag [3] BOOLEAN DEFAULT FALSE
+}
+Pick ::= CHOICE { small [0] INTEGER (0..7), flag [1] BOOLEAN }
+Pair ::= SET { right [3] IMPLICIT BOOLEAN, left [1] IMPLICIT INTEGER (0..7) }
+Numbers ::= SET OF INTEGER (-1000..1000)
+Blob ::= OCTET STRING
+Bits ::= BIT STRING
+High ::= [APPLICATION 201] EXPLICIT INTEGER (-1000..1000)
+Wrapped ::= [PRIVATE 999] IMPLICIT High
+Nested ::= SEQUENCE { pick Pick, high High }
+Tree ::= SEQUENCE { value INTEGER (0..255), children SEQUENCE (SIZE (0..4)) OF Tree }
+RadioDefault ::= SEQUENCE { bits [0] BIT STRING (SIZE (8)) DEFAULT '11111111'B, tail [1] BOOLEAN }
+Switch ::= CHOICE { low [0] INTEGER (0..7), high [5] INTEGER (0..7) }
+Sorted ::= SET { pick Switch, middle [3] INTEGER (0..7) }
+Reading ::= REAL
+Identifier ::= OBJECT IDENTIFIER
+Relative ::= RELATIVE-OID
+Text ::= UTF8String (SIZE (1..2))
+AutoPick ::= SEQUENCE { pick [0] Pick }
+LongText ::= UTF8String
+Extended ::= SEQUENCE { flag [0] BOOLEAN, ... }
+END

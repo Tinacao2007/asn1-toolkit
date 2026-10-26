@@ -135,6 +135,7 @@ asn1_status_t asn1_ber_tag_decode(asn1_byte_view_t src,
       break;
     }
   }
+  if (number < 31u) return ASN1_ERR_INVALID_ARGUMENT;
   tmp.number = number;
   *out_tag = tmp;
   *out_bytes_consumed = i;

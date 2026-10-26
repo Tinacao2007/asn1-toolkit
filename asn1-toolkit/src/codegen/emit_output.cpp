@@ -59,11 +59,11 @@ bool validate_emit_options(const EmitOptions& opt, Diagnostics& diag) {
       diag.error({},"C types: invalid non-reserved symbol prefix");return false;
     }
     const auto c_mask=static_cast<unsigned>(opt.codec);
-    const auto per_mask=static_cast<unsigned>(CodecKind::Uper|CodecKind::Aper);
+    const auto per_mask=static_cast<unsigned>(CodecKind::Uper|CodecKind::Aper|CodecKind::Ber|CodecKind::Der|CodecKind::Cer);
     if ((opt.c_types_only && opt.codec != CodecKind::None) ||
         (!opt.c_types_only && opt.codec == CodecKind::None) ||
         (c_mask & ~per_mask) != 0) {
-      diag.error({}, "C output supports --types-only without a codec, or the currently implemented UPER/APER C codec subset");
+      diag.error({}, "C output supports --types-only without a codec, or the currently implemented PER/TLV C codec subset");
       return false;
     }
     if (opt.emit_inline && (opt.emit_split || opt.split_max_types)) {

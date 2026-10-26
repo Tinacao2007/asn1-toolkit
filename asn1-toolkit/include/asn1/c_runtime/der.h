@@ -24,7 +24,7 @@
     layer for the canonical rules. The decoder rejects non-canonical
     encodings with ASN1_ERR_NON_CANONICAL.
 
-    Sub-task 1 = interface skeleton only.
+    CGEN batch 5 = shared policy-based TLV runtime.
 
     Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
@@ -32,14 +32,15 @@
 #define ASN1_C_DER_H
 
 #include <asn1/c_runtime/ber.h>
+#include <asn1/c_runtime/tlv_schema.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* TODO sub-task 2: asn1_der_encode_<Type> / asn1_der_decode_<Type> per
-   generated stub; canonical SET comparator `asn1_der_set_cmp`; INTEGER
-   minimal-length validation per X.690 11.3. */
+/* Generated entry points use asn1_tlv_schema_encode/decode with their
+   own ASN1_TLV_DER policy. See tlv.h and tlv_schema.h for the
+   shared implementation, ownership and transactional decode contract. */
 
 #ifdef __cplusplus
 }  /* extern "C" */

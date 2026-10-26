@@ -33,7 +33,7 @@ extern "C" {
 typedef struct {
     uint8_t cls;            /* 0..3 */
     uint8_t constructed;    /* 0 or 1 */
-    uint32_t number;        /* 0..2^31-1 */
+    uint64_t number;        /* full IR tag-number profile; never narrowed */
 } asn1_ber_tag_t;
 
 /* Write / read the tag octets. `out_buf` for write must have at least

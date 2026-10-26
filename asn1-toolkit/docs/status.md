@@ -6,7 +6,17 @@
 
 ## 当前阶段
 
-**Phase 49: CGEN batches 1–4 complete for their declared profiles; batch 5 is next.**
+**Phase 49: CGEN batches 1–5 complete for their declared profiles; batch 6 is next.**
+
+CGEN batch 5 adds shared C BER/DER/CER value/schema codecs and transactional byte
+I/O. Whole LTE RRC (1037 types, 9 C sources) compiles and its RRCConnectionRequest
+UPER/BER encodings match live asn1c 0.9.29, including independent decoding.
+The 21-consumer C/C++ single/combined entry/shape matrix passes. Full LPP time
+values and S1AP C PER/typed-open remain explicit blockers, not passing modules.
+Final gates: MSVC Release **461/461**, Ubuntu GCC ASan+UBSan **494/494**,
+C++ 7×12 independent syntax matrix **84/84**. Clang is unavailable in this WSL
+environment; that later toolchain gate is not counted as passing.
+See [batch 5 evidence and limits](cgen-batch5-validation.md).
 
 CGEN-07..09 adds explicit `--lang c --types-only` output in ordinary, static-inline,
 module and within-module shard forms, deterministic SCC budgeting and shared

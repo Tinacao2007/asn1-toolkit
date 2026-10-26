@@ -177,3 +177,12 @@ owning DEFAULT and generated planning checks are recorded in
 octets for OCTET STRING, elements for OF. Extensible roots permit outside-root
 values; unresolved or unrepresentable SIZE plans diagnose before stream writes.
 These tests do not establish complete codec or character-repertoire coverage.
+
+## Batch 5 TLV ABI additions
+
+Generated BER/DER/CER APIs use opaque `asn1_byte_writer_t` / `asn1_byte_reader_t`
+and per-entry shared runtime policy. Generated private schema getters carry
+C ABI storage metadata and recursive getter pointers; no IR objects enter runtime.
+The value layout version remains 2. `asn1_ber_tag_t.number` widened to uint64_t,
+which changes that runtime struct ABI: rebuild runtime and consumers together.
+See [contracts, supported values and failure behavior](cgen-batch5-validation.md).

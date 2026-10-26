@@ -73,7 +73,7 @@ def main():
             exe=work/(label+'run')
             command=[a.cc,'-std=c11','-pedantic-errors','-Wall','-Wextra','-Werror',*san,
                      '-I',root/'include','-I',out,*sources,
-                     root/'tests/codegen/cgen_batch3_driver.c',second,a.runtime,'-o',exe]
+                     root/'tests/codegen/cgen_batch3_driver.c',second,a.runtime,'-lm','-o',exe]
             rss=work/(label+'rss.txt')
             if sys.platform.startswith('linux') and Path('/usr/bin/time').exists():
                 command=['/usr/bin/time','-f','%M','-o',rss,*command]
@@ -124,7 +124,7 @@ def main():
                 driver=work/'solo.c';driver.write_text('\n'.join(calls))
                 exe=work/'solo-run'
                 run([a.cc,'-std=c11','-pedantic-errors','-Wall','-Wextra','-Werror',*san,
-                     '-I',root/'include','-I',out,*[out/n for n in data['sources']],driver,a.runtime,'-o',exe])
+                     '-I',root/'include','-I',out,*[out/n for n in data['sources']],driver,a.runtime,'-lm','-o',exe])
                 run([exe]);manifest(out)
             assert len(list(out.glob('*.c')))==4
         elif a.case=='rrc_types':
@@ -141,7 +141,7 @@ def main():
                 'if('+n+'_copy(&a,&b)!=ASN1_OK)return 2;'+n+'_free(&a);'+n+'_free(&b);'+n+'_free(&b);return 0;}')
             exe=work/'rrc-run';rss=work/'rrc-rss.txt'
             command=[a.cc,'-std=c11','-pedantic-errors','-Wall','-Wextra','-Werror',*san,
-                     '-I',root/'include','-I',out,*[out/name for name in data['sources']],driver,a.runtime,'-o',exe]
+                     '-I',root/'include','-I',out,*[out/name for name in data['sources']],driver,a.runtime,'-lm','-o',exe]
             if sys.platform.startswith('linux') and Path('/usr/bin/time').exists():
                 command=['/usr/bin/time','-f','%M','-o',rss,*command]
             begin=time.perf_counter();run(command);elapsed=time.perf_counter()-begin
@@ -242,7 +242,8 @@ def main():
                 'add_executable(consumer main.c second.c ${ASN1_GENERATED_SOURCES})\n'
                 'set_target_properties(consumer PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)\n'
                 f'target_include_directories(consumer PRIVATE "{out.as_posix()}" "{root.as_posix()}/include")\n'
-                f'target_link_libraries(consumer PRIVATE "{Path(a.runtime).as_posix()}")\n'+sanitizer+
+                f'target_link_libraries(consumer PRIVATE "{Path(a.runtime).as_posix()}")\n'
+                'if(UNIX)\n  target_link_libraries(consumer PRIVATE m)\nendif()\n'+sanitizer+
                 'enable_testing()\nadd_test(NAME CallsLifecycle COMMAND consumer)\n')
             run([a.cmake,'-S',project,'-B',work/'build','-DCMAKE_C_COMPILER='+a.cc])
             run([a.cmake,'--build',work/'build','--config','Release'])

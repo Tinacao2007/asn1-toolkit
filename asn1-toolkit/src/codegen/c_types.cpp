@@ -73,6 +73,8 @@ class Types {
   bool inline_functions = false;
   bool c_uper = false;
   bool c_aper = false;
+  bool c_ber = false, c_der = false, c_cer = false;
+  bool c_tlv() const { return c_ber || c_der || c_cer; }
   std::string linkage(bool helper = false) const {
     return inline_functions ? "static inline " : helper && !external_helpers ? "static " : "";
   }
@@ -433,6 +435,7 @@ class Types {
     for (const auto& item : names) {
       const auto& n=item.second;
       const auto& t=model.arena.get(item.first);
+      if(c_tlv()) s << linkage(true) << "const asn1_tlv_schema_t* " << n << "_tlv_schema(void);\n";
       s << linkage(true) << "asn1_status_t " << n << "_copy_at(const " << n << "*, " << n << "*, size_t);\n"
         << linkage(true) << "asn1_status_t " << n << "_defaults_at(" << n << "*, size_t);\n";
       for (const auto* variant : {"uper", "aper"}) {
@@ -507,7 +510,32 @@ class Types {
         for(const auto& item:*list) if(item.name==def.name && item.value.as_i64)
           return "("+value+".value == "+literal(*item.value.as_i64)+")";
     }
+    if(const auto binary=planning::binary_default(def)) {
+      std::string bytes;for(auto b:binary->bytes)bytes+=static_cast<char>(b);
+      const bool bits=t.kind==TypeKind::BitString;
+      const auto data=value+(bits?".value.bits":".data");
+      return "("+value+(bits?".value.bit_length == "+std::to_string(binary->bits):".count == "+std::to_string(bytes.size()))+
+        (bytes.empty()?"": " && "+data+" && memcmp("+data+","+c_string(bytes)+","+std::to_string(bytes.size())+")==0")+")";
+    }
+    if(const auto text=planning::string_default(def))
+      return "("+value+".count == "+std::to_string(text->size())+(text->empty()?"":" && "+value+".data && memcmp("+value+".data,"+c_string(*text)+","+std::to_string(text->size())+")==0")+")";
     return {};
+  }
+  std::size_t owning_default_bytes(const Field& f) const {
+    const auto& value=model.arena.get_value(*f.default_value);
+    if(const auto b=planning::binary_default(value))return b->bytes.size();
+    if(const auto text=planning::string_default(value))return text->size();return 0;
+  }
+  void emit_owned_default(const Field& f,std::string path,std::ostream& s) const {
+    TypeId id=f.type;while(model.arena.get(id).kind==TypeKind::Referenced){path+=".value";id=model.arena.get(id).referenced.resolved;}
+    const auto& value=model.arena.get_value(*f.default_value);std::string bytes;std::size_t bits=0;
+    if(const auto binary=planning::binary_default(value)){for(auto b:binary->bytes)bytes+=static_cast<char>(b);bits=binary->bits;}
+    else if(const auto text=planning::string_default(value))bytes=*text;
+    const bool is_bits=model.arena.get(id).kind==TypeKind::BitString;const auto data=path+(is_bits?".value.bits":".data");
+    s << "{ size_t n=" << bytes.size() << "; if(n) { " << data << "=(uint8_t*)malloc(n); if(!" << data << ") return ASN1_ERR_OUT_OF_MEMORY; memcpy(" << data << ',' << c_string(bytes) << ",n); } ";
+    if(is_bits)s << path << ".value.bit_length=" << bits << "; " << path << ".value.cap_bytes=n;";
+    else s << path << ".count=" << path << ".capacity=n;";
+    s << " }\n";
   }
   bool c_per_supported(TypeId id, std::set<TypeId>& active, bool diagnose) const {
     if (!active.insert(id).second) {
@@ -589,20 +617,20 @@ class Types {
           }
         }
         for(const auto& field:sequence.root) {
-          if(field.presence==Presence::Default && default_assignment(field,"v").empty()) ok=false;
+          if(field.presence==Presence::Default && per_default_test(field,"v").empty()) ok=false;
           if(field.presence==Presence::Default) {
             const auto dep=underlying(field.type);
             const auto kind=dep==kInvalidType?TypeKind::Null:model.arena.get(dep).kind;
-            if(kind!=TypeKind::Boolean && kind!=TypeKind::Integer && kind!=TypeKind::Enumerated) ok=false;
+            if(kind!=TypeKind::Boolean && kind!=TypeKind::Integer && kind!=TypeKind::Enumerated && kind!=TypeKind::BitString && kind!=TypeKind::OctetString && kind!=TypeKind::String) ok=false;
           }
           if(!c_per_supported(field.type,active,diagnose)) ok=false;
         }
         for(const auto& field:sequence.trailing_root) {
-          if(field.presence==Presence::Default && default_assignment(field,"v").empty()) ok=false;
+          if(field.presence==Presence::Default && per_default_test(field,"v").empty()) ok=false;
           if(field.presence==Presence::Default) {
             const auto dep=underlying(field.type);
             const auto kind=dep==kInvalidType?TypeKind::Null:model.arena.get(dep).kind;
-            if(kind!=TypeKind::Boolean && kind!=TypeKind::Integer && kind!=TypeKind::Enumerated) ok=false;
+            if(kind!=TypeKind::Boolean && kind!=TypeKind::Integer && kind!=TypeKind::Enumerated && kind!=TypeKind::BitString && kind!=TypeKind::OctetString && kind!=TypeKind::String) ok=false;
           }
           if(!c_per_supported(field.type,active,diagnose)) ok=false;
         }
@@ -917,6 +945,15 @@ class Types {
           if(pointer(id,f.type)) s << "status=asn1_bit_reader_reserve(r,sizeof(*" << member << "),1); if(status!=ASN1_OK) goto per_fail; " << member << "=(" << name(f.type) << "*)calloc(1,sizeof(*" << member << ")); if(!" << member << ") { status=ASN1_ERR_OUT_OF_MEMORY; goto per_fail; } " << name(f.type) << "_init(" << member << "); status=" << name(f.type) << "_decode_" << variant << "_at(r," << member << ",depth+1); if(status!=ASN1_OK) goto per_fail;\n";
           else s << "status=" << name(f.type) << "_decode_" << variant << "_at(r,&" << member << ",depth+1); if(status!=ASN1_OK) goto per_fail;\n";
           if(f.presence!=Presence::Mandatory) s << ind << "  }\n";
+          if(f.presence==Presence::Default && owning_default(f)) {
+            s << ind << "if(!pre.optional_bits[" << i << "]) { status=asn1_bit_reader_reserve(r," << owning_default_bytes(f) << ",0); if(status!=ASN1_OK) goto per_fail;\n";
+            // Materialization cannot return early while the preamble owns memory.
+            s << "{ " << name(f.type) << " def; " << name(f.type) << "_init(&def);\n";
+            std::ostringstream materialize;emit_owned_default(f,"def",materialize);
+            auto code=materialize.str();const std::string from="return ASN1_ERR_OUT_OF_MEMORY;";
+            const auto pos=code.find(from);if(pos!=std::string::npos)code.replace(pos,from.size(),"{ status=ASN1_ERR_OUT_OF_MEMORY; goto per_fail; }");
+            s << code << member << "=def; } }\n";
+          }
           if(f.presence!=Presence::Mandatory) ++i;
         }};
         emit_root_decode(sequence.root);
@@ -996,11 +1033,152 @@ class Types {
         for(const auto& field:*fields) if(field.table_constraint) emit_selector_decoder(id,field,variant,s);
     }
   }
+  bool c_tlv_supported(TypeId id,std::set<TypeId>& seen) const {
+    if(!seen.insert(id).second)return true;
+    const auto& t=model.arena.get(id);bool ok=true;
+    switch(t.kind) {
+      case TypeKind::Boolean:case TypeKind::Integer:case TypeKind::Enumerated:
+      case TypeKind::Null:break;
+      case TypeKind::BitString:ok=t.bit_string.containing==kInvalidType && t.bit_string.named_bits.empty();break;
+      case TypeKind::OctetString:ok=t.octet_string.containing==kInvalidType;break;
+      case TypeKind::Real:case TypeKind::ObjectIdentifier:case TypeKind::RelativeOid:break;
+      case TypeKind::String:
+        ok=t.string.kind==StringKind::UTF8String||t.string.kind==StringKind::IA5String||t.string.kind==StringKind::NumericString||t.string.kind==StringKind::PrintableString||t.string.kind==StringKind::VisibleString;break;
+      case TypeKind::Referenced:ok=c_tlv_supported(t.referenced.resolved,seen);break;
+      case TypeKind::ObjectClassField:if(!t.object_class_field.open_type)ok=c_tlv_supported(t.object_class_field.fixed_type,seen);break;
+      case TypeKind::SequenceOf:case TypeKind::SetOf:ok=c_tlv_supported(t.kind==TypeKind::SequenceOf?t.sequence_of.element:t.set_of.element,seen);break;
+      case TypeKind::Sequence:case TypeKind::Set:case TypeKind::Choice:
+        for(const auto& m:members(t)) {
+          if(m.field->presence==Presence::Default && per_default_test(*m.field,"value").empty())ok=false;
+          if(!c_tlv_supported(m.field->type,seen))ok=false;
+        }break;
+      default:ok=false;break;
+    }
+    if(!ok)diag.error({},"Unsupported C TLV schema/value profile: "+name(id));
+    return ok;
+  }
+  std::string tlv_tag(const Tag& tag,bool present=true) const {
+    return "{"+std::to_string(present?static_cast<unsigned>(tag.cls):255u)+",0,UINT64_C("+std::to_string(tag.number)+")}";
+  }
+  void emit_tlv_validation(TypeId id,std::ostream& s) const {
+    const auto& t=model.arena.get(id);const auto n=name(id);
+    s << linkage(true) << "asn1_status_t " << n << "_tlv_validate(const void* opaque) { const " << n << "* value=(const " << n << "*)opaque; (void)value;\n";
+    const auto membership=[&](const ConstraintDesc& c,const std::string& expression){
+      if(c.extensible || (!c.empty && c.root_ranges.empty()))return;
+      s << "if(!(0";
+      for(const auto& r:c.root_ranges){s << " || (1";if(r.lower && r.lower->as_i64)s << " && " << expression << ">=" << literal(*r.lower->as_i64);if(r.upper && r.upper->as_i64)s << " && " << expression << "<=" << literal(*r.upper->as_i64);s << ')';}
+      s << ")) return ASN1_ERR_CONSTRAINT_VIOLATION;\n";
+    };
+    if(t.kind==TypeKind::Boolean)s << "if(value->value!=0 && value->value!=1)return ASN1_ERR_INVALID_ARGUMENT;\n";
+    if(t.kind==TypeKind::Integer && !big_integer(t))membership(t.integer.constraint,"value->value");
+    if(big_integer(t)){
+      s << "if(value->value.nlimbs>value->value.cap || (value->value.nlimbs && (!value->value.limbs || !value->value.limbs[value->value.nlimbs-1] || (value->value.sign!=1 && value->value.sign!=-1))) || (!value->value.nlimbs && value->value.sign))return ASN1_ERR_INVALID_ARGUMENT; if(value->value.nlimbs>ASN1_MAX_BIGINT_LIMBS)return ASN1_ERR_RESOURCE_LIMIT;\n";
+      if(!t.integer.constraint.extensible && (t.integer.constraint.empty || !t.integer.constraint.root_ranges.empty())) {
+        s << "{ int member=0;\n";std::size_t i=0;
+        for(const auto& range:t.integer.constraint.root_ranges){const auto stem="bound"+std::to_string(i++);if(range.lower)big_constant(*range.lower,stem+"lo",s);if(range.upper)big_constant(*range.upper,stem+"hi",s);
+          s << "if(1";if(range.lower)s << " && asn1_bigint_cmp(&value->value,&" << stem << "lo)>=0";if(range.upper)s << " && asn1_bigint_cmp(&value->value,&" << stem << "hi)<=0";s << ")member=1;\n";}
+        s << "if(!member)return ASN1_ERR_CONSTRAINT_VIOLATION;}\n";
+      }
+    }
+    if(t.kind==TypeKind::Enumerated && !t.enumerated.extensible){s << "if(!(0";for(const auto& e:t.enumerated.root)s << " || value->value==" << literal(*e.value.as_i64);s << "))return ASN1_ERR_CONSTRAINT_VIOLATION;\n";}
+    if(t.kind==TypeKind::BitString){s << "{size_t bytes=value->value.bit_length/8u+(value->value.bit_length%8u!=0); if(bytes>value->value.cap_bytes || (bytes&&!value->value.bits))return ASN1_ERR_INVALID_ARGUMENT;if(bytes>ASN1_MAX_STRING_BYTES)return ASN1_ERR_RESOURCE_LIMIT;}\n";membership(t.bit_string.size,"value->value.bit_length");}
+    if(octets(t)||t.kind==TypeKind::SequenceOf||t.kind==TypeKind::SetOf||t.kind==TypeKind::ObjectIdentifier||t.kind==TypeKind::RelativeOid){s << "if(value->count>value->capacity || (value->count&&!value->data))return ASN1_ERR_INVALID_ARGUMENT;\n";
+      if(octets(t))s << "if(value->count>ASN1_MAX_STRING_BYTES)return ASN1_ERR_RESOURCE_LIMIT;\n";
+      if(t.kind!=TypeKind::String)if(const auto* constraint=planning::storage_size(t))membership(*constraint,"value->count");
+    }
+    if(t.kind==TypeKind::String){const unsigned tag=t.string.kind==StringKind::NumericString?18:t.string.kind==StringKind::PrintableString?19:t.string.kind==StringKind::IA5String?22:t.string.kind==StringKind::VisibleString?26:12;
+      s << "{size_t characters=0;asn1_status_t status=asn1_tlv_string_length(" << tag << ",asn1_byte_view(value->data,value->count),&characters);if(status!=ASN1_OK)return status;\n";membership(t.string.size,"characters");s << "}\n";}
+    if(t.kind==TypeKind::Sequence || t.kind==TypeKind::Set){
+      for(const auto& member:members(t))if(typed_open_field(*member.field))s << "if(value->" << decoded_value_member(*member.field) << ")return ASN1_ERR_UNSUPPORTED;\n";
+      const auto plan=planning::sequence(per_sequence(t));
+      for(const auto& group:plan.extensions)if(group.nested_sequence){s << "if(0";for(const auto& f:group.group->fields)s << " || value->has_f" << spell(f.name);s << ") {\n";for(const auto& f:group.group->fields)if(f.presence==Presence::Mandatory)s << "if(!value->has_f" << spell(f.name) << ")return ASN1_ERR_CONSTRAINT_VIOLATION;\n";s << "}\n";}
+    }
+    s << "return ASN1_OK;}\n";
+  }
+  void emit_tlv_schema(TypeId id,std::ostream& s) const {
+    const auto& t=model.arena.get(id);const auto n=name(id);std::string kind="",element="NULL";
+    unsigned universal=0;std::string value_offset="0",data_offset="0",count_offset="0",capacity_offset="0";
+    const auto offset=[&](const std::string& path){return "offsetof("+n+","+path+")";};
+    TypeId dep=kInvalidType;
+    switch(t.kind) {
+      case TypeKind::Referenced:kind="ALIAS";dep=t.referenced.resolved;value_offset=offset("value");break;
+      case TypeKind::ObjectClassField:if(!t.object_class_field.open_type){kind="ALIAS";dep=t.object_class_field.fixed_type;value_offset=offset("value");}else kind="OPEN";break;
+      case TypeKind::Boolean:kind="BOOLEAN";universal=1;value_offset=offset("value");break;
+      case TypeKind::Integer:kind=big_integer(t)?"BIGINT":"INT64";universal=2;value_offset=offset("value");break;
+      case TypeKind::Enumerated:kind="INT64";universal=10;value_offset=offset("value");break;
+      case TypeKind::Null:kind="NULL";universal=5;break;
+      case TypeKind::Real:kind="REAL";universal=9;value_offset=offset("value");break;
+      case TypeKind::ObjectIdentifier:kind="OID";universal=6;break;
+      case TypeKind::RelativeOid:kind="RELATIVE_OID";universal=13;break;
+      case TypeKind::BitString:kind="BITS";universal=3;value_offset=offset("value");break;
+      case TypeKind::OctetString:kind="OCTETS";universal=4;break;
+      case TypeKind::String:kind="OCTETS";
+        universal=t.string.kind==StringKind::NumericString?18:t.string.kind==StringKind::PrintableString?19:t.string.kind==StringKind::IA5String?22:t.string.kind==StringKind::VisibleString?26:12;break;
+      case TypeKind::Sequence:kind="SEQUENCE";universal=16;break;
+      case TypeKind::Set:kind="SET";universal=17;break;
+      case TypeKind::Choice:kind="CHOICE";break;
+      case TypeKind::SequenceOf:kind="SEQUENCE_OF";universal=16;dep=t.sequence_of.element;break;
+      case TypeKind::SetOf:kind="SET_OF";universal=17;dep=t.set_of.element;break;
+      default:return;
+    }
+    const bool collection=t.kind==TypeKind::SequenceOf||t.kind==TypeKind::SetOf;
+    if(octets(t)||collection||t.kind==TypeKind::ObjectIdentifier||t.kind==TypeKind::RelativeOid){data_offset=offset("data");count_offset=offset("count");capacity_offset=offset("capacity");}
+    if(dep!=kInvalidType)element=name(dep)+"_tlv_schema";
+    const bool alias=kind=="ALIAS";
+    auto fields=planning::fields(t);
+    if(t.kind==TypeKind::Sequence){
+      // BER declaration order: first root, extension additions, trailing root.
+      fields.clear();const auto planned=planning::fields(t);
+      for(const auto* list:{&t.sequence.root})for(const auto& f:*list)for(const auto& p:planned)if(p.field==&f)fields.push_back(p);
+      for(const auto& group:t.sequence.extension_groups)for(const auto& f:group.fields)for(const auto& p:planned)if(p.field==&f)fields.push_back(p);
+      for(const auto& f:t.sequence.trailing_root)for(const auto& p:planned)if(p.field==&f)fields.push_back(p);
+    }
+    s << linkage(true) << "void " << n << "_tlv_init(void* v) { " << n << "_init((" << n << "*)v); }\n"
+      << linkage(true) << "void " << n << "_tlv_clear(void* v) { " << n << "_free((" << n << "*)v); }\n";
+    emit_tlv_validation(id,s);
+    if(t.kind==TypeKind::Choice){
+      s << linkage(true) << "size_t " << n << "_tlv_choice_get(const void* value) { switch(((const " << n << "*)value)->kind) {\n";
+      for(std::size_t i=0;i<fields.size();++i)s << "case " << n << "_arm_f" << spell(fields[i].field->name) << ":return " << i << ";\n";
+      s << "default:return SIZE_MAX;} }\n" << linkage(true) << "void " << n << "_tlv_choice_set(void* value,size_t index) { switch(index) {\n";
+      for(std::size_t i=0;i<fields.size();++i)s << "case " << i << ": ( (" << n << "*)value)->kind=" << n << "_arm_f" << spell(fields[i].field->name) << ";break;\n";
+      s << "default:break;} }\n";
+    }
+    for(std::size_t i=0;i<fields.size();++i)if(fields[i].field->presence==Presence::Default) {
+      const auto& f=*fields[i].field;
+      s << linkage(true) << "int " << n << "_tlv_default_" << i << "(const void* value) { return " << per_default_test(f,"((const "+n+"*)value)->f"+spell(f.name)) << "; }\n";
+      if(owning_default(f)){s << linkage(true) << "asn1_status_t " << n << "_tlv_default_init_" << i << "(void* value) {\n";emit_owned_default(f,"(("+n+"*)value)->f"+spell(f.name),s);s << "return ASN1_OK;}\n";}
+    }
+    s << linkage(true) << "const asn1_tlv_schema_t* " << n << "_tlv_schema(void) {\n";
+    if(!fields.empty()) {
+      s << "static const asn1_tlv_field_t fields[] = {\n";
+      for(std::size_t i=0;i<fields.size();++i){const auto& plan=fields[i];const auto& f=*plan.field;const auto& ft=model.arena.get(f.type);
+        const bool tagged=f.tag.cls!=TagClass::Universal||f.tag.number!=0;
+        const bool duplicate=f.tag.is_explicit && ft.tag.is_explicit && f.tag.cls==ft.tag.cls && f.tag.number==ft.tag.number;
+        const bool presence=t.kind!=TypeKind::Choice && (plan.extension_group || f.presence==Presence::Optional);
+        const auto path=(t.kind==TypeKind::Choice?"value.f":"f")+spell(f.name);
+        const bool owned=f.presence==Presence::Default && owning_default(f);
+        const bool after_root=static_cast<bool>(plan.extension_group) || (t.kind==TypeKind::Sequence && std::any_of(t.sequence.trailing_root.begin(),t.sequence.trailing_root.end(),[&](const Field& field){return &field==&f;}));
+        s << "{" << name(f.type) << "_tlv_schema," << offset(path) << ',' << (presence?offset("has_f"+spell(f.name)):"SIZE_MAX") << ',' << pointer(id,f.type) << ',' << f.tag.is_explicit << ',' << tlv_tag(f.tag,tagged&&!duplicate) << ',' << (f.presence==Presence::Default?n+"_tlv_default_"+std::to_string(i):"NULL") << ',' << (owned?n+"_tlv_default_init_"+std::to_string(i):"NULL") << ',' << (owned?owning_default_bytes(f):0) << ',' << after_root << "},\n";
+      }s << "};\n";
+    }
+    bool tagged=t.tag.cls!=TagClass::Universal||t.tag.number!=0;
+    if(alias && dep!=kInvalidType){const auto& child=model.arena.get(dep);if(t.tag.is_explicit && child.tag.is_explicit && t.tag.cls==child.tag.cls && t.tag.number==child.tag.number)tagged=false;}
+    const bool extensible=t.kind==TypeKind::Sequence?t.sequence.extensible:t.kind==TypeKind::Set?t.set.extensible:t.kind==TypeKind::Choice?t.choice.extensible:false;
+    s << "static const asn1_tlv_schema_t schema={ASN1_TLV_" << kind << ",sizeof(" << n << ")," << universal << ',' << tlv_tag(t.tag,tagged) << ',' << t.tag.is_explicit << ',' << extensible << ',' << (alias&&pointer(id,dep)) << ','
+      << value_offset << ',' << data_offset << ',' << count_offset << ',' << capacity_offset << ',' << element << ',' << (fields.empty()?"NULL":"fields") << ',' << fields.size() << ',' << n << "_tlv_init," << n << "_tlv_clear," << n << "_tlv_validate,"
+      << (t.kind==TypeKind::Choice?n+"_tlv_choice_get":"NULL") << ',' << (t.kind==TypeKind::Choice?n+"_tlv_choice_set":"NULL") << "};return &schema;}\n";
+    for(const auto* codec:{"ber","der","cer"})if((std::string(codec)=="ber"&&c_ber)||(std::string(codec)=="der"&&c_der)||(std::string(codec)=="cer"&&c_cer)) {
+      const auto policy=std::string("ASN1_TLV_")+(std::string(codec)=="ber"?"BER":std::string(codec)=="der"?"DER":"CER");
+      s << linkage() << "asn1_status_t " << n << "_encode_" << codec << "(asn1_byte_writer_t* w,const " << n << "* value) { return asn1_tlv_schema_encode(w," << policy << ',' << n << "_tlv_schema(),value); }\n"
+        << linkage() << "asn1_status_t " << n << "_decode_" << codec << "(asn1_byte_reader_t* r," << n << "* value) { return asn1_tlv_schema_decode(r," << policy << ',' << n << "_tlv_schema(),value); }\n";
+    }
+  }
   void header(std::ostream& h) const {
   h << (c_uper||c_aper?"/* Generated C11 types and supported PER codecs. */\n":"/* Generated C11 types only; no codec implementation. */\n") << "#ifndef " << prefix << "_types_h\n#define " << prefix
     << "_types_h\n#define " << prefix << "_GENERATED_ABI_VERSION 2\n"
     << "#include <asn1/c_runtime/asn1_c_common.h>\n#include <asn1/c_runtime/bit_string.h>\n#include <asn1/c_runtime/limits.h>\n";
   if(c_uper||c_aper) h << "#include <asn1/c_runtime/per.h>\n";
+  if(c_tlv()) h << "#include <asn1/c_runtime/tlv_schema.h>\n#include <stddef.h>\n";
   h << "#include <stdlib.h>\n#include <string.h>\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n";
   h << "typedef struct { int has_key; const char *decimal_key; uint32_t type_id; } " << prefix << "_selector_entry;\n"
     << "typedef struct { const char *name; unsigned tag_class; uint64_t tag_number; int explicit_tag; size_t presence_index,extension_group; int nested_sequence; size_t ordinal; const char *governor; size_t selector_count; const " << prefix << "_selector_entry *entries; } " << prefix << "_field_plan;\n";
@@ -1016,6 +1194,8 @@ class Types {
       << linkage() << "asn1_status_t " << n << "_select(size_t,const char*,uint32_t*);\n";
     if(c_uper) h << linkage() << "asn1_status_t " << n << "_encode_uper(asn1_bit_writer_t*,const " << n << "*);\n" << linkage() << "asn1_status_t " << n << "_decode_uper(asn1_bit_reader_t*," << n << "*);\n";
     if(c_aper) h << linkage() << "asn1_status_t " << n << "_encode_aper(asn1_bit_writer_t*,const " << n << "*);\n" << linkage() << "asn1_status_t " << n << "_decode_aper(asn1_bit_reader_t*," << n << "*);\n";
+    for(const auto* codec:{"ber","der","cer"})if((std::string(codec)=="ber"&&c_ber)||(std::string(codec)=="der"&&c_der)||(std::string(codec)=="cer"&&c_cer))
+      h << linkage() << "asn1_status_t " << n << "_encode_" << codec << "(asn1_byte_writer_t*,const " << n << "*);\n" << linkage() << "asn1_status_t " << n << "_decode_" << codec << "(asn1_byte_reader_t*," << n << "*);\n";
     if(t.kind==TypeKind::Sequence || t.kind==TypeKind::Set) {
       const auto& seq=per_sequence(t);
       for(const auto* fields:{&seq.root,&seq.trailing_root})
@@ -1033,6 +1213,7 @@ class Types {
     for (auto id : order) {
       if(c_uper) emit_per_codec(id,"uper",h);
       if(c_aper) emit_per_codec(id,"aper",h);
+      if(c_tlv()) emit_tlv_schema(id,h);
     }
   }
   h << "#ifdef __cplusplus\n}\n#endif\n#endif\n";
@@ -1094,7 +1275,11 @@ class Types {
     if (copy) {
       if (const auto* size = planning::storage_size(t)) {
         const auto plan = planning::constraint(*size);
-        const std::string count = t.kind == TypeKind::BitString ? "src->value.bit_length" : "src->count";
+        if(t.kind==TypeKind::String && c_tlv()) {
+          const unsigned tag=t.string.kind==StringKind::NumericString?18:t.string.kind==StringKind::PrintableString?19:t.string.kind==StringKind::IA5String?22:t.string.kind==StringKind::VisibleString?26:12;
+          s << "size_t size_characters=0; if(src->count>src->capacity || (src->count&&!src->data)) { status=ASN1_ERR_INVALID_ARGUMENT;goto fail; } status=asn1_tlv_string_length(" << tag << ",asn1_byte_view(src->data,src->count),&size_characters);if(status!=ASN1_OK)goto fail;\n";
+        }
+        const std::string count = t.kind == TypeKind::String && c_tlv()?"size_characters":t.kind == TypeKind::BitString ? "src->value.bit_length" : "src->count";
         if (size->empty && !size->extensible)
           s << "status = ASN1_ERR_CONSTRAINT_VIOLATION; goto fail;\n";
         else if (plan.requires_membership) {
@@ -1300,10 +1485,10 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
                                                const EmitOptions& opt, Diagnostics& diag) try {
   if (!validate_emit_options(opt,diag)) return {};
   const unsigned requested=static_cast<unsigned>(opt.codec);
-  const unsigned per_mask=static_cast<unsigned>(CodecKind::Uper|CodecKind::Aper);
+  const unsigned per_mask=static_cast<unsigned>(CodecKind::Uper|CodecKind::Aper|CodecKind::Ber|CodecKind::Der|CodecKind::Cer);
   if(opt.language!=TargetLanguage::C || (opt.c_types_only && opt.codec!=CodecKind::None) ||
      (!opt.c_types_only && opt.codec==CodecKind::None) || (requested&~per_mask)!=0) {
-    diag.error({},"C artifact rendering requires type-only mode or the supported UPER/APER codec subset"); return {};
+    diag.error({},"C artifact rendering requires type-only mode or the supported PER/TLV codec subset"); return {};
   }
   const auto prefix=opt.c_prefix.empty()?std::string("asn1_gen"):opt.c_prefix;
   // Share the existing model/name/profile preflight, including untouched streams.
@@ -1319,6 +1504,13 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
   types.inline_functions=opt.emit_inline;
   types.c_uper=static_cast<unsigned>(opt.codec&CodecKind::Uper)!=0;
   types.c_aper=static_cast<unsigned>(opt.codec&CodecKind::Aper)!=0;
+  types.c_ber=static_cast<unsigned>(opt.codec&CodecKind::Ber)!=0;
+  types.c_der=static_cast<unsigned>(opt.codec&CodecKind::Der)!=0;
+  types.c_cer=static_cast<unsigned>(opt.codec&CodecKind::Cer)!=0;
+  if(types.c_tlv()) {
+    std::set<TypeId> seen;for(auto id:model.exported_types)types.c_tlv_supported(id,seen);
+    if(!diag.ok())return {};
+  }
   if(types.c_uper||types.c_aper) {
     for(auto id:model.exported_types) {
       std::set<TypeId> active;
@@ -1328,7 +1520,18 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
   }
   std::ostringstream h; types.header(h);
   const std::size_t per_functions=(types.c_uper?4u:0u)+(types.c_aper?4u:0u);
-  std::vector<CGeneratedFile> files{{opt.basename+".h",add_generated_allocator_aliases(rewrite_generated_allocations(h.str(),prefix),prefix),types.names.size(),opt.emit_inline?types.names.size()*(9u+per_functions):0}};
+  const auto function_count=[&](TypeId id) {
+    const auto& t=model.arena.get(id);std::size_t count=9u+per_functions;
+    if(t.kind==TypeKind::Sequence||t.kind==TypeKind::Set){const auto& sequence=types.per_sequence(t);
+      for(const auto* list:{&sequence.root,&sequence.trailing_root})for(const auto& f:*list)if(types.typed_open_field(f))count+=1u+(types.c_uper?2u:0u)+(types.c_aper?2u:0u);
+    }
+    if(types.c_tlv()){
+      count+=4u+(types.c_ber?2u:0u)+(types.c_der?2u:0u)+(types.c_cer?2u:0u)+(t.kind==TypeKind::Choice?2u:0u);
+      for(const auto& m:members(t))if(m.field->presence==Presence::Default)count+=types.owning_default(*m.field)?2u:1u;
+    }return count;
+  };
+  std::size_t total_functions=0;for(auto id:types.order)total_functions+=function_count(id);
+  std::vector<CGeneratedFile> files{{opt.basename+".h",add_generated_allocator_aliases(rewrite_generated_allocations(h.str(),prefix),prefix),types.names.size(),opt.emit_inline?total_functions:0}};
   if (!opt.emit_inline) {
     std::ostringstream internal;
     internal << "/* Generated C11 internal declarations. */\n#ifndef " << prefix << "_internal_h\n#define " << prefix
@@ -1391,8 +1594,10 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
         types.body(id,source);types.defaults_body(id,source);types.metadata(id,source);
         if(types.c_uper) types.emit_per_codec(id,"uper",source);
         if(types.c_aper) types.emit_per_codec(id,"aper",source);
+        if(types.c_tlv()) types.emit_tlv_schema(id,source);
       }
-      files.push_back({stem+".c",rewrite_generated_allocations(source.str(),prefix),chunks[i].size(),chunks[i].size()*(9u+per_functions)});
+      std::size_t functions=0;for(auto id:chunks[i])functions+=function_count(id);
+      files.push_back({stem+".c",rewrite_generated_allocations(source.str(),prefix),chunks[i].size(),functions});
       }
     }
   }

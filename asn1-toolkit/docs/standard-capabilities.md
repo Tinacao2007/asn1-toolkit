@@ -1,7 +1,7 @@
 # 标准能力与独立验证登记
 
 本表区分语法、语义/IR、生成、runtime 和外部验证。范围是已列代码及测试，
-不代表对整部标准的认证。C++ 生成器仍是产品后端；C11 runtime 原语不等于 C emitter。
+不代表对整部标准的认证。C++ 与已声明 profile 的 C11 是生成后端；C11 runtime 原语不等于完整 C codec。
 本次命令和结果见 [第五批验收](rev20-24-validation.md)，入口映射见
 [codec-entries.md](codec-entries.md)。
 
@@ -68,14 +68,22 @@
 
 C11 没有 AST/IR/codegen 依赖。逐声明的调用/解码/负例以
 [C runtime 覆盖登记](c-runtime-test-coverage.md) 为权威；
-当前没有 `--lang c` 生成后端，故所有“C 生成”栏均为延期，不可用 C++ 测试替代。
+`--lang c` 已有类型/生命周期、PER/TLV 声明 profile 的生成后端；
+C 独立消费者和 oracle 证据不可用 C++ 测试替代。
 
 - C PER：整数/长度/bit/octet/open type 的共用 Variant 核心，具有独立双向差分；
   不推定完整 C 字符集、normally-small 和结构生成能力。
-- C BER/DER/CER/OER/COER 等其他原语：存在声明和 smoke/局部测试，按声明登记查证；
-  本批不把 C++ 的新增规范检查算成 C 实现已修复。
+- C BER/DER/CER：值/结构与规范策略见 CGEN 第 5 批证据；
+  C OER/COER 等其他原语仍须按声明登记查证，不能以 C++ 测试代替。
 - C XER/JER reader init：绑定输入不等于完整 XML/JSON parser 或结构解码器。
 
 架构可扩展与当前能力分开：IR 可增加约束/语义规划，后端可新增 C 表达；
 扩展仍须保持 compiler/runtime 分层和零第三方运行时依赖。延期项保留在
 [功能 TODO](todo.md)；本批发现的后续子项列于 [第五批验收](rev20-24-validation.md)。
+
+CGEN batch 5: C BER/DER/CER uses one policy engine. Whole RRC UPER+BER has
+1037 generated types / 9 sources and a real RRCConnectionRequest/asn1c 0.9.29
+wire/decode gate. C11/C++17 single/combined output forms have 21 consumers.
+Supported-value limits, CER oracle distinction, LPP time and S1AP PER/typed-open
+blockers are authoritative in [batch 5 validation](cgen-batch5-validation.md).
+Do not infer support for other C codec families from the twelve C++ entries.

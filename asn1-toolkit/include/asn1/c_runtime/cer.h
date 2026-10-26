@@ -25,7 +25,7 @@
     cross-validation, same as the C++ runtime (see status.md known
     limitations entry 4).
 
-    Sub-task 1 = interface skeleton only.
+    CGEN batch 5 = shared policy-based TLV runtime.
 
     Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
@@ -33,14 +33,15 @@
 #define ASN1_C_CER_H
 
 #include <asn1/c_runtime/ber.h>
+#include <asn1/c_runtime/tlv_schema.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* TODO sub-task 2: asn1_cer_encode_<Type> / asn1_cer_decode_<Type>
-   per generated stub; CER-specific indefinite-length and 1000-octet
-   chunk helpers. */
+/* Generated entry points use asn1_tlv_schema_encode/decode with their
+   own ASN1_TLV_CER policy. See tlv.h and tlv_schema.h for the
+   shared implementation, ownership and transactional decode contract. */
 
 #ifdef __cplusplus
 }  /* extern "C" */

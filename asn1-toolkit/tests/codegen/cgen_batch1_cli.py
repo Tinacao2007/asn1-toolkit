@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="cgen-batch1-") as tmp:
     for option in ("--lang", "--c-prefix"):
         result = subprocess.run([compiler, option], capture_output=True, text=True)
         assert result.returncode != 0 and "requires a value" in result.stderr
-    for codec in ("uper", "aper", "per", "uper,aper"):
+    for codec in ("uper", "aper", "per", "uper,aper", "ber", "der", "cer", "uper,ber", "ber,der,cer"):
         for shape in ([], ["--emit-inline"], ["--emit-split"]):
             output = root / (codec.replace(',', '_') + ('_inline' if shape and shape[0]=='--emit-inline' else '_split' if shape else '_out'))
             run(["--lang", "c", "--c-prefix", "sample", "--codec", codec, *shape], output, True)
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory(prefix="cgen-batch1-") as tmp:
             assert '"types_only":false' in manifest and '"codec_mask":' in manifest
             assert "encode_uper" in (output / "generated.h").read_text() if codec in ("uper", "per", "uper,aper") else True
             assert "encode_aper" in (output / "generated.h").read_text() if codec in ("aper", "per", "uper,aper") else True
-    codecs = "ber der cer oer coer jer jeri xer cxer exer".split()
+    codecs = "oer coer jer jeri xer cxer exer".split()
     for codec in codecs:
         for shape in ([], ["--emit-inline"], ["--emit-split"]):
             output = root / "unsupported_" / codec / ("inline" if shape and shape[0]=='--emit-inline' else "split" if shape else "out")
@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory(prefix="cgen-batch1-") as tmp:
         run(["--no-emit-cache", "--codec", "uper,ber", *flags], a, True)
         run(["--lang", "cpp", "--no-emit-cache", "--codec", "uper,ber", *flags], b, True)
         assert snapshot(a) == snapshot(b)
-print("C emits supported PER subsets and rejects unsupported rules; C++ artifacts/cache preserved")
+print("C emits supported PER/TLV subsets and rejects unsupported rules; C++ artifacts/cache preserved")
 
 # Compare the actual encoded results of all twelve entries across three shapes.
 outputs = [subprocess.run([driver], check=True, capture_output=True).stdout

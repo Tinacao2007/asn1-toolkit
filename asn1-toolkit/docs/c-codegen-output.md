@@ -1,8 +1,10 @@
 # C11 类型产物、分片与构建集成（CGEN 第 3 批）
 
-当前开放的是显式 **type/lifecycle-only** 入口；不生成任何 codec 函数或成功占位。
-普通 `--lang c --codec uper,ber` 仍报 Unsupported。类型/值域与 DEFAULT 限制见
-[C ABI](c-generated-abi.md)，验证范围见 [第 3 批验收](cgen-batch3-validation.md)。
+当前同时支持显式 **type/lifecycle-only** 入口和已验证的 C codec profile。
+`--lang c --codec uper,ber` 可用于整份 RRC；UPER/APER 及 BER/DER/CER 的值域与
+限制见 [第 4 批](cgen-batch4-validation.md) 和 [第 5 批](cgen-batch5-validation.md)。
+未支持的 codec/类型在发布产物前报 Unsupported。三形态和模块内分片同时适用于
+支持的 codec 请求；生成函数是真实编码/解码，不是成功占位。
 
 ## CLI 与三种形态
 
@@ -100,3 +102,16 @@ OOM 和源集合切换。LTE RRC 8.6.0 全文已有类型-only 多片编译链�
 生成 C 产品在非 sanitizer 构建中检查无 C++ 标准库依赖。GCC UBSan 工具自身会引入
 libstdc++，不得把开发工具的依赖误报成产品混入 C++。完整 C PDU/oracle 闭环留在
 CGEN-10..15 等后续任务，原有 C++ 线路/84 入口门禁继续保留。
+
+## 整份 RRC 的 C UPER+BER
+
+```sh
+./build/asn1cxx --lang c --codec uper,ber --emit-split --split-max-types 128 \
+  --c-prefix rrc --emit-dir build/gen-rrc-c \
+  tests/fixtures/telecom/rrc_8_6_0/EUTRA-RRC-Definitions.asn
+```
+
+编译 `generated-sources.cmake`/JSON 登记的所有 `.c`，包含 `generated.h`，
+只链接 `asn1::c_runtime`（Unix 下还需数学库）。不要用目录 glob 混入旧分片。
+生成 public BER decoder 对初始化的目标值和 byte reader 游标一起提交；成功只消费
+一个 TLV。完整实际运行及 asn1c 独立对验见第 5 批记录。

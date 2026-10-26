@@ -123,7 +123,56 @@ add_executable(asn1_c_per_correctness c_lang/c_per_correctness_test.c)
 target_link_libraries(asn1_c_per_correctness PRIVATE asn1::c_runtime)
 set_target_properties(asn1_c_per_correctness PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
 add_test(NAME Asn1CPerCorrectness COMMAND asn1_c_per_correctness)
+add_executable(asn1_cgen_batch5_tlv_tests c_lang/cgen_batch5_tlv_test.c)
+target_link_libraries(asn1_cgen_batch5_tlv_tests PRIVATE asn1::c_runtime)
+set_target_properties(asn1_cgen_batch5_tlv_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch5.TlvCore COMMAND asn1_cgen_batch5_tlv_tests)
+foreach(_cgen5_shape IN ITEMS outline inline split)
+  set(_cgen5_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen5-${_cgen5_shape}")
+  set(_cgen5_flags)
+  set(_cgen5_source "${_cgen5_dir}/generated.c")
+  if(_cgen5_shape STREQUAL "inline")
+    set(_cgen5_flags --emit-inline)
+    set(_cgen5_source "${_cgen5_dir}/generated.h")
+  elseif(_cgen5_shape STREQUAL "split")
+    set(_cgen5_flags --emit-split)
+    set(_cgen5_source "${_cgen5_dir}/c_mC5.c")
+  endif()
+  set(_cgen5_outputs "${_cgen5_dir}/generated.h" ${_cgen5_source})
+  list(REMOVE_DUPLICATES _cgen5_outputs)
+  add_custom_command(OUTPUT ${_cgen5_outputs}
+    COMMAND "${ASN1_GENERATOR}" --lang c --codec uper,ber,der,cer --c-prefix cgen5 ${_cgen5_flags}
+      --emit-dir "${_cgen5_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch5.asn"
+    DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch5.asn" VERBATIM)
+  add_executable(asn1_cgen_batch5_${_cgen5_shape}_tests c_lang/cgen_batch5_pdu_test.c ${_cgen5_source})
+  target_include_directories(asn1_cgen_batch5_${_cgen5_shape}_tests PRIVATE "${_cgen5_dir}")
+  target_link_libraries(asn1_cgen_batch5_${_cgen5_shape}_tests PRIVATE asn1::c_runtime)
+  set_target_properties(asn1_cgen_batch5_${_cgen5_shape}_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+  add_test(NAME CGenBatch5.Generated${_cgen5_shape} COMMAND asn1_cgen_batch5_${_cgen5_shape}_tests)
+endforeach()
 add_test(NAME CGenBatch4.PerPrimitiveCore COMMAND asn1_c_per_correctness)
+add_executable(asn1_cgen_batch5_failure_tests c_lang/cgen_batch5_failure_test.c
+  "${CMAKE_CURRENT_BINARY_DIR}/cgen5-outline/generated.c" ${_c_runtime_sources})
+target_include_directories(asn1_cgen_batch5_failure_tests PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}/cgen5-outline" "${PROJECT_SOURCE_DIR}/include")
+target_compile_definitions(asn1_cgen_batch5_failure_tests PRIVATE ASN1_C_RUNTIME_TEST_ALLOCATOR)
+if(NOT MSVC)
+  target_link_libraries(asn1_cgen_batch5_failure_tests PRIVATE m)
+endif()
+set_target_properties(asn1_cgen_batch5_failure_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch5.AllocationFailures COMMAND asn1_cgen_batch5_failure_tests)
+
+add_executable(asn1_cgen_batch5_limits_tests c_lang/cgen_batch5_limits_test.c
+  "${CMAKE_CURRENT_BINARY_DIR}/cgen5-outline/generated.c" ${_c_runtime_sources})
+target_include_directories(asn1_cgen_batch5_limits_tests PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}/cgen5-outline" "${PROJECT_SOURCE_DIR}/include")
+target_compile_definitions(asn1_cgen_batch5_limits_tests PRIVATE
+  ASN1_MAX_PDU_ALLOCATION_BYTES=96 ASN1_MAX_PDU_ELEMENTS=8)
+if(NOT MSVC)
+  target_link_libraries(asn1_cgen_batch5_limits_tests PRIVATE m)
+endif()
+set_target_properties(asn1_cgen_batch5_limits_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch5.ResourceLimits COMMAND asn1_cgen_batch5_limits_tests)
 
 # Actual generated-C PDU consumer: constrained scalars, ENUMERATED, BIT/OCTET
 # STRING, OID, root CHOICE, SEQUENCE OF, SET, DEFAULT/OPTIONAL and UPER+APER.
@@ -779,6 +828,27 @@ foreach(_entry IN LISTS _gate_names ITEMS combined combined_inline combined_spli
 endforeach()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 if(Python3_Interpreter_FOUND)
+  if(NOT MSVC)
+    find_program(ASN1_CGEN5_ORACLE NAMES asn1c)
+    set(_cgen5_oracle_args)
+    if(ASN1_CGEN5_ORACLE)
+      list(APPEND _cgen5_oracle_args --asn1c "${ASN1_CGEN5_ORACLE}")
+    endif()
+    set(_cgen5_sanitizer_args)
+    if(ASN1_ENABLE_SANITIZERS)
+      list(APPEND _cgen5_sanitizer_args --sanitizers)
+    endif()
+    add_test(NAME CGenBatch5.EntryShapeMatrix COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch5_matrix.py"
+      --compiler "${ASN1_GENERATOR}" --cc "${CMAKE_C_COMPILER}" --cxx "${CMAKE_CXX_COMPILER}"
+      --root "${PROJECT_SOURCE_DIR}" --build "${PROJECT_BINARY_DIR}"
+      --work "${CMAKE_CURRENT_BINARY_DIR}/cgen5-matrix" ${_cgen5_sanitizer_args})
+    add_test(NAME CGenBatch5.WholeRrc COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch5_rrc.py"
+      --compiler "${ASN1_GENERATOR}" --cc "${CMAKE_C_COMPILER}"
+      --runtime "$<TARGET_FILE:asn1_c_runtime>" --root "${PROJECT_SOURCE_DIR}"
+      --work "${CMAKE_CURRENT_BINARY_DIR}/cgen5-rrc-acceptance" ${_cgen5_sanitizer_args} ${_cgen5_oracle_args})
+  endif()
   if(NOT MSVC)
     set(_cgen2_sanitizer_args)
     if(ASN1_ENABLE_SANITIZERS)

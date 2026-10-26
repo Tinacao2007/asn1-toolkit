@@ -5,10 +5,10 @@ Audit date: 2026-10-24. Implementation inspection covers `src/c_runtime/*.c`,
 execution is [the declaration register](c-runtime-test-coverage.md),
 [REV-01..03](rev01-03-validation.md) and [REV-04..09](rev04-09-validation.md).
 A header name, a TODO comment or reader initialization does not count as a codec.
-The C runtime headers and most generated C entries remain unsupported. Batch 4 now
+Non-PER/TLV C entry families remain unsupported. Batch 4 now
 has a tested UPER/APER generated-PDU subset; the rows below distinguish reusable
-PER primitives from generated schema consumption. No non-PER entry should be
-inferred as implemented from its header.
+PER/TLV primitives from generated schema consumption. Other C entry families
+must not be inferred as implemented from their headers.
 
 Legend: R = existing reusable implementation, M = implementation required,
 U = outside the currently supported value/instruction domain and must diagnose.
@@ -40,9 +40,9 @@ location and resource requirements. M entries are not currently callable APIs.
 |---|---|---|---|---|---|---|
 | uper | R bool, int64/BigInt, fragments, bits/octets, open bytes, normally-small, ENUMERATED, uint64-arc OID, common REAL and restricted strings; M full string repertoire/profile | R tested root/extension CHOICE, OF, recursive SEQUENCE OF, trailing-root, collection fragmentation, extensible SEQUENCE/SET additions and version groups, opaque and selector-driven typed open payload; M unsupported unknown extension preservation | R unaligned Variant; M complete schema membership/default coverage | R tested generated PDU paths; M broader interop | R bit offset; M field path/first error | R primitive caps/depth and cumulative bytes/count budget; M complete fault matrix |
 | aper | same reusable PER primitives and value families as uper | same schema orchestration using shared Variant; same unsupported structures | R aligned Variant; M complete schema/default checks | R tested aligned PDU cases; M broader interop | R primitive caps; M field path | M aggregate bytes/count budget |
-| ber | R tag/length, BigInt signed conversion; M bool/null/int/OID/REAL/string TLV values | explicit/implicit tags, SET/CHOICE/OF, indefinite/EOC, unknown members | R tag/length syntax only; M base-rule validation | M byte reader operations and full TLV/value decode | R helper consumed on success; M byte cursor/path/error location | R helper arithmetic caps; M nesting/aggregate content/count |
-| der | R BER helpers; M value codecs | BER structures plus canonical SET/SET OF | M minimal integers/lengths, definite form, DEFAULT omission, canonical REAL/order | M strict DER decode | M byte cursor/path | M aggregate/depth limits; reuse primitive caps |
-| cer | R BER helpers; M values and constructed string chunks | BER structures plus indefinite forms, EOC and fragments | M 1000-octet rules, canonical order/DEFAULT/REAL/tail bits | M strict CER decode and fragment accounting | M byte cursor/path | M nested/cumulative fragment/depth limits |
+| ber | R BOOLEAN/NULL/signed INTEGER/ENUMERATED, bits/octet/restricted strings, binary64 REAL, uint64 OID; U time/other string kinds | R recursive SEQUENCE/SET/CHOICE/OF, tags, indefinite/EOC, extensions, opaque TLV open bytes | R BER envelope/value rules | R generated transactional decode; U automatic TLV typed-open view | R reader cursor; M field path | R depth, string/limb caps and cumulative payload bytes/elements |
+| der | R shared BER value profile | R shared structures plus SET/SET OF order | R minimal/definite forms, DEFAULT omission, REAL/tail-bit checks; U time profile | R strict supported-profile decode | R reader cursor; M field path | R shared caps/budgets |
+| cer | R shared BER value profile | R indefinite constructed values and 1000-octet fragments | R SET static-CHOICE order, SET OF, DEFAULT, REAL, fragments/tail bits; U time profile | R strict supported-profile decode | R reader cursor; M field path | R shared caps/budgets |
 | oer | R BigInt conversion only; M OER values, byte I/O/lengths/OID/REAL | presence/extension preambles, CHOICE/OF/open | M base OER rules; U unrepresentable REAL | M full OER decode | M byte cursor/path | M total allocations/count/depth; reuse limb caps |
 | coer | R BigInt conversion only; M OER values | same structures as OER | M canonical lengths/preambles/order, separate COER policy | M strict COER decode | M byte cursor/path | M total allocations/count/depth |
 | jer | R bounded raw writer init/puts/printf; M escaping, exact integer/string/value encode; U unsupported instructions | object/array, duplicate/unknown member and required-field handling | M X.697 semantics and instruction checks | M lexer/parser/value traversal; reader init only borrows input | R reader pos storage; M actual parse byte/path errors | R output capacity; M input/token/tree/depth/cumulative caps |
@@ -53,9 +53,9 @@ location and resource requirements. M entries are not currently callable APIs.
 
 `per` is the uper|aper alias, not a thirteenth entry. NULL can require no PER
 payload, but that does not supply a generated NULL codec. BigInt conversion is
-not a BER/OER/JSON value codec. `ByteReader` currently only creates/destroys an
-input copy. DER/CER/OER/COER/CXER/E-XER/JERI headers contain skeletons rather than
-those claimed policy implementations. Existing primitive failures follow
+not a BER/OER/JSON value codec. `ByteReader` now supports bounded byte reads/views/skips; generated TLV decode
+commits value and cursor together. OER/COER/CXER/E-XER/JERI C headers still contain
+skeletons rather than those policy implementations. Existing primitive failures follow
 [c-runtime-contracts.md](c-runtime-contracts.md); no blanket cursor rollback.
 
 ## Dependency allocation and opening gates
@@ -95,3 +95,6 @@ schema shape remain open profile extensions. Collection fragmentation, cumulativ
 PDU budgets and collection-growth fault injection are implemented. The CLI accepts
 only the supported profile and diagnoses unsupported shapes before publication.
 See [C artifact contract](c-codegen-output.md) and [batch 4 evidence](cgen-batch4-validation.md).
+
+Batch 5 implements the C BER/DER/CER profile and whole-RRC UPER+BER PDU gate;
+see [evidence, ABI change and LPP/S1AP blockers](cgen-batch5-validation.md).
