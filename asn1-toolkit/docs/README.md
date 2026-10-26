@@ -78,3 +78,5 @@ CGEN batch 3: [C type-only output, shards and CMake lists](c-codegen-output.md),
 available; a limited C UPER/APER PDU subset is implemented, while complete PER coverage and independent PDU interoperability remain pending.
 
 CGEN batch 5: [C BER/DER/CER, whole RRC PDU/oracle evidence and telecom blockers](cgen-batch5-validation.md).
+
+CGEN batch 6: [C OER/COER、JER/JERI、XER/CXER/E-XER 与独立 oracle/资源验收](cgen-batch6-validation.md)。

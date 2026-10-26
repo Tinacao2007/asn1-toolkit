@@ -852,8 +852,12 @@ void apply_exer_instructions(ir::Type& out,
       case ast::EncodingInstructionKind::List:
         out.exer.list = true;
         break;
-      case ast::EncodingInstructionKind::Attribute:
       case ast::EncodingInstructionKind::Untagged:
+        // Retain the instruction even at type scope so backends which do not
+        // implement it can diagnose instead of silently emitting BASIC-XER.
+        out.exer.untagged = true;
+        break;
+      case ast::EncodingInstructionKind::Attribute:
       case ast::EncodingInstructionKind::UseNil:
       case ast::EncodingInstructionKind::Name:
       case ast::EncodingInstructionKind::Array:

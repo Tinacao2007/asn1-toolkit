@@ -68,6 +68,9 @@ int asn1_bigint_sign(const asn1_bigint_t* b);
    `as_i64` returning std::nullopt semantics). */
 asn1_status_t asn1_bigint_to_int64(const asn1_bigint_t* b,
                                    int64_t* out);
+/* Exact, locale-independent ASCII decimal. Transfers a malloc-allocated,
+   NUL-terminated string; size excludes NUL. Failure preserves both outputs. */
+asn1_status_t asn1_bigint_to_decimal(const asn1_bigint_t*,char**,size_t*);
 
 /* Serialize non-negative unsigned magnitude as minimal big-endian octets
    (zero -> {0x00}). No BER tag/length or signed sign-protection byte.

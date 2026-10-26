@@ -115,3 +115,16 @@ CGEN-10..15 等后续任务，原有 C++ 线路/84 入口门禁继续保留。
 只链接 `asn1::c_runtime`（Unix 下还需数学库）。不要用目录 glob 混入旧分片。
 生成 public BER decoder 对初始化的目标值和 byte reader 游标一起提交；成功只消费
 一个 TLV。完整实际运行及 asn1c 独立对验见第 5 批记录。
+
+## OER、JSON/XML 入口（第 6 批）
+
+```sh
+asn1cxx --lang c --codec oer,coer,jer,jeri,xer,cxer,exer \
+  --c-prefix app --emit-dir build/gen-c tests/fixtures/cgen_batch6.asn
+```
+
+三种产物形态都可使用。链接 `asn1::c_runtime`；JSON/XML 同样使用 byte reader/writer，
+按 UTF-8 字节传输。先初始化 decoder 输出，失败保留原值/cursor；encode 成功才追加。
+JER/JERI 共用指令语义；COER/CXER 每个函数独立选择策略。
+TYPE/指令限制、资源限制和独立 oracle 证据见
+[第 6 批验收](cgen-batch6-validation.md)，不能把 12 入口理解为标准全值域完成。

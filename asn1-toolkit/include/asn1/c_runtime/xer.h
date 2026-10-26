@@ -18,7 +18,7 @@
     C11 port of asn1::xer:: codec surface. XER produces XML; the C
     runtime mirrors JER's (buf, cap, written) shape.
 
-    Sub-task 1 = interface skeleton only.
+    Legacy bounded text helpers; XML parsing uses text_tree.h and generated XER/CXER/E-XER uses schema_codec.h.
 
     Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/

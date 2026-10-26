@@ -11,16 +11,14 @@
 **   $Date:   2026-10-17
 **   $Author: tina.cao
 ***************************************************************************/
-/**  File Description:
+/** File Description:
 
-    P2-4 (--lang c) JER Inspection (X.697 8) entry points.
+    Project JER instruction entry using the shared X.697 JSON syntax.
+    It preserves structural wrappers and is not a canonical-JSON format.
+    This legacy helper header forwards to JER; generated JER/JERI value
+    encode/decode APIs use schema_codec.h and the complete JSON parser.
 
-    C11 port of asn1::jeri:: codec surface. JERI is JER without the
-    structural wrappers — just the JSON value content.
-
-    Sub-task 1 = interface skeleton only.
-
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    See docs/cgen-batch6-validation.md for the supported C value profile.
 ***************************************************************************/
 #ifndef ASN1_C_JERI_H
 #define ASN1_C_JERI_H

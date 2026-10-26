@@ -1,8 +1,9 @@
 # 产品 codec 入口登记（REV-15/16）
 
 12 是产品选择入口数，不是 12 种独立标准线路格式。`per` 只等于 `uper,aper`。
-CLI、C++ EmitOptions 均提供以下入口；当前 C emitter 尚未完成，不能据此声明 C
-后端也能生成这些规则。
+CLI、C++ EmitOptions 均提供以下入口。C11 后端的 12 入口及值域限制见
+[CGEN 第 6 批](cgen-batch6-validation.md)；C 的消费目标统一为 `asn1::c_runtime`，
+下表消费目标仍记录 C++ 家族依赖。
 
 | 入口 | 规范归属/项目含义 | 生成函数后缀 | 消费目标 | 本批能力证据 |
 |---|---|---|---|---|

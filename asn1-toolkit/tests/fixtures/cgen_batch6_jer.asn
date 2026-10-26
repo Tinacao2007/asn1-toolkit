@@ -1,0 +1,11 @@
+J6 DEFINITIONS JER INSTRUCTIONS AUTOMATIC TAGS ::= BEGIN
+Row ::= [ARRAY] SEQUENCE { root INTEGER (0..7), ..., extra BOOLEAN OPTIONAL, ..., tail INTEGER (0..7) }
+Binary ::= [BASE64] OCTET STRING
+Key ::= [TEXT ALL AS UPPERCASED] ENUMERATED { red, blue }
+KeyAlias ::= [TEXT ALL AS LOWERCASED] Key
+Entry ::= [ARRAY] SEQUENCE { key Key, value INTEGER (0..100) }
+Map ::= [OBJECT] SET OF Entry
+AliasMap ::= [OBJECT] SET OF SEQUENCE { key KeyAlias, value BOOLEAN }
+Choice ::= [UNWRAPPED] CHOICE { flag BOOLEAN, text UTF8String }
+Record ::= SEQUENCE { named [NAME AS "renamed"] INTEGER (0..7), optionalValue BOOLEAN OPTIONAL }
+END

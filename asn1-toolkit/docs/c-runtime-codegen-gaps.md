@@ -5,10 +5,10 @@ Audit date: 2026-10-24. Implementation inspection covers `src/c_runtime/*.c`,
 execution is [the declaration register](c-runtime-test-coverage.md),
 [REV-01..03](rev01-03-validation.md) and [REV-04..09](rev04-09-validation.md).
 A header name, a TODO comment or reader initialization does not count as a codec.
-Non-PER/TLV C entry families remain unsupported. Batch 4 now
+CGEN batch 6 now opens all twelve entries within the declared C value profile; see [batch 6 evidence](cgen-batch6-validation.md). Batch 4 now
 has a tested UPER/APER generated-PDU subset; the rows below distinguish reusable
-PER/TLV primitives from generated schema consumption. Other C entry families
-must not be inferred as implemented from their headers.
+PER/TLV primitives from generated schema consumption. The added OER/text families
+are established by their generated-PDU acceptance, not by header names.
 
 Legend: R = existing reusable implementation, M = implementation required,
 U = outside the currently supported value/instruction domain and must diagnose.
@@ -43,19 +43,18 @@ location and resource requirements. M entries are not currently callable APIs.
 | ber | R BOOLEAN/NULL/signed INTEGER/ENUMERATED, bits/octet/restricted strings, binary64 REAL, uint64 OID; U time/other string kinds | R recursive SEQUENCE/SET/CHOICE/OF, tags, indefinite/EOC, extensions, opaque TLV open bytes | R BER envelope/value rules | R generated transactional decode; U automatic TLV typed-open view | R reader cursor; M field path | R depth, string/limb caps and cumulative payload bytes/elements |
 | der | R shared BER value profile | R shared structures plus SET/SET OF order | R minimal/definite forms, DEFAULT omission, REAL/tail-bit checks; U time profile | R strict supported-profile decode | R reader cursor; M field path | R shared caps/budgets |
 | cer | R shared BER value profile | R indefinite constructed values and 1000-octet fragments | R SET static-CHOICE order, SET OF, DEFAULT, REAL, fragments/tail bits; U time profile | R strict supported-profile decode | R reader cursor; M field path | R shared caps/budgets |
-| oer | R BigInt conversion only; M OER values, byte I/O/lengths/OID/REAL | presence/extension preambles, CHOICE/OF/open | M base OER rules; U unrepresentable REAL | M full OER decode | M byte cursor/path | M total allocations/count/depth; reuse limb caps |
-| coer | R BigInt conversion only; M OER values | same structures as OER | M canonical lengths/preambles/order, separate COER policy | M strict COER decode | M byte cursor/path | M total allocations/count/depth |
-| jer | R bounded raw writer init/puts/printf; M escaping, exact integer/string/value encode; U unsupported instructions | object/array, duplicate/unknown member and required-field handling | M X.697 semantics and instruction checks | M lexer/parser/value traversal; reader init only borrows input | R reader pos storage; M actual parse byte/path errors | R output capacity; M input/token/tree/depth/cumulative caps |
-| jeri | R JER raw writer helpers; M JER value layer | same JER structures | M separate entry dispatch with shared X.697 syntax; no canonical-JSON claim | M same JER parser/value decode | M byte/path | R output cap; M parse/PDU budgets |
-| xer | R bounded raw writer init/puts; M XML escaping/value encode | element/sequence/choice/OF traversal | M BASIC-XER semantics | M XML parser and typed decode; init only borrows | R pos storage; M byte/path diagnostics | R output cap; M token/tree/depth/cumulative caps |
-| cxer | R raw XER writer only; M XML value layer | shared XML structures | M canonical lexical/element/order/DEFAULT rules | M XML parser plus CXER checks | M byte/path | R output cap; M parser/PDU budgets |
-| exer | R raw XER writer only; M XML value layer | attribute/element mappings and instruction-aware traversal | M implemented instruction mapping; U unimplemented instructions | M XML parser and attribute/required/typed checks | M byte/path | R output cap; M parser/PDU budgets |
+| oer | R exact integer/BigInt, lengths, bool/enum/tag/open, bits/octets, OID, host-double REAL, declared strings | R SEQUENCE/SET/CHOICE/OF and extension groups | R BASIC policy | R transactional generated PDU decode | R byte cursor; M field path | R cumulative value budgets |
+| coer | same C OER values | same structures, SET OF order | R per-entry canonical lengths/integers/BOOLEAN/quantity/defaults | R strict decode | R byte cursor; M field path | R shared OER budgets |
+| jer | R exact integers, UTF-8 escaping, supported value profile | R objects/arrays/choice/OF and supported instructions | R shared X.697 syntax; no canonical JSON claim | R full document parser and structured decode | R parser byte offset; M field path | R tree/value/depth/count/byte budgets |
+| jeri | R exact integers, UTF-8 escaping, supported value profile | R objects/arrays/choice/OF and supported instructions | R shared X.697 syntax; no canonical JSON claim | R full document parser and structured decode | R parser byte offset; M field path | R tree/value/depth/count/byte budgets |
+| xer | R XML parsing/escaping, supported values | R elements/attributes/structures/OF | R per-entry XML policy; E-XER unsupported instructions diagnose | R structured full-document decode | R parser byte offset; M field path | R tree/value/depth/count/byte budgets |
+| cxer | R XML parsing/escaping, supported values | R elements/attributes/structures/OF | R per-entry XML policy; E-XER unsupported instructions diagnose | R structured full-document decode | R parser byte offset; M field path | R tree/value/depth/count/byte budgets |
+| exer | R XML parsing/escaping, supported values | R elements/attributes/structures/OF | R per-entry XML policy; E-XER unsupported instructions diagnose | R structured full-document decode | R parser byte offset; M field path | R tree/value/depth/count/byte budgets |
 
 `per` is the uper|aper alias, not a thirteenth entry. NULL can require no PER
 payload, but that does not supply a generated NULL codec. BigInt conversion is
 not a BER/OER/JSON value codec. `ByteReader` now supports bounded byte reads/views/skips; generated TLV decode
-commits value and cursor together. OER/COER/CXER/E-XER/JERI C headers still contain
-skeletons rather than those policy implementations. Existing primitive failures follow
+commits value and cursor together. OER/COER, JER/JERI and XER/CXER/E-XER now use `schema_codec.h`, `text_tree.h` and the family schema implementations; legacy raw writer helpers are not the generated codec entry APIs. Existing primitive failures follow
 [c-runtime-contracts.md](c-runtime-contracts.md); no blanket cursor rollback.
 
 ## Dependency allocation and opening gates
@@ -76,7 +75,7 @@ including explicit BigInt/bit/enum/OID/REAL/open-content storage profiles and
 shared-plan descriptors/selector lookup. See [ABI boundary](c-generated-abi.md).
 This removes type-layout blockers within that declared profile; none of the
 missing wire APIs in this audit is thereby implemented. Full C CLI entries and
-generated-PDU/oracle acceptance remain open; REV-27 planning reuse is covered
+generated-PDU/oracle acceptance is now recorded in batches 4–6; REV-27 planning reuse is covered
 by the batch 2 generated-C consumers.
 
 

@@ -6,13 +6,13 @@ C++17 ASN.1 编译器与编解码运行时：将 ASN.1 规范（X.680 系列）�
 
 | 项目    | 值                                                                                                                                                                                     |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 当前阶段 | Phase 49 — C11 PER/TLV profile、三形态/模块内分片可用；整份 RRC 的 C UPER+BER PDU 已通过 asn1c 对验，完整标准值域仍有明确限制。见 [状态](docs/status.md) |
-| 测试状态 | MSVC Release **461/461**；GCC ASan+UBSan **494/494**；7×12 实际入口语法矩阵 **84/84**。见 [CGEN 第 5 批验收](docs/cgen-batch5-validation.md) |
+| 当前阶段 | Phase 49 — C11 12 入口的已声明 profile、三形态/模块内分片可用；整份 RRC 的 C UPER+BER PDU 已通过 asn1c 对验，完整标准值域仍有明确限制。见 [状态](docs/status.md) |
+| 测试状态 | MSVC Release **472/472**；GCC ASan+UBSan **506/506**；C++ 7×12 实际入口语法矩阵 **84/84**。见 [CGEN 第 6 批验收](docs/cgen-batch6-validation.md) |
 | 编码入口  | BER / DER / CER / UPER / APER / OER / COER / XER / CXER / E-XER / JER / JERI                                                                                                          |
 | 语言/构建 | C++17（GCC / Clang；MSVC 本地可用）+ CMake 3.16+                                                                                                                                             |
 | 依赖    | 零第三方运行时依赖（BigInt 自研，无 Boost、无 multiprecision）                                                                                                                                         |
 
-显式 `--lang c --types-only` 可生成纯 C11 类型/生命周期及模块内分片；C PER/TLV 的已声明 profile 可生成真实编解码，其他家族仍待续。
+显式 `--lang c --types-only` 可生成纯 C11 类型/生命周期及模块内分片；C 的 12 入口在已声明 profile 内可生成真实编解码；限制与证据见 [第 6 批验收](docs/cgen-batch6-validation.md)。
 用法见 [C 输出与集成](docs/c-codegen-output.md)。
 
 ## 特性
@@ -106,6 +106,6 @@ TBD —— 计划开源，许可证文件将在项目发布时补齐（源码文
 2026–2031，由 `scripts/add_file_headers.py` 自动维护）。
 
 CGEN batch 1 adds `--lang cpp|c` (default cpp) and C-only `--c-prefix`.
-C emission currently fails explicitly with Unsupported and publishes no artifacts.
+C emission now supports all twelve entries in the declared value/instruction profile. Unsupported graphs fail before publication.
 See [C ABI design](docs/c-generated-abi.md), [runtime gap audit](docs/c-runtime-codegen-gaps.md)
 and [stage evidence](docs/cgen-batch1-validation.md).

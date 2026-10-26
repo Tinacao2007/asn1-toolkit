@@ -186,3 +186,14 @@ C ABI storage metadata and recursive getter pointers; no IR objects enter runtim
 The value layout version remains 2. `asn1_ber_tag_t.number` widened to uint64_t,
 which changes that runtime struct ABI: rebuild runtime and consumers together.
 See [contracts, supported values and failure behavior](cgen-batch5-validation.md).
+
+## Batch 6 OER/text schema ABI
+
+Seven additional entry suffixes use byte readers/writers, including UTF-8 text.
+The new codec schema composes the existing TLV storage descriptor without changing
+its layout. Generated value layout remains version 2; getters are internal generated
+helpers, not a persisted descriptor format. Rebuild runtime and generated consumers
+together when changing descriptor headers. Each entry selects its own policy.
+Encode and decode commit writer/value/cursor only on success; JSON/XML decode
+consumes a complete document. Limits, unsupported instructions, parser offsets and
+independent oracle scope are recorded in [batch 6 validation](cgen-batch6-validation.md).

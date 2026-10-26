@@ -25,6 +25,9 @@
 #include <cstddef>
 #include <optional>
 #include <vector>
+#include <algorithm>
+#include <limits>
+#include <utility>
 
 namespace asn1 { namespace codegen { namespace planning {
 // Borrowed views: model/descriptor must outlive the plan and remain immutable.
@@ -194,5 +197,55 @@ inline const ir::ConstraintDesc* storage_size(const ir::Type& type) {
     case ir::TypeKind::SetOf: return &type.set_of.size;
     default: return nullptr;
   }
+}
+// OER SET ordering uses the minimum tag in root CHOICE alternatives only.
+// Keep this wire decision shared by the C and C++ backends.
+inline std::pair<unsigned,std::uint64_t> component_tag(const ir::Model& model,
+                                                     const ir::Field& field,
+                                                     std::size_t depth=0) {
+  const auto key=[](const ir::Tag& tag){return std::make_pair(static_cast<unsigned>(tag.cls),tag.number);};
+  if(field.tag.cls!=ir::TagClass::Universal||field.tag.number!=0)return key(field.tag);
+  auto id=field.type;
+  for(std::size_t i=depth;i<256;++i){const auto& type=model.arena.get(id);
+    if(type.tag.cls!=ir::TagClass::Universal||type.tag.number!=0)return key(type.tag);
+    if(type.kind==ir::TypeKind::Referenced){id=type.referenced.resolved;continue;}
+    if(type.kind==ir::TypeKind::ObjectClassField&&!type.object_class_field.open_type){id=type.object_class_field.fixed_type;continue;}
+    if(type.kind==ir::TypeKind::Choice){auto best=std::make_pair(255u,std::uint64_t(0));
+      for(const auto& alternative:type.choice.alternatives)
+        best=std::min(best,component_tag(model,alternative,i+1));
+      return best;
+    }
+    unsigned natural=0;
+    switch(type.kind){
+      case ir::TypeKind::Boolean:natural=1;break;case ir::TypeKind::Integer:natural=2;break;
+      case ir::TypeKind::BitString:natural=3;break;case ir::TypeKind::OctetString:natural=4;break;
+      case ir::TypeKind::Null:natural=5;break;case ir::TypeKind::ObjectIdentifier:natural=6;break;
+      case ir::TypeKind::Real:natural=9;break;case ir::TypeKind::Enumerated:natural=10;break;
+      case ir::TypeKind::RelativeOid:natural=13;break;
+      case ir::TypeKind::Sequence:case ir::TypeKind::SequenceOf:natural=16;break;
+      case ir::TypeKind::Set:case ir::TypeKind::SetOf:natural=17;break;
+      case ir::TypeKind::String:
+        switch(type.string.kind){
+          case ir::StringKind::UTF8String:natural=12;break;case ir::StringKind::NumericString:natural=18;break;
+          case ir::StringKind::PrintableString:natural=19;break;case ir::StringKind::TeletexString:natural=20;break;
+          case ir::StringKind::VideotexString:natural=21;break;case ir::StringKind::IA5String:natural=22;break;
+          case ir::StringKind::UTCTime:natural=23;break;case ir::StringKind::GeneralizedTime:natural=24;break;
+          case ir::StringKind::GraphicString:natural=25;break;case ir::StringKind::VisibleString:natural=26;break;
+          case ir::StringKind::GeneralString:natural=27;break;case ir::StringKind::UniversalString:natural=28;break;
+          case ir::StringKind::BMPString:natural=30;break;
+        }break;
+      default:break;
+    }
+    if(natural)return std::make_pair(0u,std::uint64_t(natural));
+    break;
+  }
+  return std::make_pair(255u,std::uint64_t(0));
+}
+inline std::vector<const ir::Field*> oer_root_fields(const ir::Model& model,
+                                                    const ir::SequenceDesc& descriptor,bool is_set){
+  std::vector<const ir::Field*> fields;
+  for(const auto& f:sequence(descriptor).root)fields.push_back(f.field);
+  if(is_set)std::stable_sort(fields.begin(),fields.end(),[&](const ir::Field* a,const ir::Field* b){return component_tag(model,*a)<component_tag(model,*b);});
+  return fields;
 }
 }}}

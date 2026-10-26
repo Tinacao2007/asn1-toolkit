@@ -11,17 +11,14 @@
 **   $Date:   2026-10-17
 **   $Author: tina.cao
 ***************************************************************************/
-/**  File Description:
+/** File Description:
 
-    P2-4 (--lang c) Canonical XER (X.693 11) entry points.
+    Canonical XER (X.693 clause 9), implemented as XER plus policy.
+    Canonical lexical form, REAL, DEFAULT presence and SET/SET OF order
+    are enforced by schema_codec.h. ENUMERATED names remain names;
+    USE-NUMBER belongs to E-XER instructions, not CXER.
 
-    C11 port of asn1::cxer:: codec surface. CXER is XER + canonical
-    whitespace + element ordering + the "ENUMERATED-as-integer"
-    representation rules.
-
-    Sub-task 1 = interface skeleton only.
-
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    See docs/cgen-batch6-validation.md for the supported C value profile.
 ***************************************************************************/
 #ifndef ASN1_C_CXER_H
 #define ASN1_C_CXER_H

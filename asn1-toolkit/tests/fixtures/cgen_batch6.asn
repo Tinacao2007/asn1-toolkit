@@ -1,0 +1,27 @@
+C6 DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+Pdu ::= SEQUENCE {
+  flag BOOLEAN,
+  count INTEGER (0..7),
+  note IA5String OPTIONAL,
+  defaultFlag BOOLEAN DEFAULT FALSE
+}
+Huge ::= INTEGER
+Text ::= UTF8String
+Bits ::= BIT STRING
+Blob ::= OCTET STRING
+Numbers ::= SET OF INTEGER (-1000..1000)
+Pick ::= CHOICE { small INTEGER (0..7), text IA5String, ..., future BOOLEAN }
+Extension ::= SEQUENCE { root INTEGER (0..15), ..., extra BOOLEAN OPTIONAL, [[ required INTEGER (0..255), optionalValue BOOLEAN OPTIONAL ]] }
+Reading ::= REAL
+Identifier ::= OBJECT IDENTIFIER
+Pair ::= SET { later [5] INTEGER (0..7), earlier [1] BOOLEAN }
+RootChoice ::= CHOICE { rootValue [5] BOOLEAN, ..., extensionValue [0] INTEGER (0..7) }
+Ordered ::= SET { chosen RootChoice, flag [3] BOOLEAN }
+NestedChoice ::= CHOICE { chosen RootChoice, flag [9] BOOLEAN }
+Real32 ::= REAL (WITH COMPONENTS { mantissa (-16777215..16777215), base (2), exponent (-149..104) })
+Real64 ::= REAL (WITH COMPONENTS { mantissa (-9007199254740991..9007199254740991), base (2), exponent (-1074..971) })
+Records ::= SEQUENCE OF Pdu
+Labels ::= SEQUENCE OF IA5String
+Modes ::= SEQUENCE OF ENUMERATED { red, blue }
+Flags ::= SEQUENCE OF BOOLEAN
+END

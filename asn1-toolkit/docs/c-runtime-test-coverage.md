@@ -75,4 +75,16 @@ headers are also independently included under C11/C++17 by PublicHeaders.
 [Acceptance evidence and explicit unsupported profiles](cgen-batch5-validation.md)
 separate envelope checks from canonical value/schema checks and independent oracle
 from standard-derived CER vectors. Older skeleton descriptions above are historical
-for these new APIs; non-PER/TLV C families remain incomplete.
+for these new APIs; CGEN batch 6 supersedes the historical OER/text skeleton status below.
+
+## CGEN batch 6 OER and text declarations
+
+`oer.h` primitives and the new `text_tree.h` / `schema_codec.h` are implemented
+C11 APIs. The full generated text entry is not the legacy reader-init/raw writer
+API in jer.h/xer.h. See [batch 6 validation](cgen-batch6-validation.md): actual
+three-shape PDU consumers, 39-consumer twelve-entry matrix, 72 independent frozen
+oracle vectors, parser negatives, instruction isolation, canonical boundaries,
+every-allocation failure and constrained-budget tests. OER constraints include
+IEEE binary32/binary64 with precision-loss rejection and mandatory DER REAL
+contents validation even for BASIC-OER. Parser byte offsets are available; full
+generated field paths remain a separate diagnostic extension.

@@ -22,6 +22,7 @@
 **                 asn1-toolkit/README.md
 ***************************************************************************/
 #include "emit_internal.hpp"
+#include <asn1/codegen/plan.hpp>
 
 namespace asn1 {
 namespace codegen {
@@ -265,19 +266,7 @@ void Emitter::emit_oer_sequence_encode(std::ostream& out, const ir::SequenceDesc
     // Root components (SET: in X.696 18.2 canonical order — the preamble
     // bits follow the same order per 18.1; extension additions are NOT
     // reordered, X.696 18.2 NOTE 1).
-    std::vector<const ir::Field*> root_fields;
-    for (const ir::Field& f : seq.root) {
-      root_fields.push_back(&f);
-    }
-    for (const ir::Field& f : seq.trailing_root) {
-      root_fields.push_back(&f);
-    }
-    if (is_set) {
-      std::stable_sort(root_fields.begin(), root_fields.end(),
-                       [this](const ir::Field* a, const ir::Field* b) {
-                         return set_component_key(*a) < set_component_key(*b);
-                       });
-    }
+    const auto root_fields=planning::oer_root_fields(model_,seq,is_set);
     std::vector<const ir::Field*> optionals;
     for (const ir::Field* fp : root_fields) {
       if (field_has_presence_bit(*fp)) {
@@ -390,19 +379,7 @@ void Emitter::emit_oer_sequence_decode(std::ostream& out, const ir::SequenceDesc
     // Mirror of the encode order: SET root components (and their preamble
     // bits) in X.696 18.2 canonical order; extension additions keep
     // definition order (18.2 NOTE 1).
-    std::vector<const ir::Field*> root_fields;
-    for (const ir::Field& f : seq.root) {
-      root_fields.push_back(&f);
-    }
-    for (const ir::Field& f : seq.trailing_root) {
-      root_fields.push_back(&f);
-    }
-    if (is_set) {
-      std::stable_sort(root_fields.begin(), root_fields.end(),
-                       [this](const ir::Field* a, const ir::Field* b) {
-                         return set_component_key(*a) < set_component_key(*b);
-                       });
-    }
+    const auto root_fields=planning::oer_root_fields(model_,seq,is_set);
     std::size_t n_optionals = 0;
     for (const ir::Field* fp : root_fields) {
       if (field_has_presence_bit(*fp)) {

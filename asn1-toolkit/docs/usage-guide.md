@@ -279,12 +279,12 @@ OER 与 COER 也各自生成，不再由掩码里的规范策略覆盖同族入�
 而非 glob 目录中所有历史 `.cpp`。失败返回非零，不输出写入成功消息。
 异常终止后的 stage/backup 恢复、inline 的多 TU 用法、ABI、线程安全及发布许可
 见 [产物契约](generated-artifacts.md)。C 类型-only 的三形态/分片入口见
-[C 输出与集成](c-codegen-output.md)；C PER/TLV 已开放声明的 profile。
+[C 输出与集成](c-codegen-output.md)；C 的 12 入口已开放声明的 profile，详见 [第 6 批验收](cgen-batch6-validation.md)。
 
 ## Target language and C type-only output
 
 `--lang cpp` remains the default. `--lang c --codec ...` accepts supported
-PER/TLV profiles; unsupported families/values reject before publication.
+value/instruction profiles for all twelve entries; unsupported graphs reject before publication.
 `--lang c --types-only` explicitly omits all codec functions.
 It generates real pure-C types/lifecycle in outline, static-inline or module/source
 split shapes. `--split-max-types N` is a positive soft IR-type budget, not a
@@ -293,7 +293,7 @@ byte limit; dependency SCCs stay whole. `--c-prefix` is C-only; an explicit
 for runnable CLI/CMake examples, file ownership/cache behavior and scope.
 
 Frontend dumps may still run without emission. C type generation does not open
-wire support by itself. C PER/TLV PDU/oracle acceptance is separately registered.
+wire support by itself. C PDU/oracle acceptance is separately registered in batches 4–6.
 Historical dispatch rejection:
 [batch 1 evidence](cgen-batch1-validation.md); current profiles:
 [C ABI](c-generated-abi.md), [runtime gaps](c-runtime-codegen-gaps.md).
@@ -306,3 +306,11 @@ Historical dispatch rejection:
 单头模式使用 `--emit-inline`，与 split 参数互斥。
 示例、真实 PDU/asn1c 对验和 LPP/S1AP 阻断见
 [C 产物契约](c-codegen-output.md) 与 [第 5 批验收](cgen-batch5-validation.md)。
+
+### C OER 与 XML/JSON 家族
+
+`--lang c --codec oer,coer,jer,jeri,xer,cxer,exer` 支持同样的三形态；
+编译 `.c` 并链接 `asn1::c_runtime`。七个入口均使用 byte reader/writer，
+文本按 UTF-8 字节传入。失败保留输出值/游标或已有 writer 内容。
+支持范围、共享 NAME/TEXT 的语义、明确 Unsupported 的指令和独立对验见
+[第 6 批证据](cgen-batch6-validation.md)。C 7 fixture×12 最终语法与安装验收仍属第 7 批。

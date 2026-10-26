@@ -331,6 +331,12 @@ add_library(asn1_c_runtime STATIC
   src/c_runtime/ber_tlv.c
   src/c_runtime/tlv.c
   src/c_runtime/tlv_schema.c
+  src/c_runtime/text_tree.c
+  src/c_runtime/oer.c
+  src/c_runtime/schema_codec.c
+  src/c_runtime/schema_json.c
+  src/c_runtime/schema_oer.c
+  src/c_runtime/schema_xml.c
   src/c_runtime/value_content.c
   src/c_runtime/per.c
   src/c_runtime/per_core.c

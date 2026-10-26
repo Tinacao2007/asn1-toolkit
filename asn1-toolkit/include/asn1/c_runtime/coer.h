@@ -11,16 +11,14 @@
 **   $Date:   2026-10-17
 **   $Author: tina.cao
 ***************************************************************************/
-/**  File Description:
+/** File Description:
 
-    P2-4 (--lang c) Canonical OER (X.696 9).
+    Canonical OER (X.696 clause 31), implemented as OER plus policy.
+    Length/integer/BOOLEAN/quantity/default and SET OF restrictions are
+    selected per entry. Primitives use oer.h; generated structures use
+    schema_codec.h. This legacy family header is not the generated API.
 
-    C11 port of asn1::coer:: codec surface. COER is OER + canonical
-    length determinant for SET OF + canonical tag-preamble encoding.
-
-    Sub-task 1 = interface skeleton only.
-
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    See docs/cgen-batch6-validation.md for the supported C value profile.
 ***************************************************************************/
 #ifndef ASN1_C_COER_H
 #define ASN1_C_COER_H

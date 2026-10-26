@@ -393,3 +393,24 @@ source set; consumers regenerate/reconfigure after schema/option changes.
 The verified per-file cache conservatively depends on all source inputs and
 includes shape/shard parameters and generator identity. Rendering is still
 planned on hits; no claim of skipped CPU work. [Contract](c-codegen-output.md).
+
+## CGEN batches 4–6: current wire boundary
+
+The earlier batch-1/2 dispatch restrictions above are historical. C directory
+emission now opens twelve codec entries within the profiles in
+[batch 6 validation](cgen-batch6-validation.md); type-only output remains separate.
+The compiler renders storage descriptors, wire plans and entry wrappers without
+including or linking either runtime. Only generated `.h/.c` consume C runtime
+headers and callbacks; runtime descriptors contain C offsets/getters/names, never IR.
+
+C UPER/APER still share one Variant core. BER/DER/CER share TLV mechanisms;
+OER/COER share primitives and per-call policy. XML families share one parser/value
+engine with BASIC/CANONICAL/EXTENDED policy. JER/JERI share exact JSON tokens and
+instruction semantics. Policy is selected by each generated entry, not the global
+codec mask. C and C++ OER SET ordering consume the same root-tag plan.
+
+Text trees and typed values use bounded ownership, transactional decode and
+explicit status propagation. Unsupported instruction/type graphs fail before
+publication. The CMake batch-6 consumers depend on single stamp-producing generation
+targets so parallel builds preserve publication locking rather than bypassing it.
+These gates do not close batch-7 installation, full C fixture or toolchain work.

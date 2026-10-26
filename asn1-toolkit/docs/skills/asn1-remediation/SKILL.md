@@ -166,8 +166,9 @@ runner 的自动门禁不替代每批独立 oracle、生成 C PDU 或安装验�
 
 ## CGEN batch 1 reusable checks
 
-Ordinary C codec generation rejects through unified dispatch before filesystem/cache
-I/O; explicit type-only output is the batch-3 exception. legacy CppGenerator stream paths must also reject C target options.
+Unsupported C graphs reject through unified dispatch before filesystem/cache I/O.
+Supported codec requests are opened by their batch-4/5/6 acceptance records; explicit
+type-only output remains available. Legacy CppGenerator streams reject C target options.
 Build asn1cxx, asn1_emit_cache_tests and asn1_entry_combined,
 asn1_entry_combined_inline, asn1_entry_combined_split. Then run
 `ctest --test-dir <build> -C Release -R '^CGenBatch1\.' --output-on-failure`.
@@ -181,8 +182,8 @@ audit separate from the primitive declaration register. See
 
 ## CGEN batch 2 type-emitter checks
 
-`emit_c_types` is type/lifecycle-only; keep CLI codec Unsupported tests until wire
-code exists. Preserve field-specific IR clones. Unsupported reachable layouts or
+`emit_c_types` is type/lifecycle-only; unsupported wire profiles retain explicit
+CLI rejection until actual codec acceptance exists. Preserve field-specific IR clones. Unsupported reachable layouts or
 DEFAULTs must diagnose before writing streams. See [ABI profiles](../../c-generated-abi.md)
 and [batch 2 evidence](../../cgen-batch2-validation.md).
 
@@ -210,8 +211,9 @@ OID uint64 arcs and enum int64 are declared profiles, not full standard domains.
 
 ## CGEN batch 3 artifact checks
 
-C CLI artifacts require explicit `--types-only` and no codec. Preserve rejection
-of ordinary unsupported codec requests; do not manufacture successful codec stubs.
+Type-only C CLI requests use explicit `--types-only` without a codec. Normal codec
+requests use the currently declared profile. Unsupported graphs must reject; never
+manufacture successful codec stubs.
 `CppGenerator` remains C++ only. Follow the [C output contract](../../c-codegen-output.md)
 for SCC budgets, source ownership, internal helper linkage and source lists.
 
@@ -305,3 +307,44 @@ RRC generation/build/PDU/live-asn1c oracle. RRC slice/types-only compilation alo
 does not satisfy M1; whole-module PDU success does not prove every PDU. Preserve
 LPP time and S1AP PER/typed-open blockers until their actual gates pass. CER
 standard-derived vectors must stay distinguished from independent oracle results.
+
+## CGEN batch 6 OER and text families
+
+Use [batch 6 evidence and profile](../../cgen-batch6-validation.md) when changing
+C OER/COER, JER/JERI or XER/CXER/E-XER. The C schema owns storage decisions only;
+never pass IR to runtime. Preserve per-entry policy under combined masks and
+the 39-consumer single/combined three-shape runtime matrix.
+
+INTEGER JSON tokens remain exact decimal; ARRAY orders all roots before extensions.
+OBJECT permits string/enumeration keys and must reject duplicate abstract keys.
+UNWRAPPED must decode uniquely; optional nullable ARRAY graphs fail before publication.
+Shared NAME/TEXT effects apply to JER and E-XER; BASIC-XER/CXER ignore those mappings. XML control elements
+need mixed-content offsets; UTF-8 byte positions alone do not recover their order.
+
+X.693 9.5/9.6 requires DEFAULT components present in CXER (unlike DER/COER).
+Canonical REAL requires normalized exponent spelling; strict parsing must reject
+noncanonical equivalents. OER SET minimum tags exclude CHOICE extension alternatives;
+nested untagged CHOICE repeats the selected tag per X.696 20.1.
+
+Run syntax/parser, instruction, frozen-boundary, every-allocation and constrained-
+budget tests, then full Release/ASan+UBSan and the original C++ 84 syntax gates.
+Use the independent asn1tools exchange separately from self-comparisons. Version
+0.169.0 flattens extension addition groups and cannot validate those group wires;
+retain the explicit oracle gap and standard vectors. Do not claim its OER/XER
+engines are independent COER/CXER canonical oracles. Keep unimplemented UNTAGGED
+and text typed-open graphs as pre-publication Unsupported, never silent BASIC fallbacks.
+
+Keep the 72 external frozen inputs and their normalized output replay independent
+from self-roundtrip tests. Constrained REAL must consume the IR IEEE form, reject
+lossy binary32 casts before writing, and check DER contents for unconstrained OER
+even under BASIC policy. TEXT overrides on enum aliases propagate into OBJECT
+keys; validate transformed field/enumeration name uniqueness before publication.
+
+XML OF values need the actual item type name for structure/string wrappers;
+BOOLEAN/ENUMERATED collections use their direct empty-element value forms.
+Keep external vectors for these cases, not just INTEGER OF self-roundtrips.
+Shared NAME/TEXT mappings apply in JER/E-XER; BASIC-XER/CXER retain basic names.
+CGEN6 CMake consumers share a stamp-producing generation target and explicit
+dependencies. Cache hits leave source timestamps unchanged, so direct duplicate
+custom commands can re-enter a shared output directory under parallel builds.
+Keep the publication lock; test a cold-stamp parallel build rather than disabling it.

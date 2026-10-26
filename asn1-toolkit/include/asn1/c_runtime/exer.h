@@ -11,16 +11,14 @@
 **   $Date:   2026-10-17
 **   $Author: tina.cao
 ***************************************************************************/
-/**  File Description:
+/** File Description:
 
-    P2-4 (--lang c) EXTENDED-XER (X.693 14) entry points.
+    EXTENDED-XER (X.693) instruction-based XML mappings.
+    Generated value encode/decode uses schema_codec.h and text_tree.h.
+    Only the documented instruction profile is opened; unsupported
+    instructions diagnose before publication, including UNTAGGED.
 
-    C11 port of asn1::exer:: codec surface. EXER adds ASN.1 typing
-    metadata on top of XER (UNTAGGED / TEXT / LIST / BASE64 etc.).
-
-    Sub-task 1 = interface skeleton only.
-
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    See docs/cgen-batch6-validation.md for the supported C value profile.
 ***************************************************************************/
 #ifndef ASN1_C_EXER_H
 #define ASN1_C_EXER_H

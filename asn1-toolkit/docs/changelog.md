@@ -509,3 +509,11 @@
 | 47 | 前端并行分析（P3-1） | ✅ 已完成（2026-10-17，`--parallel <N>` + declare/resolve 并行 + 11 项门禁；`lower_pass` 串行 deferred；commit `5856565`） |
 | 48 | 3GPP 协议消息级金标准向量对验（P1-3） | ⏳ 已规划，未排期；子任务清单见 [todo.md](todo.md#p1-3--3gpp-协议消息级金标准向量对验) |
 | 49 | C 语言代码生成器（P2-4） | 🟡 sub-task 1（`include/asn1/c_runtime/*` 头骨架 + `-fsyntax-only` 门禁，commit `c137142`）+ sub-task 2（`src/c_runtime/*.c` 纯 C11 实现 + `asn1::c_runtime` 静态库 + `Asn1CRuntimeSmoke` 链接+运行门禁）已落地；ctest **345/345**。sub-task 3+（`src/codegen/emit_c/*` + CLI `--lang c` + 全 fixture 编译门禁 + P1-3 oracle 复用）未排期；目标字节输出与 `--lang cpp` 逐字节一致（复用 P1-3 oracle）；估时 ~43 h / 5-6 工作日；子任务清单见 [todo.md](todo.md#p2-4--c-语言代码生成器-lang-c) |
+
+## 2026-10-26 — CGEN batch 6
+
+- 增加 C OER/COER 原语与结构生成，以及 JER/JERI、XER/CXER/E-XER 解析和值编解码。
+- 精确 BigInt 十进制、Unicode/转义、JSON 指令、XML 属性/受限指令、规范策略和事务性预算。
+- 共享 OER SET 最小根标签规划；验证版本组、nested CHOICE 和跨家族指令隔离。
+- 新增三形态、12 入口组合、故障注入/资源、独立 asn1tools 互解。
+- 详细值域、未支持指令及 oracle 限制见 [第 6 批证据](cgen-batch6-validation.md)。

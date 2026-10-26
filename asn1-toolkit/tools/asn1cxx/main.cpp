@@ -117,7 +117,7 @@ void print_usage(std::ostream& out) {
       << "  --codec <uper|aper|per|ber|der|cer|jer|jeri|xer|exer|oer|coer|cxer>\n"
       << "                         Comma-separated combination (e.g. uper,ber)\n"
       << "                         Codec for --emit-dir (default: uper)\n"
-      << "  --lang <cpp|c>         Target language (default cpp; C supports checked PER/TLV profiles)\n"
+      << "  --lang <cpp|c>         Target language (default cpp; C supports 12 entries, checked value profiles)\n"
       << "  --types-only          C type/lifecycle artifacts, no codecs\n"
       << "  --split-max-types <N>  C source soft limit in IR types; SCCs stay whole\n"
       << "  --c-prefix <id>        C symbol prefix; requires --lang c\n"

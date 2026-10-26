@@ -364,3 +364,15 @@ asn1_status_t asn1_bigint_init_from_twos_complement(asn1_bigint_t* b,
   *b = tmp;
   return ASN1_OK;
 }
+
+/* Bounded base-2^32 long division; no host floating point or locale. */
+asn1_status_t asn1_bigint_to_decimal(const asn1_bigint_t* b,char** out,size_t* size) {
+  if(!b||!out||!size||b->nlimbs>b->cap||(b->nlimbs&&(!b->limbs||!b->limbs[b->nlimbs-1]||(b->sign!=1&&b->sign!=-1)))||(!b->nlimbs&&b->sign))return ASN1_ERR_INVALID_ARGUMENT;
+  if(b->nlimbs>ASN1_MAX_BIGINT_LIMBS)return ASN1_ERR_RESOURCE_LIMIT;
+  const size_t capacity=b->nlimbs*10u+3u;char* text=(char*)malloc(capacity);if(!text)return ASN1_ERR_OUT_OF_MEMORY;
+  if(!b->nlimbs){text[0]='0';text[1]=0;*out=text;*size=1;return ASN1_OK;}
+  uint32_t* words=(uint32_t*)malloc(b->nlimbs*sizeof(*words));if(!words){free(text);return ASN1_ERR_OUT_OF_MEMORY;}
+  memcpy(words,b->limbs,b->nlimbs*sizeof(*words));size_t n=b->nlimbs,used=0;
+  while(n){uint64_t remainder=0;for(size_t i=n;i-- >0;){const uint64_t value=(remainder<<32)|words[i];words[i]=(uint32_t)(value/10u);remainder=value%10u;}text[used++]=(char)('0'+remainder);while(n&&!words[n-1])--n;}
+  if(b->sign<0)text[used++]='-';for(size_t i=0;i<used/2u;++i){char c=text[i];text[i]=text[used-1-i];text[used-1-i]=c;}text[used]=0;free(words);*out=text;*size=used;return ASN1_OK;
+}

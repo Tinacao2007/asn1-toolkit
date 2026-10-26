@@ -127,6 +127,89 @@ add_executable(asn1_cgen_batch5_tlv_tests c_lang/cgen_batch5_tlv_test.c)
 target_link_libraries(asn1_cgen_batch5_tlv_tests PRIVATE asn1::c_runtime)
 set_target_properties(asn1_cgen_batch5_tlv_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
 add_test(NAME CGenBatch5.TlvCore COMMAND asn1_cgen_batch5_tlv_tests)
+add_executable(asn1_cgen_batch6_text_tests c_lang/cgen_batch6_text_test.c)
+target_link_libraries(asn1_cgen_batch6_text_tests PRIVATE asn1::c_runtime)
+set_target_properties(asn1_cgen_batch6_text_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch6.TextSyntax COMMAND asn1_cgen_batch6_text_tests)
+foreach(_family IN ITEMS jer exer)
+  set(_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen6-${_family}")
+  add_custom_command(OUTPUT "${_dir}/generation.stamp"
+    BYPRODUCTS "${_dir}/generated.h" "${_dir}/generated.c" "${_dir}/generated_internal.h"
+    COMMAND "${ASN1_GENERATOR}" --lang c --codec jer,exer --c-prefix ix
+      --emit-dir "${_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch6_${_family}.asn"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${_dir}/generation.stamp"
+    DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch6_${_family}.asn" VERBATIM)
+  add_custom_target(asn1_cgen6_${_family}_generated DEPENDS "${_dir}/generation.stamp")
+  add_executable(asn1_cgen_batch6_${_family}_instructions c_lang/cgen_batch6_instruction_test.c "${_dir}/generated.c")
+  add_dependencies(asn1_cgen_batch6_${_family}_instructions asn1_cgen6_${_family}_generated)
+  target_include_directories(asn1_cgen_batch6_${_family}_instructions PRIVATE "${_dir}")
+  target_link_libraries(asn1_cgen_batch6_${_family}_instructions PRIVATE asn1::c_runtime)
+  set_target_properties(asn1_cgen_batch6_${_family}_instructions PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+  if(_family STREQUAL "jer")
+    target_compile_definitions(asn1_cgen_batch6_${_family}_instructions PRIVATE JER_TEST)
+  endif()
+  add_test(NAME CGenBatch6.${_family}Instructions COMMAND asn1_cgen_batch6_${_family}_instructions)
+endforeach()
+foreach(_cgen6_shape IN ITEMS outline inline split)
+  set(_cgen6_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen6-${_cgen6_shape}")
+  set(_cgen6_flags)
+  set(_cgen6_source "${_cgen6_dir}/generated.c")
+  if(_cgen6_shape STREQUAL "inline")
+    set(_cgen6_flags --emit-inline)
+    set(_cgen6_source "${_cgen6_dir}/generated.h")
+  elseif(_cgen6_shape STREQUAL "split")
+    set(_cgen6_flags --emit-split)
+    set(_cgen6_source "${_cgen6_dir}/c_mC6.c")
+  endif()
+  set(_cgen6_outputs "${_cgen6_dir}/generated.h" ${_cgen6_source})
+  list(REMOVE_DUPLICATES _cgen6_outputs)
+  add_custom_command(OUTPUT "${_cgen6_dir}/generation.stamp"
+    BYPRODUCTS ${_cgen6_outputs}
+    COMMAND "${ASN1_GENERATOR}" --lang c --codec oer,coer,jer,jeri,xer,cxer,exer --c-prefix cgen6 ${_cgen6_flags}
+      --emit-dir "${_cgen6_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch6.asn"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${_cgen6_dir}/generation.stamp"
+    DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch6.asn" VERBATIM)
+  add_custom_target(asn1_cgen6_${_cgen6_shape}_generated DEPENDS "${_cgen6_dir}/generation.stamp")
+  add_executable(asn1_cgen_batch6_${_cgen6_shape}_tests c_lang/cgen_batch6_pdu_test.c ${_cgen6_source})
+  add_dependencies(asn1_cgen_batch6_${_cgen6_shape}_tests asn1_cgen6_${_cgen6_shape}_generated)
+  target_include_directories(asn1_cgen_batch6_${_cgen6_shape}_tests PRIVATE "${_cgen6_dir}")
+  target_link_libraries(asn1_cgen_batch6_${_cgen6_shape}_tests PRIVATE asn1::c_runtime)
+  set_target_properties(asn1_cgen_batch6_${_cgen6_shape}_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+  add_test(NAME CGenBatch6.Generated${_cgen6_shape} COMMAND asn1_cgen_batch6_${_cgen6_shape}_tests)
+endforeach()
+add_executable(asn1_cgen_batch6_failure_tests c_lang/cgen_batch6_failure_test.c
+  "${CMAKE_CURRENT_BINARY_DIR}/cgen6-outline/generated.c" ${_c_runtime_sources})
+target_include_directories(asn1_cgen_batch6_failure_tests PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}/cgen6-outline" "${PROJECT_SOURCE_DIR}/include")
+target_compile_definitions(asn1_cgen_batch6_failure_tests PRIVATE ASN1_C_RUNTIME_TEST_ALLOCATOR)
+if(NOT MSVC)
+  target_link_libraries(asn1_cgen_batch6_failure_tests PRIVATE m)
+endif()
+set_target_properties(asn1_cgen_batch6_failure_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch6.AllocationFailures COMMAND asn1_cgen_batch6_failure_tests)
+add_executable(asn1_cgen_batch6_oracle_driver c_lang/cgen_batch6_oracle_driver.c
+  "${CMAKE_CURRENT_BINARY_DIR}/cgen6-outline/generated.c")
+target_include_directories(asn1_cgen_batch6_oracle_driver PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/cgen6-outline")
+target_link_libraries(asn1_cgen_batch6_oracle_driver PRIVATE asn1::c_runtime)
+set_target_properties(asn1_cgen_batch6_oracle_driver PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_executable(asn1_cgen_batch6_boundary_tests c_lang/cgen_batch6_boundary_test.c
+  "${CMAKE_CURRENT_BINARY_DIR}/cgen6-outline/generated.c")
+target_include_directories(asn1_cgen_batch6_boundary_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/cgen6-outline")
+target_link_libraries(asn1_cgen_batch6_boundary_tests PRIVATE asn1::c_runtime)
+set_target_properties(asn1_cgen_batch6_boundary_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch6.StandardBoundaries COMMAND asn1_cgen_batch6_boundary_tests)
+add_executable(asn1_cgen_batch6_limits_tests c_lang/cgen_batch6_limits_test.c
+  "${CMAKE_CURRENT_BINARY_DIR}/cgen6-outline/generated.c" ${_c_runtime_sources})
+target_include_directories(asn1_cgen_batch6_limits_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/cgen6-outline" "${PROJECT_SOURCE_DIR}/include")
+target_compile_definitions(asn1_cgen_batch6_limits_tests PRIVATE ASN1_MAX_PDU_ALLOCATION_BYTES=1024 ASN1_MAX_PDU_ELEMENTS=8 ASN1_MAX_STRING_BYTES=64)
+if(NOT MSVC)
+  target_link_libraries(asn1_cgen_batch6_limits_tests PRIVATE m)
+endif()
+set_target_properties(asn1_cgen_batch6_limits_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+add_test(NAME CGenBatch6.ResourceLimits COMMAND asn1_cgen_batch6_limits_tests)
+foreach(_consumer IN ITEMS failure_tests oracle_driver boundary_tests limits_tests)
+  add_dependencies(asn1_cgen_batch6_${_consumer} asn1_cgen6_outline_generated)
+endforeach()
 foreach(_cgen5_shape IN ITEMS outline inline split)
   set(_cgen5_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen5-${_cgen5_shape}")
   set(_cgen5_flags)
@@ -843,6 +926,11 @@ if(Python3_Interpreter_FOUND)
       --compiler "${ASN1_GENERATOR}" --cc "${CMAKE_C_COMPILER}" --cxx "${CMAKE_CXX_COMPILER}"
       --root "${PROJECT_SOURCE_DIR}" --build "${PROJECT_BINARY_DIR}"
       --work "${CMAKE_CURRENT_BINARY_DIR}/cgen5-matrix" ${_cgen5_sanitizer_args})
+    add_test(NAME CGenBatch6.EntryShapeMatrix COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch6_matrix.py"
+      --compiler "${ASN1_GENERATOR}" --cc "${CMAKE_C_COMPILER}"
+      --runtime "$<TARGET_FILE:asn1_c_runtime>" --root "${PROJECT_SOURCE_DIR}"
+      --work "${CMAKE_CURRENT_BINARY_DIR}/cgen6-matrix" ${_cgen5_sanitizer_args})
     add_test(NAME CGenBatch5.WholeRrc COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch5_rrc.py"
       --compiler "${ASN1_GENERATOR}" --cc "${CMAKE_C_COMPILER}"
@@ -895,6 +983,11 @@ target_link_libraries(asn1_split_cycle_tests PRIVATE asn1::per GTest::gtest_main
 gtest_discover_tests(asn1_split_cycle_tests)
 
 # Batch 1 acceptance exercises real CLI failures and existing linked codecs.
+add_test(NAME CGenBatch6.UnsupportedInstructions COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch6_rejections.py" "${ASN1_GENERATOR}")
+add_test(NAME CGenBatch6.FrozenOracleReplay COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch6_frozen.py"
+  "$<TARGET_FILE:asn1_cgen_batch6_oracle_driver>" "${CMAKE_CURRENT_SOURCE_DIR}/standards/cgen6-asn1tools-vectors.json")
 add_test(NAME CGenBatch1.CliDispatch COMMAND "${Python3_EXECUTABLE}"
   "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch1_cli.py" "${ASN1_GENERATOR}"
   "$<TARGET_FILE:asn1_entry_combined>" "$<TARGET_FILE:asn1_entry_combined_inline>"

@@ -1,0 +1,446 @@
+{
+  "asn1tools": "0.169.0",
+  "cases": [
+    {
+      "codec": "oer",
+      "type": "Pdu",
+      "input": "00ff03",
+      "output": "00ff03"
+    },
+    {
+      "codec": "oer",
+      "type": "Pdu",
+      "input": "80000706613c26220d0a",
+      "output": "80000706613c26220d0a"
+    },
+    {
+      "codec": "oer",
+      "type": "Huge",
+      "input": "0100",
+      "output": "0100"
+    },
+    {
+      "codec": "oer",
+      "type": "Huge",
+      "input": "02ff7f",
+      "output": "02ff7f"
+    },
+    {
+      "codec": "oer",
+      "type": "Huge",
+      "input": "110100000000000000000000000000000000",
+      "output": "110100000000000000000000000000000000"
+    },
+    {
+      "codec": "oer",
+      "type": "Huge",
+      "input": "11ff7fffffffffffffffffffffffffffffff",
+      "output": "11ff7fffffffffffffffffffffffffffffff"
+    },
+    {
+      "codec": "oer",
+      "type": "Text",
+      "input": "0be4b8adf09f98803c260d0a",
+      "output": "0be4b8adf09f98803c260d0a"
+    },
+    {
+      "codec": "oer",
+      "type": "Bits",
+      "input": "0205a0",
+      "output": "0205a0"
+    },
+    {
+      "codec": "oer",
+      "type": "Blob",
+      "input": "0300ff80",
+      "output": "0300ff80"
+    },
+    {
+      "codec": "oer",
+      "type": "Numbers",
+      "input": "01030003fff603e8",
+      "output": "01030003fff603e8"
+    },
+    {
+      "codec": "oer",
+      "type": "Numbers",
+      "input": "0100",
+      "output": "0100"
+    },
+    {
+      "codec": "oer",
+      "type": "Pick",
+      "input": "8007",
+      "output": "8007"
+    },
+    {
+      "codec": "oer",
+      "type": "Pick",
+      "input": "81026869",
+      "output": "81026869"
+    },
+    {
+      "codec": "oer",
+      "type": "Pick",
+      "input": "8201ff",
+      "output": "8201ff"
+    },
+    {
+      "codec": "oer",
+      "type": "Extension",
+      "input": "0004",
+      "output": "0004"
+    },
+    {
+      "codec": "oer",
+      "type": "Reading",
+      "input": "0380ff03",
+      "output": "0380ff03"
+    },
+    {
+      "codec": "oer",
+      "type": "Identifier",
+      "input": "062a864886f70d",
+      "output": "062a864886f70d"
+    },
+    {
+      "codec": "oer",
+      "type": "Pair",
+      "input": "ff07",
+      "output": "ff07"
+    },
+    {
+      "codec": "oer",
+      "type": "Real32",
+      "input": "3fc00000",
+      "output": "3fc00000"
+    },
+    {
+      "codec": "oer",
+      "type": "Real64",
+      "input": "bff8000000000000",
+      "output": "bff8000000000000"
+    },
+    {
+      "codec": "oer",
+      "type": "Records",
+      "input": "010100ff03",
+      "output": "010100ff03"
+    },
+    {
+      "codec": "oer",
+      "type": "Labels",
+      "input": "010201610162",
+      "output": "010201610162"
+    },
+    {
+      "codec": "oer",
+      "type": "Modes",
+      "input": "01020001",
+      "output": "01020001"
+    },
+    {
+      "codec": "oer",
+      "type": "Flags",
+      "input": "0103ff00ff",
+      "output": "0103ff00ff"
+    },
+    {
+      "codec": "jer",
+      "type": "Pdu",
+      "input": "7b22666c6167223a747275652c22636f756e74223a337d",
+      "output": "7b22666c6167223a747275652c22636f756e74223a337d"
+    },
+    {
+      "codec": "jer",
+      "type": "Pdu",
+      "input": "7b22666c6167223a66616c73652c22636f756e74223a372c226e6f7465223a22613c265c225c725c6e227d",
+      "output": "7b22666c6167223a66616c73652c22636f756e74223a372c226e6f7465223a22613c265c225c75303030445c7530303041227d"
+    },
+    {
+      "codec": "jer",
+      "type": "Huge",
+      "input": "30",
+      "output": "30"
+    },
+    {
+      "codec": "jer",
+      "type": "Huge",
+      "input": "2d313239",
+      "output": "2d313239"
+    },
+    {
+      "codec": "jer",
+      "type": "Huge",
+      "input": "333430323832333636393230393338343633343633333734363037343331373638323131343536",
+      "output": "333430323832333636393230393338343633343633333734363037343331373638323131343536"
+    },
+    {
+      "codec": "jer",
+      "type": "Huge",
+      "input": "2d313730313431313833343630343639323331373331363837333033373135383834313035373239",
+      "output": "2d313730313431313833343630343639323331373331363837333033373135383834313035373239"
+    },
+    {
+      "codec": "jer",
+      "type": "Text",
+      "input": "225c75346532645c75643833645c75646530303c265c725c6e22",
+      "output": "22e4b8adf09f98803c265c75303030445c753030304122"
+    },
+    {
+      "codec": "jer",
+      "type": "Bits",
+      "input": "7b2276616c7565223a224130222c226c656e677468223a337d",
+      "output": "7b2276616c7565223a224130222c226c656e677468223a337d"
+    },
+    {
+      "codec": "jer",
+      "type": "Blob",
+      "input": "2230304646383022",
+      "output": "2230304646383022"
+    },
+    {
+      "codec": "jer",
+      "type": "Numbers",
+      "input": "5b332c2d31302c313030305d",
+      "output": "5b332c2d31302c313030305d"
+    },
+    {
+      "codec": "jer",
+      "type": "Numbers",
+      "input": "5b5d",
+      "output": "5b5d"
+    },
+    {
+      "codec": "jer",
+      "type": "Pick",
+      "input": "7b22736d616c6c223a377d",
+      "output": "7b22736d616c6c223a377d"
+    },
+    {
+      "codec": "jer",
+      "type": "Pick",
+      "input": "7b2274657874223a226869227d",
+      "output": "7b2274657874223a226869227d"
+    },
+    {
+      "codec": "jer",
+      "type": "Pick",
+      "input": "7b22667574757265223a747275657d",
+      "output": "7b22667574757265223a747275657d"
+    },
+    {
+      "codec": "jer",
+      "type": "Extension",
+      "input": "7b22726f6f74223a342c226578747261223a747275652c227265717569726564223a372c226f7074696f6e616c56616c7565223a66616c73657d",
+      "output": "7b22726f6f74223a342c226578747261223a747275652c227265717569726564223a372c226f7074696f6e616c56616c7565223a66616c73657d"
+    },
+    {
+      "codec": "jer",
+      "type": "Reading",
+      "input": "312e35",
+      "output": "312e35"
+    },
+    {
+      "codec": "jer",
+      "type": "Identifier",
+      "input": "22312e322e3834302e31313335343922",
+      "output": "22312e322e3834302e31313335343922"
+    },
+    {
+      "codec": "jer",
+      "type": "Pair",
+      "input": "7b226c61746572223a372c226561726c696572223a747275657d",
+      "output": "7b226c61746572223a372c226561726c696572223a747275657d"
+    },
+    {
+      "codec": "jer",
+      "type": "Real32",
+      "input": "312e35",
+      "output": "312e35"
+    },
+    {
+      "codec": "jer",
+      "type": "Real64",
+      "input": "2d312e35",
+      "output": "2d312e35"
+    },
+    {
+      "codec": "jer",
+      "type": "Records",
+      "input": "5b7b22666c6167223a747275652c22636f756e74223a337d5d",
+      "output": "5b7b22666c6167223a747275652c22636f756e74223a337d5d"
+    },
+    {
+      "codec": "jer",
+      "type": "Labels",
+      "input": "5b2261222c2262225d",
+      "output": "5b2261222c2262225d"
+    },
+    {
+      "codec": "jer",
+      "type": "Modes",
+      "input": "5b22726564222c22626c7565225d",
+      "output": "5b22726564222c22626c7565225d"
+    },
+    {
+      "codec": "jer",
+      "type": "Flags",
+      "input": "5b747275652c66616c73652c747275655d",
+      "output": "5b747275652c66616c73652c747275655d"
+    },
+    {
+      "codec": "xer",
+      "type": "Pdu",
+      "input": "3c5064753e3c666c61673e3c74727565202f3e3c2f666c61673e3c636f756e743e333c2f636f756e743e3c2f5064753e",
+      "output": "3c5064753e3c666c61673e3c74727565202f3e3c2f666c61673e3c636f756e743e333c2f636f756e743e3c2f5064753e"
+    },
+    {
+      "codec": "xer",
+      "type": "Pdu",
+      "input": "3c5064753e3c666c61673e3c66616c7365202f3e3c2f666c61673e3c636f756e743e373c2f636f756e743e3c6e6f74653e61266c743b26616d703b220d0a3c2f6e6f74653e3c2f5064753e",
+      "output": "3c5064753e3c666c61673e3c66616c7365202f3e3c2f666c61673e3c636f756e743e373c2f636f756e743e3c6e6f74653e61266c743b26616d703b220a3c2f6e6f74653e3c2f5064753e"
+    },
+    {
+      "codec": "xer",
+      "type": "Huge",
+      "input": "3c487567653e303c2f487567653e",
+      "output": "3c487567653e303c2f487567653e"
+    },
+    {
+      "codec": "xer",
+      "type": "Huge",
+      "input": "3c487567653e2d3132393c2f487567653e",
+      "output": "3c487567653e2d3132393c2f487567653e"
+    },
+    {
+      "codec": "xer",
+      "type": "Huge",
+      "input": "3c487567653e3334303238323336363932303933383436333436333337343630373433313736383231313435363c2f487567653e",
+      "output": "3c487567653e3334303238323336363932303933383436333436333337343630373433313736383231313435363c2f487567653e"
+    },
+    {
+      "codec": "xer",
+      "type": "Huge",
+      "input": "3c487567653e2d3137303134313138333436303436393233313733313638373330333731353838343130353732393c2f487567653e",
+      "output": "3c487567653e2d3137303134313138333436303436393233313733313638373330333731353838343130353732393c2f487567653e"
+    },
+    {
+      "codec": "xer",
+      "type": "Text",
+      "input": "3c546578743e262332303031333b26233132383531323b266c743b26616d703b0d0a3c2f546578743e",
+      "output": "3c546578743ee4b8adf09f9880266c743b26616d703b0a3c2f546578743e"
+    },
+    {
+      "codec": "xer",
+      "type": "Bits",
+      "input": "3c426974733e3130313c2f426974733e",
+      "output": "3c426974733e3130313c2f426974733e"
+    },
+    {
+      "codec": "xer",
+      "type": "Blob",
+      "input": "3c426c6f623e3030464638303c2f426c6f623e",
+      "output": "3c426c6f623e3030464638303c2f426c6f623e"
+    },
+    {
+      "codec": "xer",
+      "type": "Numbers",
+      "input": "3c4e756d626572733e3c494e54454745523e333c2f494e54454745523e3c494e54454745523e2d31303c2f494e54454745523e3c494e54454745523e313030303c2f494e54454745523e3c2f4e756d626572733e",
+      "output": "3c4e756d626572733e3c494e54454745523e333c2f494e54454745523e3c494e54454745523e2d31303c2f494e54454745523e3c494e54454745523e313030303c2f494e54454745523e3c2f4e756d626572733e"
+    },
+    {
+      "codec": "xer",
+      "type": "Numbers",
+      "input": "3c4e756d62657273202f3e",
+      "output": "3c4e756d62657273202f3e"
+    },
+    {
+      "codec": "xer",
+      "type": "Pick",
+      "input": "3c5069636b3e3c736d616c6c3e373c2f736d616c6c3e3c2f5069636b3e",
+      "output": "3c5069636b3e3c736d616c6c3e373c2f736d616c6c3e3c2f5069636b3e"
+    },
+    {
+      "codec": "xer",
+      "type": "Pick",
+      "input": "3c5069636b3e3c746578743e68693c2f746578743e3c2f5069636b3e",
+      "output": "3c5069636b3e3c746578743e68693c2f746578743e3c2f5069636b3e"
+    },
+    {
+      "codec": "xer",
+      "type": "Pick",
+      "input": "3c5069636b3e3c6675747572653e3c74727565202f3e3c2f6675747572653e3c2f5069636b3e",
+      "output": "3c5069636b3e3c6675747572653e3c74727565202f3e3c2f6675747572653e3c2f5069636b3e"
+    },
+    {
+      "codec": "xer",
+      "type": "Extension",
+      "input": "3c457874656e73696f6e3e3c726f6f743e343c2f726f6f743e3c65787472613e3c74727565202f3e3c2f65787472613e3c72657175697265643e373c2f72657175697265643e3c6f7074696f6e616c56616c75653e3c66616c7365202f3e3c2f6f7074696f6e616c56616c75653e3c2f457874656e73696f6e3e",
+      "output": "3c457874656e73696f6e3e3c726f6f743e343c2f726f6f743e3c65787472613e3c74727565202f3e3c2f65787472613e3c72657175697265643e373c2f72657175697265643e3c6f7074696f6e616c56616c75653e3c66616c7365202f3e3c2f6f7074696f6e616c56616c75653e3c2f457874656e73696f6e3e"
+    },
+    {
+      "codec": "xer",
+      "type": "Reading",
+      "input": "3c52656164696e673e312e3545303c2f52656164696e673e",
+      "output": "3c52656164696e673e312e353c2f52656164696e673e"
+    },
+    {
+      "codec": "xer",
+      "type": "Identifier",
+      "input": "3c4964656e7469666965723e312e322e3834302e3131333534393c2f4964656e7469666965723e",
+      "output": "3c4964656e7469666965723e312e322e3834302e3131333534393c2f4964656e7469666965723e"
+    },
+    {
+      "codec": "xer",
+      "type": "Pair",
+      "input": "3c506169723e3c6c617465723e373c2f6c617465723e3c6561726c6965723e3c74727565202f3e3c2f6561726c6965723e3c2f506169723e",
+      "output": "3c506169723e3c6c617465723e373c2f6c617465723e3c6561726c6965723e3c74727565202f3e3c2f6561726c6965723e3c2f506169723e"
+    },
+    {
+      "codec": "xer",
+      "type": "Real32",
+      "input": "3c5265616c33323e312e3545303c2f5265616c33323e",
+      "output": "3c5265616c33323e312e353c2f5265616c33323e"
+    },
+    {
+      "codec": "xer",
+      "type": "Real64",
+      "input": "3c5265616c36343e2d312e3545303c2f5265616c36343e",
+      "output": "3c5265616c36343e2d312e353c2f5265616c36343e"
+    },
+    {
+      "codec": "xer",
+      "type": "Records",
+      "input": "3c5265636f7264733e3c5064753e3c666c61673e3c74727565202f3e3c2f666c61673e3c636f756e743e333c2f636f756e743e3c2f5064753e3c2f5265636f7264733e",
+      "output": "3c5265636f7264733e3c5064753e3c666c61673e3c74727565202f3e3c2f666c61673e3c636f756e743e333c2f636f756e743e3c2f5064753e3c2f5265636f7264733e"
+    },
+    {
+      "codec": "xer",
+      "type": "Labels",
+      "input": "3c4c6162656c733e3c494135537472696e673e613c2f494135537472696e673e3c494135537472696e673e623c2f494135537472696e673e3c2f4c6162656c733e",
+      "output": "3c4c6162656c733e3c494135537472696e673e613c2f494135537472696e673e3c494135537472696e673e623c2f494135537472696e673e3c2f4c6162656c733e"
+    },
+    {
+      "codec": "xer",
+      "type": "Modes",
+      "input": "3c4d6f6465733e3c726564202f3e3c626c7565202f3e3c2f4d6f6465733e",
+      "output": "3c4d6f6465733e3c726564202f3e3c626c7565202f3e3c2f4d6f6465733e"
+    },
+    {
+      "codec": "xer",
+      "type": "Flags",
+      "input": "3c466c6167733e3c74727565202f3e3c66616c7365202f3e3c74727565202f3e3c2f466c6167733e",
+      "output": "3c466c6167733e3c74727565202f3e3c66616c7365202f3e3c74727565202f3e3c2f466c6167733e"
+    }
+  ],
+  "oracle_gaps": [
+    "asn1tools OER compiler cannot sort the untagged CHOICE member of Ordered SET; standard frozen vector covers this declaration",
+    "asn1tools 0.169.0 flattens extension addition groups (OER bitmap, JSON/XML group absence); excluded cases covered by standard frozen group vectors",
+    "asn1tools 0.169.0 flattens extension addition groups (OER bitmap, JSON/XML group absence); excluded cases covered by standard frozen group vectors",
+    "asn1tools 0.169.0 flattens extension addition groups (OER bitmap, JSON/XML group absence); excluded cases covered by standard frozen group vectors",
+    "asn1tools 0.169.0 flattens extension addition groups (OER bitmap, JSON/XML group absence); excluded cases covered by standard frozen group vectors",
+    "asn1tools 0.169.0 flattens extension addition groups (OER bitmap, JSON/XML group absence); excluded cases covered by standard frozen group vectors",
+    "asn1tools 0.169.0 flattens extension addition groups (OER bitmap, JSON/XML group absence); excluded cases covered by standard frozen group vectors"
+  ]
+}

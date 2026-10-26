@@ -1,8 +1,8 @@
 # 纯 C11 代码生成后端执行清单
 
-Created 2026-10-23; updated 2026-10-26. Batches 1–5 complete for their declared
-profiles; batch 5 implements C BER/DER/CER and whole-RRC UPER+BER, with final gate
-results in [batch 5 evidence](cgen-batch5-validation.md). C type/lifecycle-only and
+Created 2026-10-23; updated 2026-10-26. Batches 1–6 complete for their declared
+profiles; batch 6 opens all twelve C entries and records final gates in
+[batch 6 evidence](cgen-batch6-validation.md). Batch 7 remains pending. C type/lifecycle-only and
 supported codec profiles share all output forms, shards, manifests and publication.
 本清单细化 [P2-4](todo.md#p2-4--c-语言代码生成器-lang-c) sub-task 3+，
 承接 [共享规划](emission-planning.md) 与 REV-27，不另建一套前端或 runtime。
@@ -17,11 +17,12 @@ initial-dispatch evidence: [batch 1](cgen-batch1-validation.md).
 
 当前已有 C11 原语、失败契约、PER 两 Variant 与部分独立 oracle；
 [声明覆盖登记](c-runtime-test-coverage.md) 已登记 PER/TLV 值、结构与 byte decode；
-JER/XER C reader 仍只绑定输入。
+JER/XER 的 legacy raw reader helper 只绑定输入；完整解析与结构解码使用
+`text_tree.h` 和 `schema_codec.h`，证据见 [第 6 批](cgen-batch6-validation.md)。
 因此不能直接把 C++ emitter 的函数名替换为 C 前缀，也不能假定 C runtime 已支持全部类型。
 
 C++ `--emit-split` 仍按模块；显式 C `--types-only` 可叠加 `--split-max-types N`，
-已解决类型及支持 codec 产物的模块内源分片。其他 codec 家族仍在后续批次。
+已解决类型及支持 codec 产物的模块内源分片。12 入口已进入声明的支持 profile；最终 C 7×12 fixture 矩阵及安装收尾仍属第 7 批。
 既有 RRC 是 LTE EUTRA fixture，不是 TS 38.331；NR 全文测试须另行引入明确版本的输入。
 
 ## 必须保留的约束
@@ -142,22 +143,28 @@ UPER 冻结向量（含新增扩展 CHOICE 与 trailing-root 的 C 编码/解码
 字节一致并互解。三形态/分片及单 codec/组合 C/C++ 有 21 个实际消费者。
 LPP/S1AP 按 CGEN-15 允许的口径登记明确阻断，不计为通过；完整值域不据此扩大。
 Release 461/461、ASan+UBSan 494/494、原 C++ 7×12 语法矩阵 84/84。
-详见 [第 5 批验收和限制](cgen-batch5-validation.md)。第 6/7 批仍未完成。
+详见 [第 5 批验收和限制](cgen-batch5-validation.md)。第 6 批已按其声明 profile 完成；第 7 批尚未完成。
 
 ### 第 6 批：OER/COER 与 XML/JSON 家族
 
-- [ ] **CGEN-16【重要】C OER/COER 原语与结构生成。** 数值、长度、presence/扩展、
+- [x] **CGEN-16【重要】C OER/COER 原语与结构生成。** 数值、长度、presence/扩展、
   开放类型和规范表示；拒绝精度丢失；两入口策略独立，组合掩码不污染单入口。
-- [ ] **CGEN-17【重要】完整 C JER/JERI。** 实现词法/解析与结构解码、字符串转义、
+- [x] **CGEN-17【重要】完整 C JER/JERI。** 实现词法/解析与结构解码、字符串转义、
   精确整数、重复键和未知字段策略、资源限制及已支持指令；reader init 不算解析实现。
-- [ ] **CGEN-18【重要】完整 C XER/CXER/E-XER。** XML 输入解析、字符转义、结构解码、
+- [x] **CGEN-18【重要】完整 C XER/CXER/E-XER。** XML 输入解析、字符转义、结构解码、
   标签/属性与指令、规范输出及错误传播；不引入第三方 runtime XML 库。
   未实现指令明确 Unsupported，不用 BASIC-XER 替代其他入口。
-- [ ] **CGEN-19【重要】12 入口能力登记与组合验证。** 补全 enum/CLI/函数/include/
+- [x] **CGEN-19【重要】12 入口能力登记与组合验证。** 补全 enum/CLI/函数/include/
   runtime 依赖/策略/诊断映射；单入口与组合实际编码比较，避免共享全局掩码串策略。
 
 验收：每家族先通过原语与生成 PDU 测试，再开放相应能力；oracle 缺口按条文和冻结向量
 明确登记，不把 OER/XER 基础编码器冒充独立 COER/CXER 规范 oracle。
+
+第 6 批验收：Release 472/472、ASan+UBSan 506/506、原 C++ 7×12 语法 84/84；
+39 个 C11 单/组合/三形态消费者、72 组独立 asn1tools 互解及离线双输入回放，
+原 whole-RRC/asn1c 回归保留。已同步 docs 和项目 skill。
+E-XER UNTAGGED、文本 typed-open 等边界明确 Unsupported，符合本批支持范围约定；
+不声明全标准值域或 Clang 门禁通过。详见 [第 6 批证据](cgen-batch6-validation.md)。
 
 ### 第 7 批：工程门禁、安装与完成验收
 

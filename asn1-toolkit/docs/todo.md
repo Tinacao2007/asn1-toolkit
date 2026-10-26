@@ -263,8 +263,8 @@ oracle 路径）。P1-3 是把这些 oracle 从"综合构造 per_golden"扩到"�
 
 详细执行清单见 [纯 C11 后端 TODO](c-codegen-todo.md)：7 批、CGEN-01～24，包含模块内源文件分片。各批状态以该清单及对应验收记录为准，未勾选项不代表已实现。
 
-当前 Phase49 已有纯 C11 公共头、原语实现、生成类型/生命周期和已声明 PER/TLV
-PDU profile，并有真实 RRC UPER+BER 独立差分；其余 codec 家族仍待后续批次。生产目标是 `asn1_c_runtime`（`asn1::c_runtime`），不链接 C++ 标准库。
+当前 Phase49 已有纯 C11 公共头、原语实现、生成类型/生命周期和 12 入口的已声明
+PDU profile，并有真实 RRC UPER+BER 与 OER/JER/XER 独立差分。生产目标是 `asn1_c_runtime`（`asn1::c_runtime`），不链接 C++ 标准库。
 C++17 使用项目 `Span` 与 `Result<T>`；C 使用 `asn1_status_t`（0 成功，其他为已登记
 错误）和 out 参数，业务失败不使用异常，也不是进程全局 errno。
 
@@ -272,9 +272,9 @@ C++17 使用项目 `Span` 与 `Result<T>`；C 使用 `asn1_status_t`（0 成功�
 |---|---|---|
 | 1/2 C11 头与 runtime | 已落地；具体原语边界见 [声明登记](c-runtime-test-coverage.md) | C11/C++17 独立头、纯 C 链接、失败/资源边界、PER 两 Variant 与独立 oracle |
 | 规划前置（REV-27） | 最小 `codegen/plan.hpp` 已建立并接入 C++ PER/整数检查；C 后端已消费共享规划 | [共享规划](emission-planning.md)；PDU 证据另见 CGEN 第 4/5 批 |
-| 3 C emitter | 已实现类型/生命周期及声明的 PER/TLV profile；其他 codec 待续 | 生成 C11 多 TU 编译链接、状态传播、所有权和真实编解码 |
-| 4 CLI/dispatch | CGEN-03: `--lang cpp|c`, C-only prefix, conflicts and unified dispatch implemented; supported C PER/TLV generation enabled; unsupported profiles reject | [Batch 1 evidence](cgen-batch1-validation.md); current wire evidence: [batch 5](cgen-batch5-validation.md) |
-| 5/6 C fixture 门禁 | 支持 profile 已有三形态、分片和 RRC PDU；最终 12 入口矩阵仍未完成 | 7 fixture ×12 入口能力登记、生成 C 的编译/链接/运行；不能用手写 smoke 替代 |
+| 3 C emitter | 已实现类型/生命周期及 12 入口的声明 profile；第 7 批最终工程验收待续 | 生成 C11 多 TU 编译链接、状态传播、所有权和真实编解码 |
+| 4 CLI/dispatch | CGEN-03: `--lang cpp|c`, C-only prefix, conflicts and unified dispatch implemented; all twelve C entries enabled in declared profiles; unsupported profiles reject | [Batch 1 evidence](cgen-batch1-validation.md); current wire evidence: [batch 6](cgen-batch6-validation.md) |
+| 5/6 C fixture 门禁 | 支持 profile 已有三形态、分片和 RRC PDU；12 入口三形态运行矩阵已过；最终 7 fixture×12 语法矩阵待第 7 批 | 7 fixture ×12 入口能力登记、生成 C 的编译/链接/运行；不能用手写 smoke 替代 |
 | 7 oracle 复用 | PER 冻结向量及 RRC UPER/BER live asn1c 已有；完整矩阵待续 | 字节与双向互解，工具无覆盖时登记条文证据和局限 |
 | 8/9/10 集成收尾 | 后续每步同步 | Release + ASan+UBSan 全量、各形态 ODR、文档/安装、P1-3 独立运行 |
 

@@ -38,13 +38,11 @@ with tempfile.TemporaryDirectory(prefix="cgen-batch1-") as tmp:
             assert '"types_only":false' in manifest and '"codec_mask":' in manifest
             assert "encode_uper" in (output / "generated.h").read_text() if codec in ("uper", "per", "uper,aper") else True
             assert "encode_aper" in (output / "generated.h").read_text() if codec in ("aper", "per", "uper,aper") else True
-    codecs = "oer coer jer jeri xer cxer exer".split()
-    for codec in codecs:
+    for codec in "oer coer jer jeri xer cxer exer".split():
         for shape in ([], ["--emit-inline"], ["--emit-split"]):
-            output = root / "unsupported_" / codec / ("inline" if shape and shape[0]=='--emit-inline' else "split" if shape else "out")
-            result = run(["--lang", "c", "--c-prefix", "sample", "--codec", codec, *shape], output, False)
-            assert "supports --types-only" in result.stderr
-            assert not output.exists()
+            output = root / "family6" / codec / ("inline" if shape and shape[0]=='--emit-inline' else "split" if shape else "out")
+            run(["--lang", "c", "--c-prefix", "sample", "--codec", codec, *shape], output, True)
+            assert "encode_" + codec in (output / "generated.h").read_text()
     # Language switching publishes one owned artifact set and retires the old one.
     output = root / "cpp"
     run([], output, True)
@@ -60,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix="cgen-batch1-") as tmp:
         run(["--no-emit-cache", "--codec", "uper,ber", *flags], a, True)
         run(["--lang", "cpp", "--no-emit-cache", "--codec", "uper,ber", *flags], b, True)
         assert snapshot(a) == snapshot(b)
-print("C emits supported PER/TLV subsets and rejects unsupported rules; C++ artifacts/cache preserved")
+print("C emits supported PER/TLV subsets and supports all twelve entries in the declared value profile; C++ artifacts/cache preserved")
 
 # Compare the actual encoded results of all twelve entries across three shapes.
 outputs = [subprocess.run([driver], check=True, capture_output=True).stdout

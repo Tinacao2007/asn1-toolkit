@@ -20,7 +20,7 @@
     out-param rather than bit_io. The C standard library gives us
     snprintf for INTEGER formatting and memcpy for raw-string copy.
 
-    Sub-task 1 = interface skeleton only.
+    Legacy bounded text helpers; full JSON parsing uses text_tree.h and generated JER/JERI uses schema_codec.h.
 
     Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/

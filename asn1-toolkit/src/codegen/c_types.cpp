@@ -64,6 +64,10 @@ std::string c_string(const std::string& text) {
   }
   return out.str()+'"';
 }
+const std::vector<std::pair<const char*,CodecKind>>& extra_entries() {
+  static const std::vector<std::pair<const char*,CodecKind>> entries={{"oer",CodecKind::Oer},{"coer",CodecKind::Coer},{"jer",CodecKind::Jer},{"jeri",CodecKind::Jeri},{"xer",CodecKind::Xer},{"cxer",CodecKind::Cxer},{"exer",CodecKind::Exer}};
+  return entries;
+}
 class Types {
  public:
   const Model& model;
@@ -74,7 +78,10 @@ class Types {
   bool c_uper = false;
   bool c_aper = false;
   bool c_ber = false, c_der = false, c_cer = false;
-  bool c_tlv() const { return c_ber || c_der || c_cer; }
+  CodecKind c_extra_mask=CodecKind::None;
+  bool c_extra(CodecKind codec) const { return static_cast<unsigned>(c_extra_mask&codec)!=0; }
+  bool c_extra() const { return c_extra_mask!=CodecKind::None; }
+  bool c_schema() const { return c_ber || c_der || c_cer || c_extra(); }
   std::string linkage(bool helper = false) const {
     return inline_functions ? "static inline " : helper && !external_helpers ? "static " : "";
   }
@@ -435,7 +442,8 @@ class Types {
     for (const auto& item : names) {
       const auto& n=item.second;
       const auto& t=model.arena.get(item.first);
-      if(c_tlv()) s << linkage(true) << "const asn1_tlv_schema_t* " << n << "_tlv_schema(void);\n";
+      if(c_extra()) s << linkage(true) << "const asn1_codec_schema_t* " << n << "_codec_schema(void);\n";
+      if(c_schema()) s << linkage(true) << "const asn1_tlv_schema_t* " << n << "_tlv_schema(void);\n";
       s << linkage(true) << "asn1_status_t " << n << "_copy_at(const " << n << "*, " << n << "*, size_t);\n"
         << linkage(true) << "asn1_status_t " << n << "_defaults_at(" << n << "*, size_t);\n";
       for (const auto* variant : {"uper", "aper"}) {
@@ -1033,9 +1041,37 @@ class Types {
         for(const auto& field:*fields) if(field.table_constraint) emit_selector_decoder(id,field,variant,s);
     }
   }
+  bool c_json_nullable(TypeId id,std::size_t depth=0,bool unwrapped=false) const {
+    if(depth>=256)return true;const auto& t=model.arena.get(id);unwrapped=unwrapped||t.jer.unwrapped;
+    if(t.kind==TypeKind::Referenced)return c_json_nullable(t.referenced.resolved,depth+1,unwrapped);
+    if(t.kind==TypeKind::Null||(t.kind==TypeKind::ObjectClassField&&t.object_class_field.open_type))return true;
+    if(t.kind==TypeKind::Choice&&unwrapped){if(t.choice.extensible)return true;for(const auto& field:members(t))if(c_json_nullable(field.field->type,depth+1))return true;}
+    return false;
+  }
+  const Type& c_resolved(TypeId id) const {
+    for(std::size_t depth=0;depth<256;++depth){const auto& t=model.arena.get(id);if(t.kind!=TypeKind::Referenced)return t;id=t.referenced.resolved;}
+    return model.arena.get(id);
+  }
   bool c_tlv_supported(TypeId id,std::set<TypeId>& seen) const {
     if(!seen.insert(id).second)return true;
     const auto& t=model.arena.get(id);bool ok=true;
+    if(c_extra(CodecKind::Exer)&&t.exer.untagged){diag.error({},"Unsupported C E-XER UNTAGGED instruction: "+name(id));ok=false;}
+    const bool json=c_extra(CodecKind::Jer)||c_extra(CodecKind::Jeri);
+    const bool xml=c_extra(CodecKind::Xer)||c_extra(CodecKind::Cxer)||c_extra(CodecKind::Exer);
+    if(json&&((t.jer.base64&&c_resolved(id).kind!=TypeKind::OctetString)||(t.jer.unwrapped&&c_resolved(id).kind!=TypeKind::Choice))){diag.error({},"Unsupported C JER instruction/type combination: "+name(id));ok=false;}
+    if(json&&t.jer.text_form!=JerEncoding::TextForm::AsIs&&c_resolved(id).kind!=TypeKind::Enumerated){diag.error({},"Unsupported C JER TEXT instruction scope: "+name(id));ok=false;}
+    if(json&&c_resolved(id).kind==TypeKind::Enumerated&&(t.kind==TypeKind::Enumerated||t.jer.text_form!=JerEncoding::TextForm::AsIs)){
+      const auto& enumeration=c_resolved(id).enumerated;std::set<std::string> names;
+      for(const auto* entries:{&enumeration.root,&enumeration.extensions})for(const auto& entry:*entries)
+        if(!names.insert(instruction_name(entry.name,static_cast<unsigned>(t.jer.text_form),t.jer.text_literal)).second){diag.error({},"C JER TEXT produces duplicate enumeration names: "+name(id));ok=false;}
+    }
+    if(json&&t.jer.array){const auto& shape=c_resolved(id);if(shape.kind!=TypeKind::Sequence){diag.error({},"Unsupported C JER ARRAY requires SEQUENCE: "+name(id));ok=false;}
+      else for(const auto& field:members(shape))if((field.field->presence!=Presence::Mandatory||field.extension)&&c_json_nullable(field.field->type)){diag.error({},"Unsupported C JER ARRAY nullable optional/extension component: "+field.field->name);ok=false;}}
+    if(json&&t.jer.object){const auto& shape=c_resolved(id);bool valid=shape.kind==TypeKind::SetOf;
+      if(valid){const auto& entry=c_resolved(shape.set_of.element);const auto fields=members(entry);valid=entry.kind==TypeKind::Sequence&&fields.size()==2;
+        if(valid){for(const auto& field:fields)if(field.field->presence!=Presence::Mandatory||field.extension)valid=false;const auto& key=c_resolved(fields[0].field->type);valid=valid&&(key.kind==TypeKind::String||key.kind==TypeKind::Enumerated);}}
+      if(!valid){diag.error({},"Unsupported C JER OBJECT requires SET OF two mandatory components with string/enumeration key: "+name(id));ok=false;}}
+    if((json||xml)&&t.kind==TypeKind::ObjectClassField&&t.object_class_field.open_type){diag.error({},"Unsupported C text codec typed open-type schema: "+name(id));ok=false;}
     switch(t.kind) {
       case TypeKind::Boolean:case TypeKind::Integer:case TypeKind::Enumerated:
       case TypeKind::Null:break;
@@ -1048,7 +1084,16 @@ class Types {
       case TypeKind::ObjectClassField:if(!t.object_class_field.open_type)ok=c_tlv_supported(t.object_class_field.fixed_type,seen);break;
       case TypeKind::SequenceOf:case TypeKind::SetOf:ok=c_tlv_supported(t.kind==TypeKind::SequenceOf?t.sequence_of.element:t.set_of.element,seen);break;
       case TypeKind::Sequence:case TypeKind::Set:case TypeKind::Choice:
+        if(json||c_extra(CodecKind::Exer)){std::set<std::string> names;for(const auto& member:members(t))if(!names.insert(instruction_name(member.field->name,static_cast<unsigned>(member.field->jer_name_form),member.field->jer_name_literal)).second){diag.error({},"C NAME produces duplicate component names: "+name(id));ok=false;}}
         for(const auto& m:members(t)) {
+          if(c_extra(CodecKind::Exer)&&m.field->exer.untagged){diag.error({},"Unsupported C E-XER UNTAGGED field: "+m.field->name);ok=false;}
+          if(c_extra(CodecKind::Exer)){
+            const auto xml_name=instruction_name(m.field->name,static_cast<unsigned>(m.field->jer_name_form),m.field->jer_name_literal);
+            const auto start=[](unsigned char c){return (c>='A'&&c<='Z')||(c>='a'&&c<='z')||c=='_';};
+            bool valid=!xml_name.empty()&&start(static_cast<unsigned char>(xml_name.front()));
+            for(unsigned char c:xml_name)valid=valid&&(start(c)||(c>='0'&&c<='9')||c=='-'||c=='.');
+            if(!valid){diag.error({},"Unsupported C E-XER NAME outside ASCII XML-name profile: "+m.field->name);ok=false;}
+          }
           if(m.field->presence==Presence::Default && per_default_test(*m.field,"value").empty())ok=false;
           if(!c_tlv_supported(m.field->type,seen))ok=false;
         }break;
@@ -1095,6 +1140,17 @@ class Types {
     }
     s << "return ASN1_OK;}\n";
   }
+  std::vector<planning::EmissionFieldPlan> layout_fields(const Type& t) const {
+    auto fields=planning::fields(t);
+    if(t.kind==TypeKind::Sequence){
+      // BER declaration order: first root, extension additions, trailing root.
+      fields.clear();const auto planned=planning::fields(t);
+      for(const auto* list:{&t.sequence.root})for(const auto& f:*list)for(const auto& p:planned)if(p.field==&f)fields.push_back(p);
+      for(const auto& group:t.sequence.extension_groups)for(const auto& f:group.fields)for(const auto& p:planned)if(p.field==&f)fields.push_back(p);
+      for(const auto& f:t.sequence.trailing_root)for(const auto& p:planned)if(p.field==&f)fields.push_back(p);
+    }
+    return fields;
+  }
   void emit_tlv_schema(TypeId id,std::ostream& s) const {
     const auto& t=model.arena.get(id);const auto n=name(id);std::string kind="",element="NULL";
     unsigned universal=0;std::string value_offset="0",data_offset="0",count_offset="0",capacity_offset="0";
@@ -1125,14 +1181,7 @@ class Types {
     if(octets(t)||collection||t.kind==TypeKind::ObjectIdentifier||t.kind==TypeKind::RelativeOid){data_offset=offset("data");count_offset=offset("count");capacity_offset=offset("capacity");}
     if(dep!=kInvalidType)element=name(dep)+"_tlv_schema";
     const bool alias=kind=="ALIAS";
-    auto fields=planning::fields(t);
-    if(t.kind==TypeKind::Sequence){
-      // BER declaration order: first root, extension additions, trailing root.
-      fields.clear();const auto planned=planning::fields(t);
-      for(const auto* list:{&t.sequence.root})for(const auto& f:*list)for(const auto& p:planned)if(p.field==&f)fields.push_back(p);
-      for(const auto& group:t.sequence.extension_groups)for(const auto& f:group.fields)for(const auto& p:planned)if(p.field==&f)fields.push_back(p);
-      for(const auto& f:t.sequence.trailing_root)for(const auto& p:planned)if(p.field==&f)fields.push_back(p);
-    }
+    const auto fields=layout_fields(t);
     s << linkage(true) << "void " << n << "_tlv_init(void* v) { " << n << "_init((" << n << "*)v); }\n"
       << linkage(true) << "void " << n << "_tlv_clear(void* v) { " << n << "_free((" << n << "*)v); }\n";
     emit_tlv_validation(id,s);
@@ -1173,12 +1222,88 @@ class Types {
         << linkage() << "asn1_status_t " << n << "_decode_" << codec << "(asn1_byte_reader_t* r," << n << "* value) { return asn1_tlv_schema_decode(r," << policy << ',' << n << "_tlv_schema(),value); }\n";
     }
   }
+  std::string instruction_name(std::string text,unsigned form,const std::string& value) const {
+    if(form==4)return value;
+    for(std::size_t i=0;i<text.size();++i){char& c=text[i];
+      if((form==2||(form==1&&i==0))&&c>='a'&&c<='z')c=static_cast<char>(c-'a'+'A');
+      if(form==3&&c>='A'&&c<='Z')c=static_cast<char>(c-'A'+'a');
+    }return text;
+  }
+  unsigned xml_flags(const ExerEncoding& e) const {
+    return (e.attribute?256u:0u)|(e.base64?512u:0u)|(e.text?1024u:0u)|(e.use_number?2048u:0u)|
+      (e.list?4096u:0u)|(e.untagged?8192u:0u)|(e.use_nil?16384u:0u);
+  }
+  void emit_codec_schema(TypeId id,std::ostream& s) const {
+    const auto& t=model.arena.get(id);const auto n=name(id);const auto fields=layout_fields(t);
+    TypeId element=kInvalidType;
+    if(t.kind==TypeKind::Referenced)element=t.referenced.resolved;
+    else if(t.kind==TypeKind::ObjectClassField&&!t.object_class_field.open_type)element=t.object_class_field.fixed_type;
+    else if(t.kind==TypeKind::SequenceOf)element=t.sequence_of.element;
+    else if(t.kind==TypeKind::SetOf)element=t.set_of.element;
+    unsigned width=0;bool unsigned_form=false;
+    if(t.kind==TypeKind::Integer&&!t.integer.constraint.extensible){const auto& c=t.integer.constraint;
+      unsigned_form=c.lower&&!c.lower->negative;
+      if(c.lower&&c.upper){
+        if(unsigned_form){const auto& digits=c.upper->digits;
+          if(digits.size()<20||(digits.size()==20&&digits<="18446744073709551615")){
+            if(c.upper->as_i64&&*c.upper->as_i64<=255)width=1;
+            else if(c.upper->as_i64&&*c.upper->as_i64<=65535)width=2;
+            else if(c.upper->as_i64&&*c.upper->as_i64<=4294967295LL)width=4;
+            else width=8;
+          }
+        }else if(c.lower->as_i64&&c.upper->as_i64){const auto lo=*c.lower->as_i64,hi=*c.upper->as_i64;
+          width=lo>=-128&&hi<=127?1:lo>=-32768&&hi<=32767?2:lo>=(-2147483647LL-1)&&hi<=2147483647LL?4:8;
+        }
+      }
+    }
+    std::string fixed="SIZE_MAX";const auto* size=t.kind==TypeKind::String?&t.string.size:planning::storage_size(t);
+    if(size&&!size->extensible&&size->lower&&size->upper&&size->lower->as_i64&&size->upper->as_i64&&*size->lower==*size->upper)
+      fixed="UINT64_C("+std::to_string(*size->lower->as_i64)+")";
+    unsigned flags=xml_flags(t.exer)|(t.jer.array?1u:0u)|(t.jer.base64?2u:0u)|(t.jer.object?4u:0u)|(t.jer.unwrapped?8u:0u);
+    s << linkage(true) << "const asn1_codec_schema_t* " << n << "_codec_schema(void) {\n";
+    if(!fields.empty()){
+      s << "static const asn1_codec_field_t fields[]={\n";
+      for(const auto& plan:fields){const auto& f=*plan.field;const bool tag=f.tag.cls!=TagClass::Universal||f.tag.number!=0;
+        s << '{' << name(f.type) << "_codec_schema," << c_string(f.name) << ','
+          << c_string(instruction_name(f.name,static_cast<unsigned>(f.jer_name_form),f.jer_name_literal)) << ','
+          << (plan.extension_group?std::to_string(*plan.extension_group):"SIZE_MAX") << ',' << plan.nested_sequence << ','
+          << (f.presence==Presence::Optional) << ',' << xml_flags(f.exer) << ',' << tlv_tag(f.tag,tag) << "},\n";
+      }s << "};\n";
+    }
+    std::size_t enum_count=0;
+    const auto& enum_type=c_resolved(id);
+    if(enum_type.kind==TypeKind::Enumerated&&(t.kind==TypeKind::Enumerated||t.jer.text_form!=JerEncoding::TextForm::AsIs)){enum_count=enum_type.enumerated.root.size()+enum_type.enumerated.extensions.size();
+      if(enum_count){s << "static const asn1_codec_enum_t enumerators[]={\n";
+        for(const auto* list:{&enum_type.enumerated.root,&enum_type.enumerated.extensions})for(const auto& e:*list)
+          s << '{' << literal(*e.value.as_i64) << ',' << c_string(instruction_name(e.name,static_cast<unsigned>(t.jer.text_form),t.jer.text_literal)) << ',' << c_string(e.name) << "},\n";
+        s << "};\n";
+      }
+    }
+    std::size_t root_count=0,group_count=0;
+    if(t.kind==TypeKind::Sequence||t.kind==TypeKind::Set){const auto& seq=per_sequence(t);const auto roots=planning::oer_root_fields(model,seq,t.kind==TypeKind::Set);root_count=roots.size();group_count=seq.extension_groups.size();
+      if(root_count){s << "static const size_t root_order[]={";for(const auto* f:roots){for(std::size_t i=0;i<fields.size();++i)if(fields[i].field==f)s << i << ',';}s << "};\n";}
+    }
+    const auto& shape=c_resolved(id);
+    const char* builtin=shape.kind==TypeKind::Boolean?"BOOLEAN":shape.kind==TypeKind::Integer?"INTEGER":shape.kind==TypeKind::Null?"NULL":shape.kind==TypeKind::Real?"REAL":shape.kind==TypeKind::Enumerated?"ENUMERATED":shape.kind==TypeKind::BitString?"BIT_STRING":shape.kind==TypeKind::OctetString?"OCTET_STRING":shape.kind==TypeKind::ObjectIdentifier?"OBJECT_IDENTIFIER":shape.kind==TypeKind::RelativeOid?"RELATIVE_OID":shape.kind==TypeKind::Sequence?"SEQUENCE":shape.kind==TypeKind::Set?"SET":shape.kind==TypeKind::Choice?"CHOICE":shape.kind==TypeKind::SequenceOf?"SEQUENCE_OF":shape.kind==TypeKind::SetOf?"SET_OF":"Type";
+    if(shape.kind==TypeKind::String)builtin=shape.string.kind==StringKind::IA5String?"IA5String":shape.string.kind==StringKind::NumericString?"NumericString":shape.string.kind==StringKind::PrintableString?"PrintableString":shape.string.kind==StringKind::VisibleString?"VisibleString":"UTF8String";
+    const auto xml_name=!t.name.empty()?t.name:t.kind==TypeKind::Referenced&&!t.referenced.name.empty()?t.referenced.name:std::string(builtin);
+    s << "static const asn1_codec_schema_t schema={" << n << "_tlv_schema," << c_string(xml_name) << ','
+      << (element==kInvalidType?"NULL":name(element)+"_codec_schema") << ',' << (fields.empty()?"NULL":"fields") << ','
+      << (enum_count?"enumerators":"NULL") << ',' << enum_count << ",{ " << width << ',' << unsigned_form << "}," << fixed << ',' << flags << ','
+      << (root_count?"root_order":"NULL") << ',' << root_count << ',' << group_count << ',' << static_cast<unsigned>(t.real.ieee_form) << "};return &schema;}\n";
+    for(const auto& entry:extra_entries())if(c_extra(entry.second)){
+      std::string policy=entry.first;for(char& c:policy)if(c>='a'&&c<='z')c=static_cast<char>(c-'a'+'A');
+      s << linkage() << "asn1_status_t " << n << "_encode_" << entry.first << "(asn1_byte_writer_t* w,const " << n << "* value){return asn1_schema_encode(w,ASN1_CODEC_" << policy << ',' << n << "_codec_schema(),value);}\n"
+        << linkage() << "asn1_status_t " << n << "_decode_" << entry.first << "(asn1_byte_reader_t* r," << n << "* value){return asn1_schema_decode(r,ASN1_CODEC_" << policy << ',' << n << "_codec_schema(),value);}\n";
+    }
+  }
   void header(std::ostream& h) const {
   h << (c_uper||c_aper?"/* Generated C11 types and supported PER codecs. */\n":"/* Generated C11 types only; no codec implementation. */\n") << "#ifndef " << prefix << "_types_h\n#define " << prefix
     << "_types_h\n#define " << prefix << "_GENERATED_ABI_VERSION 2\n"
     << "#include <asn1/c_runtime/asn1_c_common.h>\n#include <asn1/c_runtime/bit_string.h>\n#include <asn1/c_runtime/limits.h>\n";
   if(c_uper||c_aper) h << "#include <asn1/c_runtime/per.h>\n";
-  if(c_tlv()) h << "#include <asn1/c_runtime/tlv_schema.h>\n#include <stddef.h>\n";
+  if(c_extra()) h << "#include <asn1/c_runtime/schema_codec.h>\n";
+  if(c_schema()) h << "#include <asn1/c_runtime/tlv_schema.h>\n#include <stddef.h>\n";
   h << "#include <stdlib.h>\n#include <string.h>\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n";
   h << "typedef struct { int has_key; const char *decimal_key; uint32_t type_id; } " << prefix << "_selector_entry;\n"
     << "typedef struct { const char *name; unsigned tag_class; uint64_t tag_number; int explicit_tag; size_t presence_index,extension_group; int nested_sequence; size_t ordinal; const char *governor; size_t selector_count; const " << prefix << "_selector_entry *entries; } " << prefix << "_field_plan;\n";
@@ -1196,6 +1321,7 @@ class Types {
     if(c_aper) h << linkage() << "asn1_status_t " << n << "_encode_aper(asn1_bit_writer_t*,const " << n << "*);\n" << linkage() << "asn1_status_t " << n << "_decode_aper(asn1_bit_reader_t*," << n << "*);\n";
     for(const auto* codec:{"ber","der","cer"})if((std::string(codec)=="ber"&&c_ber)||(std::string(codec)=="der"&&c_der)||(std::string(codec)=="cer"&&c_cer))
       h << linkage() << "asn1_status_t " << n << "_encode_" << codec << "(asn1_byte_writer_t*,const " << n << "*);\n" << linkage() << "asn1_status_t " << n << "_decode_" << codec << "(asn1_byte_reader_t*," << n << "*);\n";
+    for(const auto& entry:extra_entries())if(c_extra(entry.second))h << linkage() << "asn1_status_t " << n << "_encode_" << entry.first << "(asn1_byte_writer_t*,const " << n << "*);\n" << linkage() << "asn1_status_t " << n << "_decode_" << entry.first << "(asn1_byte_reader_t*," << n << "*);\n";
     if(t.kind==TypeKind::Sequence || t.kind==TypeKind::Set) {
       const auto& seq=per_sequence(t);
       for(const auto* fields:{&seq.root,&seq.trailing_root})
@@ -1213,7 +1339,8 @@ class Types {
     for (auto id : order) {
       if(c_uper) emit_per_codec(id,"uper",h);
       if(c_aper) emit_per_codec(id,"aper",h);
-      if(c_tlv()) emit_tlv_schema(id,h);
+      if(c_schema()) emit_tlv_schema(id,h);
+      if(c_extra()) emit_codec_schema(id,h);
     }
   }
   h << "#ifdef __cplusplus\n}\n#endif\n#endif\n";
@@ -1275,11 +1402,11 @@ class Types {
     if (copy) {
       if (const auto* size = planning::storage_size(t)) {
         const auto plan = planning::constraint(*size);
-        if(t.kind==TypeKind::String && c_tlv()) {
+        if(t.kind==TypeKind::String && c_schema()) {
           const unsigned tag=t.string.kind==StringKind::NumericString?18:t.string.kind==StringKind::PrintableString?19:t.string.kind==StringKind::IA5String?22:t.string.kind==StringKind::VisibleString?26:12;
           s << "size_t size_characters=0; if(src->count>src->capacity || (src->count&&!src->data)) { status=ASN1_ERR_INVALID_ARGUMENT;goto fail; } status=asn1_tlv_string_length(" << tag << ",asn1_byte_view(src->data,src->count),&size_characters);if(status!=ASN1_OK)goto fail;\n";
         }
-        const std::string count = t.kind == TypeKind::String && c_tlv()?"size_characters":t.kind == TypeKind::BitString ? "src->value.bit_length" : "src->count";
+        const std::string count = t.kind == TypeKind::String && c_schema()?"size_characters":t.kind == TypeKind::BitString ? "src->value.bit_length" : "src->count";
         if (size->empty && !size->extensible)
           s << "status = ASN1_ERR_CONSTRAINT_VIOLATION; goto fail;\n";
         else if (plan.requires_membership) {
@@ -1485,10 +1612,10 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
                                                const EmitOptions& opt, Diagnostics& diag) try {
   if (!validate_emit_options(opt,diag)) return {};
   const unsigned requested=static_cast<unsigned>(opt.codec);
-  const unsigned per_mask=static_cast<unsigned>(CodecKind::Uper|CodecKind::Aper|CodecKind::Ber|CodecKind::Der|CodecKind::Cer);
+  const unsigned per_mask=static_cast<unsigned>(CodecKind::Uper|CodecKind::Aper|CodecKind::Ber|CodecKind::Der|CodecKind::Cer|CodecKind::Oer|CodecKind::Coer|CodecKind::Jer|CodecKind::Jeri|CodecKind::Xer|CodecKind::Cxer|CodecKind::Exer);
   if(opt.language!=TargetLanguage::C || (opt.c_types_only && opt.codec!=CodecKind::None) ||
      (!opt.c_types_only && opt.codec==CodecKind::None) || (requested&~per_mask)!=0) {
-    diag.error({},"C artifact rendering requires type-only mode or the supported PER/TLV codec subset"); return {};
+    diag.error({},"C artifact rendering requires type-only mode or a registered codec entry"); return {};
   }
   const auto prefix=opt.c_prefix.empty()?std::string("asn1_gen"):opt.c_prefix;
   // Share the existing model/name/profile preflight, including untouched streams.
@@ -1507,7 +1634,8 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
   types.c_ber=static_cast<unsigned>(opt.codec&CodecKind::Ber)!=0;
   types.c_der=static_cast<unsigned>(opt.codec&CodecKind::Der)!=0;
   types.c_cer=static_cast<unsigned>(opt.codec&CodecKind::Cer)!=0;
-  if(types.c_tlv()) {
+  for(const auto& entry:extra_entries())if(static_cast<unsigned>(opt.codec&entry.second))types.c_extra_mask=types.c_extra_mask|entry.second;
+  if(types.c_schema()) {
     std::set<TypeId> seen;for(auto id:model.exported_types)types.c_tlv_supported(id,seen);
     if(!diag.ok())return {};
   }
@@ -1525,10 +1653,12 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
     if(t.kind==TypeKind::Sequence||t.kind==TypeKind::Set){const auto& sequence=types.per_sequence(t);
       for(const auto* list:{&sequence.root,&sequence.trailing_root})for(const auto& f:*list)if(types.typed_open_field(f))count+=1u+(types.c_uper?2u:0u)+(types.c_aper?2u:0u);
     }
-    if(types.c_tlv()){
+    if(types.c_schema()){
       count+=4u+(types.c_ber?2u:0u)+(types.c_der?2u:0u)+(types.c_cer?2u:0u)+(t.kind==TypeKind::Choice?2u:0u);
       for(const auto& m:members(t))if(m.field->presence==Presence::Default)count+=types.owning_default(*m.field)?2u:1u;
-    }return count;
+    }
+    if(types.c_extra()){++count;for(const auto& entry:extra_entries())if(types.c_extra(entry.second))count+=2u;}
+    return count;
   };
   std::size_t total_functions=0;for(auto id:types.order)total_functions+=function_count(id);
   std::vector<CGeneratedFile> files{{opt.basename+".h",add_generated_allocator_aliases(rewrite_generated_allocations(h.str(),prefix),prefix),types.names.size(),opt.emit_inline?total_functions:0}};
@@ -1594,7 +1724,8 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
         types.body(id,source);types.defaults_body(id,source);types.metadata(id,source);
         if(types.c_uper) types.emit_per_codec(id,"uper",source);
         if(types.c_aper) types.emit_per_codec(id,"aper",source);
-        if(types.c_tlv()) types.emit_tlv_schema(id,source);
+        if(types.c_schema()) types.emit_tlv_schema(id,source);
+        if(types.c_extra()) types.emit_codec_schema(id,source);
       }
       std::size_t functions=0;for(auto id:chunks[i])functions+=function_count(id);
       files.push_back({stem+".c",rewrite_generated_allocations(source.str(),prefix),chunks[i].size(),functions});
