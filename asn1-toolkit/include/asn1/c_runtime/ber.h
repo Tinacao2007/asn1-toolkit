@@ -23,7 +23,7 @@
 
     CGEN batch 5 = shared policy-based TLV runtime.
 
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_BER_H
 #define ASN1_C_BER_H

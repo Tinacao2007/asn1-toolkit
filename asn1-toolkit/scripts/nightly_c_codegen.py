@@ -36,6 +36,14 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def cgen_plan(document):
+    _, start, remaining = document.partition('<a id="cgen-tasks"></a>')
+    plan, end, _ = remaining.partition('<a id="cgen-tasks-end"></a>')
+    if not start or not end:
+        raise RuntimeError('Missing archived CGEN plan boundaries')
+    return plan
+
+
 def task_flags(text):
     matches = TASK_PATTERN.findall(text)
     if [int(number) for _, number in matches] != list(range(1, 25)):
@@ -229,7 +237,8 @@ def gates(linux, batch, folder, baseline):
 
 def agent_prompt(batch, attempt, previous):
     first, last = BATCHES[batch]
-    return f'''Execute ONLY batch {batch} (CGEN-{first:02d}..CGEN-{last:02d}) of docs/c-codegen-todo.md.
+    return f'''Execute ONLY the explicitly assigned archived batch {batch} (CGEN-{first:02d}..CGEN-{last:02d}) in docs/changelog.md, section cgen-tasks.
+The current project TODO is separate; do not change or execute its unrelated tasks.
 Read the project skill docs/skills/asn1-remediation/SKILL.md and applicable AGENTS.md.
 Implement necessary minimal dependencies; do not start later batches or rewrite acceptance criteria.
 Preserve compiler/runtime separation, Result/Diagnostics, pure C11, shared PER Variant, and existing C++ behaviour.
@@ -239,7 +248,7 @@ its launcher/tests, or scripts/validate_codec_matrix.py. Do not execute another 
 Register real, stage-specific CTest acceptance tests named CGenBatch{batch}.* (not dummy tests or wording checks).
 Run stage checks and update corresponding docs and the project skill. Mark only this batch's CGEN checkboxes
 when requirements are fulfilled; leave later batches unchanged. The TODO acceptance text must remain unchanged
-apart from checkboxes; progress summaries before the first task may be updated. Put evidence in a separate doc.
+apart from checkboxes; progress summaries before the first task may be updated. Append batch evidence to docs/changelog.md; do not create another validation document.
 The parent independently runs Release, ASan+UBSan, all existing tests, layering and the 84-entry C++ matrix.
 After edits, return JSON with status=complete only if every assigned task is satisfied; otherwise blocked
 with concrete remaining work. No successful stubs and no pretending unsupported C runtime APIs exist.
@@ -294,7 +303,7 @@ def main():
     state_file = base/'state.json'
     deadline = time.monotonic() + args.max_hours*3600
     with single_runner(base):
-        plan_text = (PROJECT/'docs/c-codegen-todo.md').read_text(encoding='utf-8')
+        plan_text = cgen_plan((PROJECT/'docs/changelog.md').read_text(encoding='utf-8'))
         if args.resume:
             state = json.loads(state_file.read_text(encoding='utf-8'))
             if state['branch'] != branch:
@@ -345,7 +354,7 @@ def main():
                         for name, expected in state['protected'].items():
                             if digest(PROJECT/name) != expected:
                                 raise RuntimeError('Protected runner/gate changed: '+name)
-                        text=(PROJECT/'docs/c-codegen-todo.md').read_text(encoding='utf-8')
+                        text=cgen_plan((PROJECT/'docs/changelog.md').read_text(encoding='utf-8'))
                         if immutable_plan(text) != state['plan']:
                             raise RuntimeError('TODO acceptance criteria were modified')
                         flags=task_flags(text)

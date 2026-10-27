@@ -21,7 +21,7 @@
 **   run can verify they were not hand-edited before trusting the cache.
 **
 ** Specification: asn1cxx CLI (--emit-cache / --no-emit-cache).
-** Design Spec:   asn1-toolkit/docs/todo.md#p2-3
+** Design Spec:   asn1-toolkit/docs/changelog.md#roadmap--p2-3--增量代码生成已落地持续回归
 **                 asn1-toolkit/docs/architecture.md
 ***************************************************************************/
 #pragma once

@@ -18,7 +18,7 @@
     selected per entry. Primitives use oer.h; generated structures use
     schema_codec.h. This legacy family header is not the generated API.
 
-    See docs/cgen-batch6-validation.md for the supported C value profile.
+    See docs/changelog.md for the supported C value profile.
 ***************************************************************************/
 #ifndef ASN1_C_COER_H
 #define ASN1_C_COER_H

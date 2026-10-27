@@ -14,7 +14,7 @@ namespace asn1 { namespace codegen {
 // init/free allocate nothing; reset_defaults materializes owning literals with
 // status and transactional replacement. copy requires initialized output.
 // Metadata type IDs are schema-local, not stable wire or ABI discriminants.
-// See docs/c-generated-abi.md for the experimental subset.
+// See docs/usage-guide.md for the experimental subset.
 void emit_c_types(const ir::Model&, const std::string& prefix,
                   const std::string& header_name, Diagnostics&,
                   std::ostream& header, std::ostream& source);

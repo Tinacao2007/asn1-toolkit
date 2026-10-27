@@ -32,7 +32,7 @@
       - all decode functions return an asn1_status_t (0 = Ok, non-zero =
         the asn1_status_t value). Output values are committed on success;
         composite codec cursors may advance on failure. Lifecycle and
-        buffer exceptions: docs/c-runtime-contracts.md.
+        buffer exceptions: docs/architecture.md.
       - encode functions return bytes-written via `size_t*` out param
         (or, for fixed-size outputs, the buffer pointer).
       - internal BigInt limbs use little-endian magnitude order; this
@@ -45,10 +45,10 @@
     pull in a C++ stdlib symbol or carry a C++ exception personality.
     The pure C11 implementation links without a C++ standard library.
     Primitive and reader coverage is registered in
-    docs/c-runtime-test-coverage.md; this is not a complete C emitter.
+    docs/development.md; this is not a complete C emitter.
     Public structs have no frozen ABI yet. Distinct objects can be used
     concurrently; shared mutable readers/writers need caller synchronization.
-    Ownership and configured resource limits: docs/c-runtime-contracts.md.
+    Ownership and configured resource limits: docs/architecture.md.
 
     Layout of the rest of asn1/c_runtime/:
 
@@ -65,12 +65,12 @@
 
     Implemented primitives live in src/c_runtime. This is not a promise
     of complete codec support. Lifecycle, ownership and failure contracts
-    are documented in docs/c-runtime-contracts.md.
+    are documented in docs/architecture.md.
 
     Specification: ITU-T X.680 / X.681 / X.683 / X.690 / X.691 / X.692 /
                     X.693 / X.694 / X.695 / X.696 (any subset covered by
                     the parallel C++ runtime today).
-    Design Spec:   asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec:   asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_COMMON_H
 #define ASN1_C_COMMON_H

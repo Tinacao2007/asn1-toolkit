@@ -53,7 +53,7 @@
   证据: 链接规则显式声明 (asn1cxx 只链编译链, asn1_codegen 不链运行时,
   generated TU 才链编解码库)。这是 pasn1 (解析器与 BER/UPER 生成器混在
   一个编译器) 被本项目文档明确列为反面教材后确立的规则。
-  价值: 编解码器可独立单测 (Phases 6-10 不等 codegen); 运行时可被
+  价值: 编解码器可独立单测 (Phases 6-10 不等代码生成); 运行时可被
   手写代码直接使用, 不必经过 asn1cxx。
 
 优势 2: 编码规则覆盖最全, 且实现复用而非复制
@@ -74,13 +74,13 @@
   CLASS/对象集/表约束/参数化类型/版本括号/INSTANCE OF/EXTERNAL/
   EMBEDDED PDV/CHARACTER STRING/REAL/BigInt(>64 位) 全部落地;
   Python asn1tools 明确不支持 CLASS/参数化 (其 README 自述);
-  表约束 &Value 开放类型已实现 governor id dispatch + typed 视图
+  表约束 &Value 开放类型已实现控制字段 id dispatch + typed 视图
   (decoded_<field>)。
   价值: RRC/LPP/S1AP 这类依赖 ProtocolIE-Field 的真实协议栈可解析。
 
 优势 5: 字节级金标准差分验证 — 唯一做位布局证明的方案
-  PER/APER: 以 asn1c 为外部 oracle 生成精确字节向量, 54 向量断言;
-  边缘规则 (X.691 19.9 扩展 addition preamble、版本括号组) 按 ITU
+  PER/APER: 以 asn1c 为外部外部对照工具生成精确字节向量, 54 向量断言;
+  边缘规则 (X.691 19.9 扩展 addition 前导位图、版本括号组) 按 ITU
   原版 PDF 裁定, 不信"参考编译器"声誉。
   价值: 自往返一致不能证明位布局正确 (两份实现可以都错得一致);
   金标准向量是 3GPP 互操作的前提。
@@ -91,10 +91,10 @@
   价值: 嵌入式/电信代码库普遍禁用异常, 该模型与目标场景匹配。
 
 优势 7: 电信实战 + 编译门禁
-  RRC Rel-8 / LPP Rel-14 / S1AP Rel-14 全量 fixtures; emit 产物作为
+  RRC Rel-8 / LPP Rel-14 / S1AP Rel-14 全量测试样例; emit 产物作为
   CMake 静态库编译门 (emit 成功 ≠ 可编译, 这是 skill 固化的核心
   纪律); rrc_slice UPER/OER emit + 已知 hex 往返。
-  P0-3 + CER 后: 六 fixture × 12 codec 全量 emit 产物 -fsyntax-only
+  P0-3 + CER 后: 六测试样例 × 12 编码规则全量 emit 产物 -fsyntax-only
   门禁 (每族发射逻辑的产物首次全部经过编译验证)。
 
 优势 8: 零外部依赖
@@ -113,7 +113,7 @@
 --------------------------------------------------------------------------------
 3. 量化现状 (实测, 2026-10-13)
 --------------------------------------------------------------------------------
-指标                              数值
+指标数值
 --------------------------------- ----------------------------------------
 RRC 全模块 emit 耗时              0.425s (EUTRA-RRC-Definitions.asn)
 RRC 生成产物                      1 个 generated.hpp, 33,697 行, 全 inline
@@ -122,7 +122,7 @@ RRC 生成产物                      1 个 generated.hpp, 33,697 行, 全 inlin
 单 TU 语法检查 (-fsyntax-only)    19.3s  ← 实测
 asn1_codegen 库重编译 (改 emit.cpp 后, -j1)  18.9s  ← 实测
 测试                              296 项, Release 6.0s / sanitizer 32.5s
-金标准差分覆盖                    仅 PER/APER (54 向量); 其余 codec 仅自往返
+金标准差分覆盖仅 PER/APER (54 向量); 其余编码规则仅自往返
 
 --------------------------------------------------------------------------------
 4. 问题与优化方案 (按优先级)
@@ -142,10 +142,10 @@ asn1_codegen 库重编译 (改 emit.cpp 后, -j1)  18.9s  ← 实测
   风险: ODR 行为变化 (当前 inline 是每 TU 一份, 改后单一定义);
   CMake 编译门需确认 generated.cpp 真正参与编译 (当前 stub 意味着
   门禁实际在编译 .hpp, 改后需保证门禁仍覆盖 .cpp)。
-  验证: 以 RRC fixture 重测单 TU 编译耗时; 296 测试 + 金标准向量
+  验证: 以 RRC 测试样例重测单 TU 编译耗时; 296 测试 + 金标准向量
   不回归。
 
-  实施结果 (RRC Rel-8 全模块 fixture 实测):
+  实施结果 (RRC Rel-8 全模块测试样例实测):
   - 头文件 33,697 → 5,998 行 (-82%); 定义 (28,847 行) 全部落入
     generated.cpp, 包在生成命名空间内; emit 耗时不变 (0.40s)
   - 消费 TU (-fsyntax-only, 同一会话同机对比):
@@ -166,14 +166,14 @@ asn1_codegen 库重编译 (改 emit.cpp 后, -j1)  18.9s  ← 实测
 [P0-2] emit.cpp 单文件 5,208 行 / 103 成员函数 — 编译与维护瓶颈  ✅ 已完成 (2026-10-14)
   现状证据: 改动 emit.cpp 后单线程重建 asn1_codegen 需 18.9s;
   单文件承载 PER/OER/BER/TLV/JER/XER 全家族的发射逻辑。
-  方案: 按 codec 家族拆为 emit_per.cpp / emit_jer.cpp / emit_xer.cpp /
+  方案: 按编码规则家族拆为 emit_per.cpp / emit_jer.cpp / emit_xer.cpp /
   emit_tlv.cpp / emit_core.cpp (类型声明/工具函数), Emitter 类拆为
-  partial class 或 改为按家族的自由函数组 + 共享上下文结构。
+  partial class 或改为按家族的自由函数组 + 共享上下文结构。
   预期收益: 单家族改动的重编译从 18.9s 降到 ~5s; 并行编译收益;
   评审半径缩小 (JER 改动不再动 PER 代码路径)。
   风险: 成员函数互相引用密集 (inline_type_cpp 等被全家族使用),
   拆分边界需先梳理依赖; 无功能风险。
-  验证: 各 codec round-trip 测试 + fixture 编译门不回归。
+  验证: 各编码规则 round-trip 测试 + 测试样例编译门不回归。
 
   实施结果 (97 个函数全量清点 + 依赖图后):
   - 拆为 7 个文件: emit_internal.hpp (586 行: 共享自由函数声明 +
@@ -198,19 +198,19 @@ asn1_codegen 库重编译 (改 emit.cpp 后, -j1)  18.9s  ← 实测
   - 验证: Release 298/298 + sanitizer 298/298 + RRC 产物字节一致 +
     PER/APER 金标准向量零回归。
 
-[P0-3] 非主 codec 产物从未验证可编译 — 每族发射器各自藏缺陷  ✅ 已完成 (2026-10-14)
-  现状证据: CMake fixture 门禁只链 fixture 的主 codec 库
+[P0-3] 非主编码规则产物从未验证可编译 — 每族发射器各自藏缺陷  ✅ 已完成 (2026-10-14)
+  现状证据: CMake 测试样例门禁只链测试样例的主编码规则库
   (RRC/LPP→uper, S1AP→aper), 即 XER/EXER/CXER/JER/OER/COER/TLV
   组合产物此前由任何门禁验证过。共享辅助 (default_val_cpp 等)
-  的签名改动只会被单 codec 门禁部分覆盖。
-  方案: 对四大 fixture (RRC/LPP/S1AP + 新 tlv_oer_golden) 用全
-  codec 位掩码 emit + g++ -fsyntax-only 逐族收敛错误; 每修一个
+  的签名改动只会被单编码规则门禁部分覆盖。
+  方案: 对四大测试样例 (RRC/LPP/S1AP + 新 tlv_oer_golden) 用全
+  编码规则位掩码 emit + g++ -fsyntax-only 逐族收敛错误; 每修一个
   根因重测。
   预期收益: 每族发射逻辑各有一份概念 bug 副本 (inline .value、
   命名空间字面量、解引用优先级等), 只有该族产物被编译检查才
   暴露; 此前这些缺陷全部潜伏。
   风险: 无功能风险 (纯产物正确性); 修复面横跨 6 个发射文件。
-  验证: 6 fixture × 12 codec 全量 -fsyntax-only 零错误 +
+  验证: 6 测试样例 × 12 编码规则全量 -fsyntax-only 零错误 +
   Release/sanitizer 316/316。
 
   实施结果:
@@ -241,28 +241,28 @@ asn1_codegen 库重编译 (改 emit.cpp 后, -j1)  18.9s  ← 实测
     改为按字段取默认值 (非约束 INTEGER 包 BigInteger::from_i64、
     字符串剥离 lexer 引号); TLV EXPLICIT 同标签编自然 universal
     标签 (X.690 8.5); OER 选择标签无 constructed 位 (X.696 8.7.2)
-  - 新 fixture: tests/fixtures/telecom/tlv_oer_golden.asn
+  - 新测试样例: tests/fixtures/telecom/tlv_oer_golden.asn
     (混合标签/DEFAULT/SET/SET OF/嵌套 CHOICE/扩展) + 8 项往返
     测试 (字节级断言 30 0F 02 01 07 81 01 08 82 02 68 69
     A3 03 01 01 FF; DEFAULT 省略/携带 83 01 63 / 84 03 62 79 65)
-  - 验证: 6 fixture × 12 codec -fsyntax-only 零错误; Release +
+  - 验证: 6 测试样例 × 12 编码规则 -fsyntax-only 零错误; Release +
     sanitizer 316/316, 零 ASan/UBSan
 
-[P1-1] 金标准差分验证从 PER 扩展到其余 codec  ✅ 已完成 (2026-10-15)
-  现状证据(修复前): tests/per/golden 是唯一 oracle 差分; OER/BER/DER/JER/
+[P1-1] 金标准差分验证从 PER 扩展到其余编码规则  ✅ 已完成 (2026-10-15)
+  现状证据(修复前): tests/per/golden 是唯一外部对照工具差分; OER/BER/DER/JER/
   XER 等只有自往返测试 (自一致 ≠ 位布局正确, 见 skill 纪律)。
   方案: `scripts/gen_tlv_golden.py` 以 asn1c (DER 仲裁) + asn1tools
-  (BER/OER 向量源) 为 oracle 生成 16 用例字节向量; 每处分歧按 ITU PDF
+  (BER/OER 向量源) 为外部对照工具生成 16 用例字节向量; 每处分歧按 ITU PDF
   裁定而非按编译器名声: asn1tools 不排序 SET/SET OF (X.690 11.6 要求
   X.680 8.6 标签序/编码八位组串升序) → asn1c `der_encode` 胜出并写回;
   asn1c `oer_encode` 对 SET 值段错误 (已知 bug) → OER 列保留 asn1tools;
   BER 无规范 SET 序 (X.690 8.14) → SET 用例 BER 列记 '-'。
-  收益+风险: OER/BER/DER 获得字节级正确性证明; oracle 偏差裁定工作量
+  收益+风险: OER/BER/DER 获得字节级正确性证明; 外部对照工具偏差裁定工作量
   集中在 DER SET/SET OF 三例与 OER SET 段错误, 未引入 toolkit 回归。
   实施结果+验证: `asn1_tlv_golden_tests` 3 项 (BER/DER/OER) 16 用例全过;
   OER SET 组件暴露并修复定义序 emit——改为 X.696 18.2 规范(标签)序,
-  preamble 位序与解码镜像同一顺序; Release + sanitizer 319/319, 七 fixture
-  × 12 codec 编译门禁零错误, per_golden 向量零回归。
+  前导位图位序与解码镜像同一顺序; Release + sanitizer 319/319, 七测试样例
+  × 12 编码规则编译门禁零错误, per_golden 向量零回归。
 
 [P1-2] 补齐 CER (X.690)  ✅ 已完成 (2026-10-15)
   现状证据(修复前): --codec 无 cer; asn1c 支持 CER (对比文档第 1 节)。
@@ -274,8 +274,8 @@ asn1_codegen 库重编译 (改 emit.cpp 后, -j1)  18.9s  ← 实测
   需按 X.690 实现; 工作量中等。
   实施结果+验证: `src/runtime/cer/codec.cpp` 561 行策略层落地 (9.1
   不定长包装 / 9.2+8.6.4 分片 / 11.2 末八位组清零 / 9.3 SET/SET OF
-  标签序); `cer_golden` fixture + 10 项字节级金标准 (无外部 CER
-  oracle, 由 X.690 条文推导 + DER 值等价交叉验证); 顺带修复全 TLV
+  标签序); `cer_golden` 测试样例 + 10 项字节级金标准 (无外部 CER
+  外部对照工具, 由 X.690 条文推导 + DER 值等价交叉验证); 顺带修复全 TLV
   SET 解码器未打标签 CHOICE 派发; Release + sanitizer 316/316。
 
 [P2-1] bit_io 逐位写路径优化  ✅ 已完成 (2026-10-15)
@@ -303,17 +303,17 @@ asn1_codegen 库重编译 (改 emit.cpp 后, -j1)  18.9s  ← 实测
   - 输出字节逐比特一致: 批量路径与逐位循环同一 MSB-first 语义,
     由 per_golden (UPER/APER 54 向量) + tlv_golden + cer_golden
     金标准零回归证明
-  - 边界处理: put_bits(Span) 快速路径要求 tail <8 bit 时源多一个
+  - 边界处理: put_bits(Span) 快速路径要求 tail <8 位时源多一个
     字节, 否则回退逐位循环 (与旧行为一致, 不越界); put_bitmap 按
     64 位分块打包, 任意长度正确
   - 验证: Release 320/320 (新增 1 项 benchmark) + sanitizer 320/320
-    + 三套金标准向量零回归; 发射器未改动, 全 codec 编译门禁不受影响
+    + 三套金标准向量零回归; 发射器未改动, 全编码规则编译门禁不受影响
 
-[P2-2] 大模块分文件/分命名空间 emit  ⚠️ 部分完成 (2026-10-15; 已知失败: XML 家族单 codec, 按指示暂停修复)
+[P2-2] 大模块分文件/分命名空间 emit  ⚠️ 部分完成 (2026-10-15; 已知失败: XML 家族单编码规则, 按指示暂停修复)
   现状证据: RRC 单头 33,697 行 (即便 P0-1 拆声明后仍可观);
   Phase 40 已有 synthetic nested names 基础; 计划中的 "LPP 多模块"
-  验证对象实为单模块 fixture (LPP-PDU-Definitions 仅 1 个
-  DEFINITIONS, 无 IMPORTS), 真正的多模块 fixture 是 S1AP (6 模块,
+  验证对象实为单模块测试样例 (LPP-PDU-Definitions 仅 1 个
+  DEFINITIONS, 无 IMPORTS), 真正的多模块测试样例是 S1AP (6 模块,
   含跨模块 IMPORTS 与互相递归)。
   方案: --emit-split 按 ASN.1 模块边界生成 <Module>.hpp/.cpp 对 +
   聚合头; 头内类型命名空间与模块名对齐; 跨模块类型引用按
@@ -345,7 +345,7 @@ asn1_codegen 库重编译 (改 emit.cpp 后, -j1)  18.9s  ← 实测
   --codec xer 单独跑复现同样 182 错 (已实测) —— emit_includes 的
   XML 分支未 include <asn1/runtime/byte_io.hpp> (make_error 所在),
   全 12-codec 组合门禁因 oer/tlv/jer/per 分支带入 byte_io.hpp 而
-  掩盖该缺口 (单 codec 选择才暴露)。属既有发射器 include 缺口,
+  掩盖该缺口 (单编码规则选择才暴露)。属既有发射器 include 缺口,
   非 split 引入; 修复方向为 XML 分支补 byte_io.hpp (一行), 按用户
   指示暂停。状态同步记录于 TODO.md 剩余项。
 
@@ -369,22 +369,22 @@ asn1_codegen 库重编译 (改 emit.cpp 后, -j1)  18.9s  ← 实测
 --------------------------------------------------------------------------------
 5. 明确不做的优化 (守住优势)
 --------------------------------------------------------------------------------
-- 不动分层铁律: 不为了性能把 codec 算法塞进编译器或让运行时
+- 不动分层铁律: 不为了性能把编码规则算法塞进编译器或让运行时
   依赖 IR (优势 1 的根基);
 - 不引入解释式/反射式运行时: 与 "生成薄编排 + 共享原语" 的
   架构决策冲突, 且牺牲类型安全与性能;
 - 不引入 Boost/multiprecision: 优势 8 的根基;
-- 不把金标准向量换成"信任 oracle": 边缘规则永远按 ITU PDF 裁定。
+- 不把金标准向量换成"信任外部对照工具": 边缘规则永远按 ITU PDF 裁定。
 
 --------------------------------------------------------------------------------
 6. 实施路线建议
 --------------------------------------------------------------------------------
 第 1 步 (本周): P0-1 生成代码 out-of-line (收益最大, 风险可控),
-  以 RRC fixture 做前后编译耗时对比 + 全量 296 测试守门;
+  以 RRC 测试样例做前后编译耗时对比 + 全量 296 测试守门;
   同步更新 CMake 门禁确保 generated.cpp 真正被编译。✅ 已完成 2026-10-14
-第 2 步: P0-2 emit.cpp 按 codec 家族拆分 (先画依赖图再动手)。✅ 已完成 2026-10-14
-第 2.5 步: P0-3 全 codec 产物编译门禁 (非主 codec 产物从未验证可编译,
-  每族发射器各藏缺陷; 以 12 codec 全量 -fsyntax-only 门禁驱动修复)。
+第 2 步: P0-2 emit.cpp 按编码规则家族拆分 (先画依赖图再动手)。✅ 已完成 2026-10-14
+第 2.5 步: P0-3 全编码规则产物编译门禁 (非主编码规则产物从未验证可编译,
+  每族发射器各藏缺陷; 以 12 编码规则全量 -fsyntax-only 门禁驱动修复)。
   ✅ 已完成 2026-10-14
 第 3 步: P1-1 OER/BER/DER 金标准扩展 (正确性投资, 服务 3GPP R17+
   OER 方向)。
@@ -393,10 +393,10 @@ asn1_codegen 库重编译 (改 emit.cpp 后, -j1)  18.9s  ← 实测
   320/320 双门禁 + 三套金标准零回归)。
 后续: P1-2 CER ✅ 已完成 2026-10-15、P2-2 分文件 emit ⚠️ 部分完成
   2026-10-15 (LPP/S1AP 上 uper/aper/coer/ber/der/oer/jer 全通过;
-  XML 家族单 codec 既有 include 缺口暴露, 按指示暂停修复并记录)、
+  XML 家族单编码规则既有 include 缺口暴露, 按指示暂停修复并记录)、
   P2-3 增量生成按需排期。
 
 每步验证口径统一: ctest 320/320 (Release + sanitizer) + 受影响
-fixture 的产物 g++ -fsyntax-only 0 error (全 codec 位掩码, 见 P0-3)
+测试样例的产物 g++ -fsyntax-only 0 error (全编码规则位掩码, 见 P0-3)
 + 金标准向量零回归。
 ================================================================================

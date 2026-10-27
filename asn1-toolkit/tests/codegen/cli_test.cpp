@@ -451,7 +451,7 @@ TEST(Cli, SplitEmitCacheSecondRunHits) {
 
 // P3-1: byte-equality gate between serial (--parallel 0) and parallel
 // (--parallel 16) runs on the LPP 3GPP fixture. This is the headline
-// reproducibility check listed in docs/todo.md (P3-1 sub-task 8).
+// reproducibility check listed in docs/development.md (P3-1 sub-task 8).
 TEST(Cli, ParallelModeProducesByteIdenticalOutput) {
   const fs::path asn =
       fs::absolute(fs::path(ASN1_EXAMPLES_DIR).parent_path() / "tests/fixtures/telecom/lpp_14_3_0/LPP-PDU-Definitions.asn");

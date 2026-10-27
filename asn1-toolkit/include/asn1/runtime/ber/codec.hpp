@@ -331,7 +331,7 @@ Result<std::vector<std::uint64_t>> decode_relative_oid(
 /// REAL (X.690): binary base-2 encoding of host `double`; empty content = 0;
 /// specials 0x40/+INF, 0x41/-INF, 0x42/NaN, 0x43/-0. Decode requires exact
 /// binary64 representation; base 8/16 and wide exponents are Unsupported.
-/// Decimal NR forms use a bounded exact subset; see docs/real-and-string-profile.md.
+/// Decimal NR forms use a bounded exact subset; see docs/status.md.
 /**
  *  Function    : encode_real_content
  *  Description : Performs encode real content (declaration).

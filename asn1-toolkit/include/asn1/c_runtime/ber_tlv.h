@@ -18,7 +18,7 @@
     C11 port of asn1::ber::tlv_tag / tlv_length helpers. Sub-task 1
     declares the surface; sub-task 2 fills the bodies.
 
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_BER_TLV_H
 #define ASN1_C_BER_TLV_H

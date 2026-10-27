@@ -18,7 +18,7 @@
     Only the documented instruction profile is opened; unsupported
     instructions diagnose before publication, including UNTAGGED.
 
-    See docs/cgen-batch6-validation.md for the supported C value profile.
+    See docs/changelog.md for the supported C value profile.
 ***************************************************************************/
 #ifndef ASN1_C_EXER_H
 #define ASN1_C_EXER_H

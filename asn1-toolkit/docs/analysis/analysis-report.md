@@ -25,16 +25,16 @@
 2. 目录结构与文件统计
 --------------------------------------------------------------------------------
 顶层 (12 项): .gitignore, CMakeLists.txt, README.md, docs/ARCHITECTURE.md
-  include/ (44), src/ (24), tests/ (24 测试源 + fixtures), examples/ (4 .asn)
+  include/ (44), src/ (24), tests/ (24 测试源 + 测试样例), examples/ (4 .asn)
   scripts/ (2 .py), tools/ (1 目录含 main.cpp)
 
 模块分布:
-  include/asn1/  - 接口 (common, support, ast, frontend, ir, constraints, codegen, runtime/*)
-  src/            - 对应实现 (无 codec 混入 ast/ir)
+  include/asn1/  - 接口 (common, support, ast, frontend, ir, constraints, 代码生成, runtime/*)
+  src/            - 对应实现 (无编码规则混入 ast/ir)
   tools/asn1cxx/  - 编译器驱动 main.cpp
   tests/          - 按编码规则分目录 (aper, ber, coer, cxer, der, exer, jer, jeri,
-                    oer, per, uper, codegen, common, constraints, lexer, parser,
-                    semantic, telecom, runtime)
+                    oer, per, uper, 代码生成, common, constraints, lexer, parser,
+                    semantic, telecom, 运行时)
   examples/       - person.asn, smoke.asn, ioc.asn, phase12.asn
   fixtures/telecom/ - 3GPP RRC(8.6.0), LPP(14.3.0), S1AP(14.4.0), rrc_slice
 
@@ -53,7 +53,7 @@
     asn1_runtime -> byte_io, bit_io, bigint
     asn1_ber / der / per / oer / coer / xer / cxer / exer / jer / jeri
     asn1_codegen -> emit_core, emit_per, emit_oer, emit_tlv, emit_jer, emit_xer
-- 链接规则严格分离: asn1cxx 不链接 runtime; codegen 不链接 runtime; runtime 无 ast/ir 头文件
+- 链接规则严格分离: asn1cxx 不链接运行时; 代码生成不链接运行时; 运行时无 ast/ir 头文件
 - 测试: option ASN1_BUILD_TESTS ON
 
 --------------------------------------------------------------------------------
@@ -65,7 +65,7 @@
 关键设计:
   - 手写递归下降解析器 (非 Flex/Bison/ANTLR)
   - AST=语法, IR=语义; 编解码永不遍历 AST
-  - 编解码算法集中 runtime; codegen 只生成调用原语的薄层
+  - 编解码算法集中运行时; 代码生成只生成调用原语的薄层
   - UPER/APER 共享同一 PER 实现 (Variant::Unaligned/Aligned)
   - DER = 规范 BER (最短长度、规范 SET 顺序)
   - 无 Boost、无外部多精度; INTEGER>64bit 使用内部 BigInteger
@@ -94,8 +94,8 @@ Phase 41 (Review Hardening) 完成 (最新提交 d57dd96):
 --------------------------------------------------------------------------------
 7. 测试覆盖
 --------------------------------------------------------------------------------
-测试类型: 单元 (每编码规则)、往返 (encode/decode)、电信 fixtures
-电信 fixtures (3GPP): RRC Rel-8 / LPP Rel-14 / S1AP Rel-14 / RRC slice
+测试类型: 单元 (每编码规则)、往返 (encode/decode)、电信测试样例
+电信测试样例 (3GPP): RRC Rel-8 / LPP Rel-14 / S1AP Rel-14 / RRC slice
 测试二进制: asn1_telecom_tests, asn1_telecom_roundtrip_tests, asn1_codegen_roundtrip_tests
 注意: 不声称完整 3GPP 编解码对等; 仅编译/发射/往返验证
 
@@ -132,7 +132,7 @@ Phase 41 (Review Hardening) 完成 (最新提交 d57dd96):
 --------------------------------------------------------------------------------
 - 构建规范 (CMake 3.16+, C++17 严格)
 - 模块分离清晰 (编译器链、运行时、生成器互不混合)
-- 测试覆盖全面 (每编码规则独立目录 + 电信 fixtures)
+- 测试覆盖全面 (每编码规则独立目录 + 电信测试样例)
 - 文档完整 (README + ARCHITECTURE.md + 每源文件头 + 自动维护脚本)
 - 版本控制: 分支干净, 提交历史清晰 (d57dd96 涉及表约束专门化)
 
@@ -140,7 +140,7 @@ Phase 41 (Review Hardening) 完成 (最新提交 d57dd96):
 13. 结论
 --------------------------------------------------------------------------------
 asn1-toolkit 是成熟、结构严谨的 C++17 ASN.1 编译器与编解码运行时。
-Phase 41 已完成核心规则、代码生成、电信 fixture 发射、对象类重解析、
+Phase 41 已完成核心规则、代码生成、电信测试样例发射、对象类重解析、
 约束强化、长度上限等硬化。后续工作 (表约束开放类型、完整 3GPP 对等 CI)
 已在文档明确标注。代码库已进入 PROCODEC 商业化阶段。
 

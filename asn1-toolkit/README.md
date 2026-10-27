@@ -1,35 +1,37 @@
 # asn1-toolkit
 
 C++17 ASN.1 编译器与编解码运行时：将 ASN.1 规范（X.680 系列）编译为 C++17 / C11 值类型与
-编解码代码，并提供 12 个产品 codec 入口及运行时原语库。JERI 是项目的 JER 指令入口，
+编解码代码，并提供 12 个产品编码规则入口及运行时原语库。JERI 是项目的 JER 指令入口，
 与 JER 共享 X.697 线路语法；12 个入口不表示 12 种独立标准线路格式。
 
-| 项目    | 值                                                                                                                                                                                     |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 当前阶段 | Phase 49 — C11 12 入口的已声明 profile、三形态/模块内分片可用；整份 RRC 的 C UPER+BER PDU 已通过 asn1c 对验，完整标准值域仍有明确限制。见 [状态](docs/status.md) |
-| 测试状态 | MSVC Release **476/476**；GCC ASan+UBSan **512/512**；GCC/Clang C 各 **84/84**，原 C++ **84/84**。见 [第 7 批记录](docs/cgen-batch7-validation.md) |
-| 编码入口  | BER / DER / CER / UPER / APER / OER / COER / XER / CXER / E-XER / JER / JERI                                                                                                          |
-| 语言/构建 | C++17（GCC / Clang；MSVC 本地可用）+ CMake 3.16+                                                                                                                                             |
-| 依赖    | 零第三方运行时依赖（BigInt 自研，无 Boost、无 multiprecision）                                                                                                                                         |
+| 项目    | 值                                                                                                                                                   |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 当前阶段  | Phase 49 — C11 12 入口的已声明支持范围、三形态/模块内分片可用；整份 RRC 的 C UPER+BER PDU 已通过 asn1c 对验，完整标准值域仍有明确限制。见 [状态](docs/status.md)                                   |
+| 测试状态  | MSVC Release **476/476**；GCC ASan+UBSan **512/512**；GCC/Clang C 各 **84/84**，原 C++ **84/84**。见 [第 7 批记录](docs/changelog.md#cgen-validation--batch-7) |
+| 编码入口  | BER / DER / CER / UPER / APER / OER / COER / XER / CXER / E-XER / JER / JERI                                                                        |
+| 语言/构建 | C++17（GCC / Clang；MSVC 本地可用）+ CMake 3.16+                                                                                                           |
+| 依赖    | 零第三方运行时依赖（BigInt 自研，无 Boost、无 multiprecision）                                                                                                       |
 
-显式 `--lang c --types-only` 可生成纯 C11 类型/生命周期及模块内分片；C 的 12 入口在已声明 profile 内可生成真实编解码；限制与证据见 [第 6 批验收](docs/cgen-batch6-validation.md)。
-用法见 [C 输出与集成](docs/c-codegen-output.md)。
+显式 `--lang c --types-only` 可生成纯 C11 类型/生命周期及模块内分片；C 的 12 入口在已声明支持范围内可生成真实编解码；限制与证据见 [第 6 批验收](docs/changelog.md#cgen-validation--batch-6)。
+用法见 [C 输出与集成](docs/usage-guide.md#c-output)。
 
-第 7 批已完成：补齐 named bits、UTCTime、离散 PER 根和已知表约束的 JSON/XML typed open，
-原 C/C++ 矩阵及安装后的 C-only 多文件消费均通过。支持范围与证据见 [第 7 批记录](docs/cgen-batch7-validation.md)。
+第 7 批已完成：补齐命名位串、UTCTime、离散 PER 根和已知表约束的 JSON/XML 类型化开放字段，
+原 C/C++ 矩阵及安装后的纯 C 多文件消费均通过。支持范围与证据见 [第 7 批记录](docs/changelog.md#cgen-validation--batch-7)。
+
+`--lang cpp|c` 选择目标语言，默认 C++；`--c-prefix` 仅用于 C。C 后端在登记的值域/指令范围内支持十二入口，不支持的类型图在发布前诊断。ABI、能力范围及历史验收分别见架构、状态和变更历史。
 
 ## 特性
 
-| 能力         | 说明                                                                                                                         |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------- |
-| 编码入口    | 12 个产品入口（能力边界见 [入口登记](docs/codec-entries.md)）；UPER/APER 共享同一 PER 实现（`Variant::{Unaligned,Aligned}` 参数化，非两份代码）；DER=BER+规范策略、COER=OER+规范策略、CXER=XER+规范策略      |
-| 语法与类型子集    | CLASS / 信息对象 / 表约束开放类型 / 参数化 / 无编号 `[[...]]` / INSTANCE OF / EXTERNAL / EMBEDDED PDV / REAL / >64 位 INTEGER；各层证据、Unsupported 与 oracle 空白见 [标准能力登记](docs/standard-capabilities.md) |
-| 多编码规则组合生成  | `--codec uper,ber` 位掩码组合一次生成多套编解码代码                                                                                        |
-| 字节级金标准差分验证 | PER/APER（asn1c oracle，54 向量）、BER/DER/OER（asn1tools + asn1c oracle，16 用例）、CER（X.690 条文推导 + DER 值等价，10 用例）                   |
-| 三种生成产物形态   | 默认 out-of-line（声明在头、定义在 `.cpp`）、`--emit-inline` 全 inline 单头、`--emit-split` 按 ASN.1 模块分文件                                   |
-| 编译门禁       | 7 个 fixture × 12 codec 全量 emit 产物 `-fsyntax-only` 零错误（emit 成功 ≠ 可编译）                                                       |
-| 无异常错误模型    | 业务错误用 `Result<T>` / 编译诊断（仅 `std::bad_alloc` 可传播）；源范围与线路偏移单位见 [错误契约](docs/cpp-error-contracts.md)                                                           |
-| 严格分层       | 编译器链（lexer/parser/IR/codegen）不链接运行时；运行时不包含 AST/IR 头；生成产物是唯一桥梁（inline 模式为生成 `.hpp` / `.h`）                                                       |
+| 能力         | 说明                                                                                                                                                                                     |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 编码入口       | 12 个产品入口（能力边界见 [入口登记](docs/architecture.md#codec-entries)）；UPER/APER 共享同一 PER 实现（`Variant::{Unaligned,Aligned}` 参数化，非两份代码）；DER=BER+规范策略、COER=OER+规范策略、CXER=XER+规范策略                    |
+| 语法与类型子集    | CLASS / 信息对象 / 表约束开放类型 / 参数化 / 无编号 `[[...]]` / INSTANCE OF / EXTERNAL / EMBEDDED PDV / REAL / >64 位 INTEGER；各层证据、Unsupported 与外部对照工具空白见 [标准能力登记](docs/status.md#standard-capabilities) |
+| 多编码规则组合生成  | `--codec uper,ber` 位掩码组合一次生成多套编解码代码                                                                                                                                                    |
+| 字节级金标准差分验证 | PER/APER（asn1c 外部对照工具，54 向量）、BER/DER/OER（asn1tools + asn1c 外部对照工具，16 用例）、CER（X.690 条文推导 + DER 值等价，10 用例）                                                                               |
+| 三种生成产物形态   | 默认 out-of-line（声明在头、定义在 `.cpp`）、`--emit-inline` 全 inline 单头、`--emit-split` 按 ASN.1 模块分文件                                                                                               |
+| 编译门禁       | 7 个测试样例 × 12 编码规则全量 emit 产物 `-fsyntax-only` 零错误（emit 成功 ≠ 可编译）                                                                                                                         |
+| 无异常错误模型    | 业务错误用 `Result<T>` / 编译诊断（仅 `std::bad_alloc` 可传播）；源范围与线路偏移单位见 [错误契约](docs/architecture.md#cpp-error-contracts)                                                                          |
+| 严格分层       | 编译器链（lexer/parser/IR/codegen）不链接运行时；运行时不包含 AST/IR 头；生成产物是唯一桥梁（inline 模式为生成 `.hpp` / `.h`）                                                                                              |
 
 ## 环境要求
 
@@ -92,8 +94,9 @@ asn1-toolkit/
 | [docs/architecture.md](docs/architecture.md) | 架构设计：流水线、分层铁律、目录与 CMake 目标、编解码抽象    |
 | [docs/usage-guide.md](docs/usage-guide.md)   | 使用指南：构建、CLI 参考、产物形态、集成指引            |
 | [docs/development.md](docs/development.md)   | 开发指南：代码规范、测试体系、验证门禁纪律、文档同步约定        |
+| [docs/todo.md](docs/todo.md)                 | 当前待办：标准、电信、验证、工程及发布的未完成事项与验收条件      |
 | [docs/status.md](docs/status.md)             | 项目状态：构建/门禁/金标准验证结果、剩余工作、已知限制        |
-| [docs/changelog.md](docs/changelog.md)       | 变更历史：Phase 1–45 里程碑与近期变更详录          |
+| [docs/changelog.md](docs/changelog.md)       | 变更历史：阶段里程碑、近期变更与 REV/CGEN 验收        |
 | [docs/comparison.md](docs/comparison.md)     | 横向对比：asn1c / Python asn1tools / 本方案 |
 | [docs/analysis/](docs/analysis/README.md)    | 历史分析归档（快照，仅供追溯）                     |
 
@@ -107,8 +110,3 @@ asn1-toolkit/
 
 TBD —— 计划开源，许可证文件将在项目发布时补齐（源码文件头已标注 PROCODEC 版权
 2026–2031，由 `scripts/add_file_headers.py` 自动维护）。
-
-CGEN batch 1 adds `--lang cpp|c` (default cpp) and C-only `--c-prefix`.
-C emission now supports all twelve entries in the declared value/instruction profile. Unsupported graphs fail before publication.
-See [C ABI design](docs/c-generated-abi.md), [runtime gap audit](docs/c-runtime-codegen-gaps.md)
-and [stage evidence](docs/cgen-batch1-validation.md).

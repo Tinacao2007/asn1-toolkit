@@ -20,7 +20,7 @@
     alignments (X.691 11.5.7); the C port mirrors that with an aper_
     prefix on each per_ primitive that needs the aligned form.
 
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_APER_H
 #define ASN1_C_APER_H

@@ -87,9 +87,9 @@ asn1c 为传统编译器，本项目不依赖其代码
 编解码覆盖         BER/DER/PER/OER/COER/         Python: 同名但功能受限 (无 CLASS,
                    XER/CXER/EXER/JER/JERI      无参数化, WITH COMPONENT 忽略)
 编译器架构         AST/IR/codegen 严格分离      pasn1: 解析器与生成器混合 (反面)
-代码生成           多编码规则、生成 .cpp        Python: 仅 OER/UPER C 生成 (有限)
-对象类/信息对象     支持 (parser_ioc, ast/ioc)    Python: CLASS 不支持
-电信 fixtures      RRC/LPP/S1AP 完整 fixtures    无 (Python 仅有小型测试)
+代码生成多编码规则、生成 .cpp        Python: 仅 OER/UPER C 生成 (有限)
+对象类/信息对象支持 (parser_ioc, ast/ioc)    Python: CLASS 不支持
+电信测试样例      RRC/LPP/S1AP 完整测试样例无 (Python 仅有小型测试)
 版权/状态           PROCODEC 商业化 (2026)       pasn1: 同源 Procodec; Python: 开源
 测试               CTest + GoogleTest           Python: 自带测试 (较小规模)
 

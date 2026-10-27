@@ -20,7 +20,7 @@
     the C port surfaces them as #define constants so they can be used
     in static array declarations and preprocessor `#if` checks.
 
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_LIMITS_H
 #define ASN1_C_LIMITS_H

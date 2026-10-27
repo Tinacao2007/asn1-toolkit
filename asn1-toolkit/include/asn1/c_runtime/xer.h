@@ -20,7 +20,7 @@
 
     Legacy bounded text helpers; XML parsing uses text_tree.h and generated XER/CXER/E-XER uses schema_codec.h.
 
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_XER_H
 #define ASN1_C_XER_H

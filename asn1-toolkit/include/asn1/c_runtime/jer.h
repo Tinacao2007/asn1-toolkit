@@ -22,7 +22,7 @@
 
     Legacy bounded text helpers; full JSON parsing uses text_tree.h and generated JER/JERI uses schema_codec.h.
 
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_JER_H
 #define ASN1_C_JER_H
@@ -51,7 +51,7 @@ asn1_status_t asn1_jer_writer_printf(asn1_jer_writer_t* w, const char* fmt, ...)
 /* Borrowed input only; caller maintains its lifetime. init validates
    NULL/length, leaving r unchanged on failure; not a full JSON parser.
    Writer puts/printf retain used and the committed prefix on failure;
-   printf may overwrite the uncommitted tail. See c-runtime-contracts.md. */
+   printf may overwrite the uncommitted tail. See architecture.md. */
 typedef struct {
     const char* data;
     size_t pos;

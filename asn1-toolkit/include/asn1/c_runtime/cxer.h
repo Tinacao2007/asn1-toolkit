@@ -18,7 +18,7 @@
     are enforced by schema_codec.h. ENUMERATED names remain names;
     USE-NUMBER belongs to E-XER instructions, not CXER.
 
-    See docs/cgen-batch6-validation.md for the supported C value profile.
+    See docs/changelog.md for the supported C value profile.
 ***************************************************************************/
 #ifndef ASN1_C_CXER_H
 #define ASN1_C_CXER_H

@@ -20,7 +20,7 @@
 
     OER/COER primitives; generated structures use schema_codec.h.
 
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_OER_H
 #define ASN1_C_OER_H

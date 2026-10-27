@@ -26,7 +26,7 @@
 **     - sha256(): unit vectors match FIPS 180-4
 **
 ** Specification: asn1cxx CLI (--emit-cache / --no-emit-cache).
-** Design Spec:   asn1-toolkit/docs/todo.md#p2-3
+** Design Spec:   asn1-toolkit/docs/changelog.md#roadmap--p2-3--增量代码生成已落地持续回归
 ***************************************************************************/
 #include <asn1/codegen/emit.hpp>
 #include <asn1/codegen/sha256.hpp>

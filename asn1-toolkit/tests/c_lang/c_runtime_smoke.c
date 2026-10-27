@@ -20,7 +20,7 @@
     the C sources in src/c_runtime, so the gate upgrades: link against
     `asn1::c_runtime`, call representative legacy functions with a sample
     input, and check bytes/round-trips. This is not declaration-complete
-    coverage; see docs/c-runtime-test-coverage.md. A failure means a C-runtime
+    coverage; see docs/development.md. A failure means a C-runtime
     body returns an unexpected status or produces bytes that don't
     match the expected wire format.
 
@@ -40,7 +40,7 @@
     failure; the main driver aggregates them and returns the count.
     The CTest wrapper asserts the return code is 0.
 
-    Specification: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Specification: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
     Design Spec:   asn1-toolkit/include/asn1/c_runtime/
 ***************************************************************************/
 

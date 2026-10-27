@@ -18,10 +18,10 @@
     One C11 core parameterized by Unaligned/Aligned. Existing entry points
     wrap UPER; _ex functions explicitly select a variant and constraint.
     This primitive API does not imply that the C emitter or all ASN.1
-    types are implemented. See docs/c-runtime-contracts.md and
-    docs/c-runtime-test-coverage.md for supported paths and verification.
+    types are implemented. See docs/architecture.md and
+    docs/development.md for supported paths and verification.
 
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_PER_H
 #define ASN1_C_PER_H

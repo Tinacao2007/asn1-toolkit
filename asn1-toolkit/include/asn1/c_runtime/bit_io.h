@@ -26,14 +26,14 @@
       - get returns TRUNCATED for insufficient input; allocation failure
         returns OUT_OF_MEMORY, arithmetic overflow LENGTH_OVERFLOW.
       - writer primitives pre-reserve the whole operation; failure does
-        not commit data/bit count. See docs/c-runtime-contracts.md.
+        not commit data/bit count. See docs/architecture.md.
       - put_bitmap writes a presence bitmap given as one byte per bit
         (0/1); packed into octets and written in bulk — the same
         P2-1 fast path the C++ runtime uses.
       - the writer's `take()` equivalent is `asn1_bit_writer_take()`
         returning a malloc'd buffer; caller frees with free().
 
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_BIT_IO_H
 #define ASN1_C_BIT_IO_H

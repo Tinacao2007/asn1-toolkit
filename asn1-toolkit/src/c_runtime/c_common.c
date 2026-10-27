@@ -20,7 +20,7 @@
     the header (sign + limbs + cap) and the lifecycle / arithmetic
     operations live in bigint.c.
 
-    Specification: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Specification: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
     Design Spec:   asn1-toolkit/include/asn1/c_runtime/asn1_c_common.h
 ***************************************************************************/
 

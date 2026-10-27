@@ -21,7 +21,7 @@
     implementation code can write a one-liner early-return without an
     explicit temporary or goto on every decode step.
 
-    Design Spec: asn1-toolkit/docs/todo.md anchor p2-4-c-lang (see
+    Design Spec: asn1-toolkit/docs/development.md anchor p2-4-c-lang (see
     P2-4 sub-task 1 entry)
 ***************************************************************************/
 #ifndef ASN1_C_BYTE_IO_H

@@ -112,14 +112,24 @@ class CommitSafety(unittest.TestCase):
 
 class PlanAndLockSafety(unittest.TestCase):
     def test_later_tasks_and_acceptance_text_remain_distinguishable(self):
-        plan=(ROOT/'docs/c-codegen-todo.md').read_text(encoding='utf-8')
+        plan=nightly.cgen_plan((ROOT/'docs/changelog.md').read_text(encoding='utf-8'))
+        # Exercise a pending task independently of the live completion ledger.
+        plan=plan.replace('- [x] **CGEN-01','- [ ] **CGEN-01',1)
         changed=plan.replace('- [ ] **CGEN-01','- [x] **CGEN-01',1)
         self.assertFalse(nightly.task_flags(plan)[1])
         self.assertTrue(nightly.task_flags(changed)[1])
         self.assertEqual(nightly.immutable_plan(plan),nightly.immutable_plan(changed))
-        self.assertNotEqual(nightly.immutable_plan(plan),nightly.immutable_plan(plan.replace('CGEN-01','CGEN-99',1)))
+        invalid=plan.replace('- [ ] **CGEN-01','- [ ] **CGEN-99',1)
+        self.assertNotEqual(nightly.immutable_plan(plan),nightly.immutable_plan(invalid))
         with self.assertRaises(RuntimeError):
-            nightly.task_flags(plan.replace('CGEN-01','CGEN-99',1))
+            nightly.task_flags(invalid)
+
+    def test_archive_append_does_not_change_acceptance_criteria(self):
+        document=(ROOT/'docs/changelog.md').read_text(encoding='utf-8')
+        plan=nightly.cgen_plan(document)
+        self.assertEqual(plan,nightly.cgen_plan(document+'\nUnrelated later evidence.\n'))
+        with self.assertRaises(RuntimeError):
+            nightly.cgen_plan(document.replace('<a id="cgen-tasks-end"></a>','',1))
 
     def test_second_runner_never_reclaims_existing_lock(self):
         with tempfile.TemporaryDirectory(prefix='asn1-nightly-lock-') as folder:

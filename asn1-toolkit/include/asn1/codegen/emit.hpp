@@ -194,7 +194,7 @@ class CppGenerator {
   /// the same directory. A hash manifest owns this invocation's output set;
   /// obsolete unmodified owned artifacts are removed on successful publication.
   /// Existing unowned files and symlinks are not overwritten. Legacy generated
-  /// banners may be adopted during migration. See docs/generated-artifacts.md.
+  /// banners may be adopted during migration. See docs/architecture.md.
   /// Flat single-namespace emit into a directory: writes
   /// `<options.basename>.hpp` (and `.cpp` when `emit_inline` is false) to
   /// `dir`. Identical to `emit(stream, stream)` when `options.emit_cache`

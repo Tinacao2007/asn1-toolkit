@@ -12,7 +12,7 @@
 **   $Author: tina.cao
 ***************************************************************************/
 /* Legacy ABI: UPER wrappers around the single variant-parameterized core.
- * See per.h and docs/c-runtime-contracts.md for constructor/output contracts. */
+ * See per.h and docs/architecture.md for constructor/output contracts. */
 #include <asn1/c_runtime/per.h>
 
 static asn1_per_length_constraint_t bounded(const asn1_per_size_range_t* c) {

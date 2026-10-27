@@ -18,7 +18,7 @@
     This legacy helper header forwards to JER; generated JER/JERI value
     encode/decode APIs use schema_codec.h and the complete JSON parser.
 
-    See docs/cgen-batch6-validation.md for the supported C value profile.
+    See docs/changelog.md for the supported C value profile.
 ***************************************************************************/
 #ifndef ASN1_C_JERI_H
 #define ASN1_C_JERI_H

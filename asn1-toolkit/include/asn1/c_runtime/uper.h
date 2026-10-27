@@ -19,7 +19,7 @@
     itself a stub forwarding to per/codec.hpp). The C port keeps the
     same pattern: every uper_* function is implemented in per.h.
 
-    Design Spec: asn1-toolkit/docs/todo.md#p2-4--c-语言代码生成器-lang-c
+    Design Spec: asn1-toolkit/docs/changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c
 ***************************************************************************/
 #ifndef ASN1_C_UPER_H
 #define ASN1_C_UPER_H

@@ -27,7 +27,7 @@
         produce byte-identical generated C++ when emitted with the same codec
         and namespace (parallel-vs-serial equivalence gate)
 
-    Specification: asn1-toolkit/docs/todo.md#p3-1
+    Specification: asn1-toolkit/docs/changelog.md#roadmap--p3-1--前端并行分析
     Design Spec:   asn1-toolkit/docs/architecture.md
 ***************************************************************************/
 #include <asn1/frontend/lexer.hpp>
