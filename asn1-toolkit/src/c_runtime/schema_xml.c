@@ -43,8 +43,10 @@ static asn1_status_t scalar(asn1_byte_writer_t* w,asn1_schema_codec_t codec,cons
     case ASN1_TLV_BIGINT:{char* text=NULL;size_t n;TRY(asn1_bigint_to_decimal((const asn1_bigint_t*)(base+l->value_offset),&text,&n));asn1_status_t s=asn1_byte_writer_append(w,asn1_byte_view((const uint8_t*)text,n));free(text);return s;}
     case ASN1_TLV_REAL:{double number=*(const double*)(base+l->value_offset);const char* special=isnan(number)?"NOT-A-NUMBER":isinf(number)?number<0?"MINUS-INFINITY":"PLUS-INFINITY":NULL;
       if(special)return attribute?put(w,special):empty(w,special,codec);return codec==ASN1_CODEC_CXER?canonical_real(w,number):asn1_schema_json_encode(w,t,v,depth+1);}
-    case ASN1_TLV_OCTETS:case ASN1_TLV_OPEN:{asn1_byte_view_t bytes=asn1_byte_view(*(uint8_t*const*)(base+l->data_offset),*(const size_t*)(base+l->count_offset));if(l->universal_tag!=4&&l->kind!=ASN1_TLV_OPEN)return character_string(w,bytes,codec,attribute);return asn1_schema_binary_encode(w,bytes,(flags&ASN1_SCHEMA_XML_BASE64)!=0);}
-    case ASN1_TLV_BITS:{const asn1_bitstring_t* bits=(const asn1_bitstring_t*)(base+l->value_offset);for(size_t i=0;i<bits->bit_length;++i)TRY(put(w,bits->bits[i/8u]&(128u>>(i%8u))?"1":"0"));return ASN1_OK;}
+    case ASN1_TLV_OCTETS:case ASN1_TLV_OPEN:{asn1_byte_view_t bytes=asn1_byte_view(*(uint8_t*const*)(base+l->data_offset),*(const size_t*)(base+l->count_offset));if(l->universal_tag==23&&codec==ASN1_CODEC_CXER){uint8_t canonical[13];TRY(asn1_utctime_normalize(bytes,canonical));return character_string(w,asn1_byte_view(canonical,13),codec,attribute);}if(l->universal_tag!=4&&l->kind!=ASN1_TLV_OPEN)return character_string(w,bytes,codec,attribute);return asn1_schema_binary_encode(w,bytes,(flags&ASN1_SCHEMA_XML_BASE64)!=0);}
+    case ASN1_TLV_BITS:{const asn1_bitstring_t* bits=(const asn1_bitstring_t*)(base+l->value_offset);asn1_bitstring_t normalized={0};
+      if(l->named_length){TRY(asn1_schema_named_bits(l,bits,codec==ASN1_CODEC_CXER,&normalized));bits=&normalized;}
+      asn1_status_t s=ASN1_OK;for(size_t i=0;s==ASN1_OK&&i<bits->bit_length;++i)s=put(w,bits->bits[i/8u]&(128u>>(i%8u))?"1":"0");asn1_bitstring_free(&normalized);return s;}
     case ASN1_TLV_OID:case ASN1_TLV_RELATIVE_OID:{const uint64_t* data=*(uint64_t*const*)(base+l->data_offset);size_t count=*(const size_t*)(base+l->count_offset);for(size_t i=0;i<count;++i){if(i)TRY(put(w,"."));char text[32];int n=snprintf(text,sizeof(text),"%" PRIu64,data[i]);if(n<1||(size_t)n>=sizeof(text))return ASN1_ERR_INVALID_ARGUMENT;TRY(put(w,text));}return ASN1_OK;}
     default:return ASN1_ERR_UNSUPPORTED;
   }
@@ -56,7 +58,9 @@ static asn1_status_t body(asn1_byte_writer_t* w,asn1_schema_codec_t codec,const 
   if(l->kind==ASN1_TLV_ALIAS){const void* child=base+l->value_offset;if(l->indirect)child=*(void*const*)child;asn1_codec_schema_t target=alias_target(t,codec);return child?body(w,codec,&target,child,depth+1,flags):ASN1_ERR_CONSTRAINT_VIOLATION;}
   if(l->kind==ASN1_TLV_SEQUENCE||l->kind==ASN1_TLV_SET){for(size_t i=0;i<l->field_count;++i){const asn1_tlv_field_t* f=l->fields+i;unsigned ff=codec==ASN1_CODEC_EXER?t->fields[i].flags:0;if(ff&ASN1_SCHEMA_ATTRIBUTE)continue;
       if(!asn1_schema_field_present(v,f)&&!(codec==ASN1_CODEC_CXER&&f->is_default)){if(ff&ASN1_SCHEMA_NIL){TRY(put(w,"<"));TRY(put(w,field_name(t,i,codec)));TRY(put(w," xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:nil=\"true\" />"));}continue;}
-      const void* child=asn1_schema_field_value(v,f);if(!child)return ASN1_ERR_CONSTRAINT_VIOLATION;TRY(asn1_schema_xml_encode(w,codec,t->fields[i].type(),child,field_name(t,i,codec),depth+1,ff));}return ASN1_OK;}
+      const void* child=asn1_schema_field_value(v,f);if(!child)return ASN1_ERR_CONSTRAINT_VIOLATION;
+      if(t->fields[i].selection_count){const asn1_codec_selection_t* selected=NULL;TRY(asn1_schema_selected_value(t->fields+i,v,&selected,&child));TRY(put(w,"<"));TRY(put(w,field_name(t,i,codec)));TRY(put(w,">"));TRY(asn1_schema_xml_encode(w,codec,selected->type(),child,selected->xml_name,depth+1,0));TRY(put(w,"</"));TRY(put(w,field_name(t,i,codec)));TRY(put(w,">"));}
+      else TRY(asn1_schema_xml_encode(w,codec,t->fields[i].type(),child,field_name(t,i,codec),depth+1,ff));}return ASN1_OK;}
   if(l->kind==ASN1_TLV_CHOICE){size_t i=l->choice_get(v);if(i>=l->field_count)return ASN1_ERR_CONSTRAINT_VIOLATION;const void* child=asn1_schema_field_value(v,l->fields+i);return child?asn1_schema_xml_encode(w,codec,t->fields[i].type(),child,field_name(t,i,codec),depth+1,codec==ASN1_CODEC_EXER?t->fields[i].flags:0):ASN1_ERR_CONSTRAINT_VIOLATION;}
   if(l->kind==ASN1_TLV_SEQUENCE_OF||l->kind==ASN1_TLV_SET_OF){size_t count=*(const size_t*)(base+l->count_offset);if(count>ASN1_MAX_PDU_ELEMENTS)return ASN1_ERR_RESOURCE_LIMIT;const uint8_t* data=*(uint8_t*const*)(base+l->data_offset);
     if(flags&ASN1_SCHEMA_LIST){for(size_t i=0;i<count;++i){if(i)TRY(put(w," "));asn1_byte_writer_t* token=NULL;TRY(asn1_byte_writer_create(&token));asn1_status_t s=scalar(token,codec,t->element(),data+i*l->element()->size,ASN1_SCHEMA_TEXT|ASN1_SCHEMA_NUMBER,1,depth+1);asn1_byte_view_t bytes=asn1_byte_writer_view(token);
@@ -133,15 +137,20 @@ asn1_status_t asn1_schema_xml_decode(const asn1_text_node_t* n,asn1_schema_codec
   if(depth>=ASN1_MAX_RECURSION_DEPTH)return ASN1_ERR_RESOURCE_LIMIT;const asn1_tlv_schema_t* l=t->layout();uint8_t* base=(uint8_t*)value;unsigned flags=codec==ASN1_CODEC_EXER?t->flags|inherited:0;
   if(l->kind==ASN1_TLV_ALIAS){void* child=base+l->value_offset;if(l->indirect){TRY(asn1_schema_allocate(b,l->element()->size,1,&child));*(void**)(base+l->value_offset)=child;l->element()->init(child);}asn1_codec_schema_t target=alias_target(t,codec);TRY(asn1_schema_xml_decode(n,codec,&target,child,b,depth+1,flags));return l->validate(value);}
   if(l->kind==ASN1_TLV_SEQUENCE||l->kind==ASN1_TLV_SET){
-    if(!space_only(n->text,n->text_size))return ASN1_ERR_INVALID_ARGUMENT;uint8_t* seen=NULL;TRY(asn1_schema_allocate(b,l->field_count,1,(void**)&seen));asn1_status_t s=ASN1_OK;size_t previous=0;int has_previous=0;
+    if(!space_only(n->text,n->text_size))return ASN1_ERR_INVALID_ARGUMENT;uint8_t* seen=NULL;TRY(asn1_schema_allocate(b,l->field_count,1,(void**)&seen));const asn1_text_node_t** deferred=NULL;int has_selections=0;for(size_t i=0;i<l->field_count;++i)has_selections|=t->fields[i].selection_count!=0;asn1_status_t allocation=has_selections?asn1_schema_allocate(b,sizeof(*deferred),l->field_count,(void**)&deferred):ASN1_OK;if(allocation!=ASN1_OK){free(seen);return allocation;}asn1_status_t s=ASN1_OK;size_t previous=0;int has_previous=0;
     for(unsigned attributes=0;attributes<2&&s==ASN1_OK;++attributes)for(const asn1_text_node_t* child=attributes?n->attributes:n->children;child;child=child->next){size_t selected=l->field_count;
       for(size_t i=0;i<l->field_count;++i)if(equals(child->name,child->name_size,field_name(t,i,codec))){selected=i;break;}
       if(selected==l->field_count){if(attributes||!l->extensible)s=ASN1_ERR_TAG_MISMATCH;else if(codec==ASN1_CODEC_CXER)s=ASN1_ERR_UNSUPPORTED;continue;}
       if(!attributes&&l->kind==ASN1_TLV_SEQUENCE){if(has_previous&&selected<previous){s=ASN1_ERR_INVALID_ARGUMENT;break;}previous=selected;has_previous=1;}
-      unsigned f=codec==ASN1_CODEC_EXER?t->fields[selected].flags:0;if(!!(f&ASN1_SCHEMA_ATTRIBUTE)!=(int)attributes||seen[selected]){s=ASN1_ERR_INVALID_ARGUMENT;break;}seen[selected]=1;s=field_decode(child,codec,t,selected,value,b,depth);if(s!=ASN1_OK)break;
+      unsigned f=codec==ASN1_CODEC_EXER?t->fields[selected].flags:0;if(!!(f&ASN1_SCHEMA_ATTRIBUTE)!=(int)attributes||seen[selected]){s=ASN1_ERR_INVALID_ARGUMENT;break;}seen[selected]=1;
+      if(t->fields[selected].selection_count){deferred[selected]=child;const size_t presence=l->fields[selected].presence;if(presence!=SIZE_MAX)*(int*)(base+presence)=1;continue;}
+      s=field_decode(child,codec,t,selected,value,b,depth);if(s!=ASN1_OK)break;
     }
     for(size_t i=0;s==ASN1_OK&&i<l->field_count;++i)if(!seen[i]){const asn1_tlv_field_t* f=l->fields+i;if(codec==ASN1_CODEC_CXER&&f->is_default)s=ASN1_ERR_NON_CANONICAL;else if(f->presence==SIZE_MAX&&!f->is_default)s=ASN1_ERR_CONSTRAINT_VIOLATION;else if(f->default_init){s=asn1_schema_charge(b,f->default_bytes,0);if(s==ASN1_OK)s=f->default_init(value);}}
-    free(seen);if(s!=ASN1_OK)return s;
+    for(size_t i=0;s==ASN1_OK&&i<l->field_count;++i)if(deferred&&deferred[i]){const asn1_text_node_t* node=deferred[i];const asn1_codec_selection_t* selected=NULL;void* dst=NULL;s=asn1_schema_selection(t->fields+i,value,&selected);
+      if(s==ASN1_OK&&(!space_only(node->text,node->text_size)||node->attributes||!node->children||node->children->next||!equals(node->children->name,node->children->name_size,selected->xml_name)))s=ASN1_ERR_TAG_MISMATCH;
+      if(s==ASN1_OK)s=asn1_schema_selected_destination(t->fields+i,value,selected,b,&dst);if(s==ASN1_OK)s=asn1_schema_xml_decode(node->children,codec,selected->type(),dst,b,depth+1,0);}
+    free(deferred);free(seen);if(s!=ASN1_OK)return s;
   }else if(l->kind==ASN1_TLV_CHOICE){if(n->attributes||!space_only(n->text,n->text_size)||!n->children||n->children->next)return ASN1_ERR_INVALID_ARGUMENT;size_t selected=l->field_count;
     for(size_t i=0;i<l->field_count;++i)if(equals(n->children->name,n->children->name_size,field_name(t,i,codec))){selected=i;break;}if(selected==l->field_count)return ASN1_ERR_TAG_MISMATCH;l->choice_set(value,selected);TRY(field_decode(n->children,codec,t,selected,value,b,depth));
   }else if(l->kind==ASN1_TLV_SEQUENCE_OF||l->kind==ASN1_TLV_SET_OF){if(n->attributes)return ASN1_ERR_INVALID_ARGUMENT;size_t count=0;
@@ -153,5 +162,5 @@ asn1_status_t asn1_schema_xml_decode(const asn1_text_node_t* n,asn1_schema_codec
       else{if(compact_item(t->element(),codec)){asn1_text_node_t item=*child,wrapper={0};item.next=NULL;wrapper.kind=ASN1_TEXT_ELEMENT;wrapper.children=&item;TRY(asn1_schema_xml_decode(&wrapper,codec,t->element(),dst,b,depth+1,0));}
         else{if(!equals(child->name,child->name_size,t->element()->name))return ASN1_ERR_TAG_MISMATCH;TRY(asn1_schema_xml_decode(child,codec,t->element(),dst,b,depth+1,0));}child=child->next;}}
   }else TRY(primitive_decode(n,codec,t,value,b,depth,flags));
-  return l->validate(value);
+  TRY(asn1_schema_named_finish(l,value,b));return l->validate(value);
 }

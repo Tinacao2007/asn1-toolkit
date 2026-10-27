@@ -59,7 +59,8 @@ SCC 跨模块时整体归属原始模块名按字节序最小的模块；不会�
 
 ## 清单、CMake 与产物事务
 
-JSON format=1 记录语言、type-only、codec_mask=0、形态/预算、相对源/头集合和单元指标。
+JSON format=1 记录语言、type-only、codec_mask、形态/预算、相对源/头集合和单元指标。
+types-only 时 codec_mask=0；编解码产物记录所选择的入口掩码。
 它是机器可读**当前源集合**。CMake sidecar 声明 `ASN1_GENERATED_SOURCES` 和
 `ASN1_GENERATED_HEADERS`，路径相对 `CMAKE_CURRENT_LIST_DIR` 展开，可用于纯 C 工程：
 
@@ -77,7 +78,9 @@ target_link_libraries(app PRIVATE asn1::c_runtime)
 
 先运行宿主生成器，再配置消费者；schema、模块、形态或预算改变后，重新生成并重新配置。
 不能只 glob 目录内历史 `.c`。此清单不是 depfile，不自动为构建系统声明 ASN.1 输入依赖，
-也不解决跨编译时宿主/目标程序执行区分；完整自动安装/交叉构建集成仍属 CGEN-22。
+也不解决跨编译时宿主/目标程序执行区分。自动集成可使用安装包的
+[`asn1_generate_c`](build-and-package.md)，在配置期执行已构建的宿主工具，读取受控
+清单并登记重配置依赖；不执行目标程序。
 
 复用 REV-25 的同一 stage/backup/manifest 发布逻辑。manifest v1 兼容受限 `.h/.c`
 和两个固定 sidecar 名，继续支持 C++ `.hpp/.cpp`；路径穿越和未知文件名拒绝。

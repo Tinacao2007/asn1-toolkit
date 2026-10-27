@@ -88,3 +88,16 @@ every-allocation failure and constrained-budget tests. OER constraints include
 IEEE binary32/binary64 with precision-loss rejection and mandatory DER REAL
 contents validation even for BASIC-OER. Parser byte offsets are available; full
 generated field paths remain a separate diagnostic extension.
+
+## CGEN batch 7 additions
+
+`per_encode_bigint_root_ex` / `per_decode_bigint_root_ex` share the existing
+Variant core. `CGenBatch7.BigintRoot` pins twelve independent asn1tools vectors
+for both boundaries, outside-root values and positive/negative 2^128, plus
+truncation and a false extension branch. The range-set API covers sparse roots,
+using X.691's root RANGE and exact membership for non-extensible types.
+`CGenBatch7.RemainingFeatures` covers named bits, UTCTime and typed JSON/XML selectors;
+every-allocation failures include partial selected values. `CGenBatch7.OwningDefaults` covers generated INTEGER
+DEFAULTs in twelve entries/three shapes/two TUs. Generated decoder seeds and
+Clang libFuzzer reach the emitted twelve-entry PDU wrappers; this is not exhaustive
+schema coverage. See [current evidence and remaining gaps](cgen-batch7-validation.md).

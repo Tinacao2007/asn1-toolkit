@@ -74,6 +74,7 @@
 ***************************************************************************/
 #ifndef ASN1_C_COMMON_H
 #define ASN1_C_COMMON_H
+#define ASN1_C_RUNTIME_ABI_VERSION 3
 
 #include <stddef.h>
 #include <stdint.h>

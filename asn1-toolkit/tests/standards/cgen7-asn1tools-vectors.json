@@ -1,0 +1,183 @@
+{
+  "oracle": "asn1tools",
+  "version": "0.169.0",
+  "schema_sha256": "33c272d8377f230e28a6373142de3381b5d83f5486d7241b748397cbc42b53df",
+  "cases": [
+    {
+      "codec": "ber",
+      "type": "Named",
+      "index": 0,
+      "wire": "03020780"
+    },
+    {
+      "codec": "ber",
+      "type": "Fixed",
+      "index": 1,
+      "wire": "0303008000"
+    },
+    {
+      "codec": "ber",
+      "type": "Sparse",
+      "index": 3,
+      "wire": "020104"
+    },
+    {
+      "codec": "der",
+      "type": "Named",
+      "index": 4,
+      "wire": "03020780"
+    },
+    {
+      "codec": "der",
+      "type": "Stamp",
+      "index": 6,
+      "wire": "170d3234303130323030333030305a"
+    },
+    {
+      "codec": "der",
+      "type": "Sparse",
+      "index": 7,
+      "wire": "020104"
+    },
+    {
+      "codec": "uper",
+      "type": "Named",
+      "index": 12,
+      "wire": "10"
+    },
+    {
+      "codec": "uper",
+      "type": "Fixed",
+      "index": 13,
+      "wire": "8000"
+    },
+    {
+      "codec": "uper",
+      "type": "Stamp",
+      "index": 14,
+      "wire": "0d64d183160c983066c1830b40"
+    },
+    {
+      "codec": "aper",
+      "type": "Named",
+      "index": 16,
+      "wire": "0080"
+    },
+    {
+      "codec": "aper",
+      "type": "Fixed",
+      "index": 17,
+      "wire": "8000"
+    },
+    {
+      "codec": "aper",
+      "type": "Stamp",
+      "index": 18,
+      "wire": "0d3234303130323030333030305a"
+    },
+    {
+      "codec": "oer",
+      "type": "Named",
+      "index": 20,
+      "wire": "020780"
+    },
+    {
+      "codec": "oer",
+      "type": "Fixed",
+      "index": 21,
+      "wire": "8000"
+    },
+    {
+      "codec": "oer",
+      "type": "Sparse",
+      "index": 23,
+      "wire": "0104"
+    },
+    {
+      "codec": "xer",
+      "type": "Named",
+      "index": 28,
+      "wire": "3c4e616d65643e313c2f4e616d65643e"
+    },
+    {
+      "codec": "xer",
+      "type": "Fixed",
+      "index": 29,
+      "wire": "3c46697865643e313030303030303030303030303030303c2f46697865643e"
+    },
+    {
+      "codec": "xer",
+      "type": "Sparse",
+      "index": 31,
+      "wire": "3c5370617273653e343c2f5370617273653e"
+    },
+    {
+      "codec": "jer",
+      "type": "Named",
+      "index": 40,
+      "wire": "7b2276616c7565223a223830222c226c656e677468223a317d"
+    },
+    {
+      "codec": "jer",
+      "type": "Fixed",
+      "index": 41,
+      "wire": "223830303022"
+    },
+    {
+      "codec": "jer",
+      "type": "Sparse",
+      "index": 43,
+      "wire": "34"
+    }
+  ],
+  "gaps": [
+    "asn1tools does not handle the complete sparse UNION root for PER; live asn1c vectors cover it",
+    "asn1tools DER named-bit encoding does not shorten a fixed-size NamedBitList; standard-derived DER/CER vectors cover it",
+    "No independent COER/CXER/CER encoder or full table-constrained text oracle claimed"
+  ],
+  "oracle_source_sha256": "d0cee52be70394ae6b85699e554ae368085cf9d00ccf6548bedc4ab700d3c30c",
+  "asn1c_sparse_root": {
+    "version": "0.9.29",
+    "executable_sha256": "37a69dd6610573257a464e38252617ae1604d246e8f01298434524c19a2f1fce",
+    "schema": "M DEFINITIONS ::= BEGIN T ::= INTEGER(1..3|8|15,...) END\n",
+    "schema_sha256": "35c0b3510c6da4ff7f2b568d552eabf29206ed917046ab02b73bfc17b11831db",
+    "codec": "uper",
+    "cases": [
+      {
+        "value": 1,
+        "bits": 5,
+        "wire": "00"
+      },
+      {
+        "value": 3,
+        "bits": 5,
+        "wire": "10"
+      },
+      {
+        "value": 4,
+        "bits": 5,
+        "wire": "18"
+      },
+      {
+        "value": 8,
+        "bits": 5,
+        "wire": "38"
+      },
+      {
+        "value": 14,
+        "bits": 5,
+        "wire": "68"
+      },
+      {
+        "value": 15,
+        "bits": 5,
+        "wire": "70"
+      },
+      {
+        "value": 16,
+        "bits": 17,
+        "wire": "808800"
+      }
+    ]
+  }
+}

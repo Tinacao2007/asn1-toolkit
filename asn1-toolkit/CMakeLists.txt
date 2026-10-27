@@ -338,6 +338,7 @@ add_library(asn1_c_runtime STATIC
   src/c_runtime/schema_oer.c
   src/c_runtime/schema_xml.c
   src/c_runtime/value_content.c
+  src/c_runtime/utctime.c
   src/c_runtime/per.c
   src/c_runtime/per_core.c
   src/c_runtime/jer.c
@@ -366,12 +367,18 @@ foreach(_target IN LISTS _asn1_targets)
 endforeach()
 if(ASN1_BUILD_TESTS)
   get_property(_test_targets DIRECTORY tests PROPERTY BUILDSYSTEM_TARGETS)
+  set(_test_executables)
   foreach(_target IN LISTS _test_targets)
     get_target_property(_type ${_target} TYPE)
+    if(_type STREQUAL "EXECUTABLE")
+      list(APPEND _test_executables ${_target})
+    endif()
     if(_type MATCHES "EXECUTABLE|STATIC_LIBRARY|OBJECT_LIBRARY|SHARED_LIBRARY")
       asn1_configure_target(${_target})
     endif()
   endforeach()
+  # All test/consumer executables; the large syntax matrix remains a separate gate.
+  add_custom_target(asn1_test_executables DEPENDS ${_test_executables})
 endif()
 include(cmake/Layering.cmake)
 include(cmake/Install.cmake)

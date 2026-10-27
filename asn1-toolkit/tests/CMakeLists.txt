@@ -28,11 +28,15 @@ foreach(_mode IN ITEMS outline inline split)
     set(_flags --emit-split)
     set(_cpp "${_dir}/Standards.cpp")
   endif()
-  add_custom_command(OUTPUT "${_dir}/generated.hpp" "${_cpp}"
+  add_custom_command(OUTPUT "${_dir}/generation.stamp"
+    BYPRODUCTS "${_dir}/generated.hpp" "${_cpp}"
     COMMAND "${ASN1_GENERATOR}" --no-emit-cache --codec ber,der,cer,uper,aper,oer,coer,xer,cxer,exer,jer,jeri
       ${_flags} --emit-dir "${_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/standards.asn"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${_dir}/generation.stamp"
     DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/standards.asn" VERBATIM)
+  add_custom_target(asn1_standard_${_mode}_generated DEPENDS "${_dir}/generation.stamp")
   add_executable(asn1_standard_${_mode}_tests codegen/standard_generated_test.cpp codegen/standard_second_tu.cpp "${_cpp}")
+  add_dependencies(asn1_standard_${_mode}_tests asn1_standard_${_mode}_generated)
   target_include_directories(asn1_standard_${_mode}_tests PRIVATE "${_dir}")
   target_link_libraries(asn1_standard_${_mode}_tests PRIVATE asn1::per asn1::cer asn1::coer asn1::exer asn1::cxer asn1::jeri GTest::gtest_main)
   if(_mode STREQUAL "split")
@@ -42,6 +46,7 @@ foreach(_mode IN ITEMS outline inline split)
 endforeach()
 add_executable(asn1_standard_oracle_driver codegen/standard_oracle_driver.cpp
   "${CMAKE_CURRENT_BINARY_DIR}/standard_outline/generated.cpp")
+add_dependencies(asn1_standard_oracle_driver asn1_standard_outline_generated)
 target_include_directories(asn1_standard_oracle_driver PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/standard_outline")
 target_link_libraries(asn1_standard_oracle_driver PRIVATE asn1::per asn1::cer asn1::coer asn1::exer asn1::cxer asn1::jeri)
 
@@ -223,11 +228,14 @@ foreach(_cgen5_shape IN ITEMS outline inline split)
   endif()
   set(_cgen5_outputs "${_cgen5_dir}/generated.h" ${_cgen5_source})
   list(REMOVE_DUPLICATES _cgen5_outputs)
-  add_custom_command(OUTPUT ${_cgen5_outputs}
+  add_custom_command(OUTPUT "${_cgen5_dir}/generation.stamp" BYPRODUCTS ${_cgen5_outputs}
     COMMAND "${ASN1_GENERATOR}" --lang c --codec uper,ber,der,cer --c-prefix cgen5 ${_cgen5_flags}
       --emit-dir "${_cgen5_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch5.asn"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${_cgen5_dir}/generation.stamp"
     DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch5.asn" VERBATIM)
+  add_custom_target(asn1_cgen5_${_cgen5_shape}_generated DEPENDS "${_cgen5_dir}/generation.stamp")
   add_executable(asn1_cgen_batch5_${_cgen5_shape}_tests c_lang/cgen_batch5_pdu_test.c ${_cgen5_source})
+  add_dependencies(asn1_cgen_batch5_${_cgen5_shape}_tests asn1_cgen5_${_cgen5_shape}_generated)
   target_include_directories(asn1_cgen_batch5_${_cgen5_shape}_tests PRIVATE "${_cgen5_dir}")
   target_link_libraries(asn1_cgen_batch5_${_cgen5_shape}_tests PRIVATE asn1::c_runtime)
   set_target_properties(asn1_cgen_batch5_${_cgen5_shape}_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
@@ -236,6 +244,7 @@ endforeach()
 add_test(NAME CGenBatch4.PerPrimitiveCore COMMAND asn1_c_per_correctness)
 add_executable(asn1_cgen_batch5_failure_tests c_lang/cgen_batch5_failure_test.c
   "${CMAKE_CURRENT_BINARY_DIR}/cgen5-outline/generated.c" ${_c_runtime_sources})
+add_dependencies(asn1_cgen_batch5_failure_tests asn1_cgen5_outline_generated)
 target_include_directories(asn1_cgen_batch5_failure_tests PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}/cgen5-outline" "${PROJECT_SOURCE_DIR}/include")
 target_compile_definitions(asn1_cgen_batch5_failure_tests PRIVATE ASN1_C_RUNTIME_TEST_ALLOCATOR)
@@ -247,6 +256,7 @@ add_test(NAME CGenBatch5.AllocationFailures COMMAND asn1_cgen_batch5_failure_tes
 
 add_executable(asn1_cgen_batch5_limits_tests c_lang/cgen_batch5_limits_test.c
   "${CMAKE_CURRENT_BINARY_DIR}/cgen5-outline/generated.c" ${_c_runtime_sources})
+add_dependencies(asn1_cgen_batch5_limits_tests asn1_cgen5_outline_generated)
 target_include_directories(asn1_cgen_batch5_limits_tests PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}/cgen5-outline" "${PROJECT_SOURCE_DIR}/include")
 target_compile_definitions(asn1_cgen_batch5_limits_tests PRIVATE
@@ -260,12 +270,16 @@ add_test(NAME CGenBatch5.ResourceLimits COMMAND asn1_cgen_batch5_limits_tests)
 # Actual generated-C PDU consumer: constrained scalars, ENUMERATED, BIT/OCTET
 # STRING, OID, root CHOICE, SEQUENCE OF, SET, DEFAULT/OPTIONAL and UPER+APER.
 set(_cgen4_per_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen4-per")
-add_custom_command(OUTPUT "${_cgen4_per_dir}/generated.h" "${_cgen4_per_dir}/generated.c"
+add_custom_command(OUTPUT "${_cgen4_per_dir}/generation.stamp"
+  BYPRODUCTS "${_cgen4_per_dir}/generated.h" "${_cgen4_per_dir}/generated.c"
   COMMAND "${ASN1_GENERATOR}" --no-emit-cache --lang c --codec uper,aper --c-prefix cgen4
     --emit-dir "${_cgen4_per_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch4_basic.asn"
+  COMMAND "${CMAKE_COMMAND}" -E touch "${_cgen4_per_dir}/generation.stamp"
   DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch4_basic.asn"
   VERBATIM)
+add_custom_target(asn1_cgen4_per_generated DEPENDS "${_cgen4_per_dir}/generation.stamp")
 add_executable(asn1_cgen_batch4_per_tests c_lang/cgen_batch4_per_test.c "${_cgen4_per_dir}/generated.c")
+add_dependencies(asn1_cgen_batch4_per_tests asn1_cgen4_per_generated)
 target_include_directories(asn1_cgen_batch4_per_tests PRIVATE "${_cgen4_per_dir}")
 target_link_libraries(asn1_cgen_batch4_per_tests PRIVATE asn1::c_runtime)
 set_target_properties(asn1_cgen_batch4_per_tests PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
@@ -313,6 +327,7 @@ add_test(NAME CGenBatch4.GeneratedPduSplit COMMAND asn1_cgen_batch4_per_split_te
 # Compile a private fault-injected C runtime copy and generated decoder together.
 add_executable(asn1_cgen_batch4_per_failure_tests
   c_lang/cgen_batch4_per_failure_test.c "${_cgen4_per_dir}/generated.c" ${_c_runtime_sources})
+add_dependencies(asn1_cgen_batch4_per_failure_tests asn1_cgen4_per_generated)
 if(NOT MSVC)
   target_link_libraries(asn1_cgen_batch4_per_failure_tests PRIVATE m)
 endif()
@@ -326,6 +341,7 @@ add_test(NAME CGenBatch4.GeneratedPduAllocationFailure COMMAND asn1_cgen_batch4_
 foreach(_budget_kind IN ITEMS bytes elements)
   add_executable(asn1_cgen_batch4_per_${_budget_kind}_budget_tests
     c_lang/cgen_batch4_per_budget_test.c "${_cgen4_per_dir}/generated.c" ${_c_runtime_sources})
+  add_dependencies(asn1_cgen_batch4_per_${_budget_kind}_budget_tests asn1_cgen4_per_generated)
   target_include_directories(asn1_cgen_batch4_per_${_budget_kind}_budget_tests PRIVATE
     "${_cgen4_per_dir}" "${PROJECT_SOURCE_DIR}/include")
   if(_budget_kind STREQUAL "bytes")
@@ -451,17 +467,21 @@ set(ASN1_PERSON_GEN_ROOT "${CMAKE_CURRENT_BINARY_DIR}/generated_person")
 set(ASN1_PERSON_ASN "${CMAKE_SOURCE_DIR}/examples/person.asn")
 
 set(ASN1_PERSON_GEN_OUTPUTS "")
+set(ASN1_PERSON_GEN_STAMPS "")
 macro(asn1_gen_person codec ns subdir)
   set(_outdir "${ASN1_PERSON_GEN_ROOT}/${subdir}")
   add_custom_command(
-    OUTPUT "${_outdir}/generated.hpp" "${_outdir}/generated.cpp"
+    OUTPUT "${_outdir}/generation.stamp"
+    BYPRODUCTS "${_outdir}/generated.hpp" "${_outdir}/generated.cpp"
     COMMAND "${ASN1_GENERATOR}" --emit-dir "${_outdir}" --codec ${codec} --namespace ${ns}
             "${ASN1_PERSON_ASN}"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${_outdir}/generation.stamp"
     DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${ASN1_PERSON_ASN}"
     COMMENT "Generating ${codec} C++ for examples/person.asn (${ns})"
     VERBATIM
   )
   list(APPEND ASN1_PERSON_GEN_OUTPUTS "${_outdir}/generated.cpp")
+  list(APPEND ASN1_PERSON_GEN_STAMPS "${_outdir}/generation.stamp")
 endmacro()
 
 asn1_gen_person(per asn1_gen_per per)
@@ -470,11 +490,13 @@ asn1_gen_person(coer asn1_gen_coer coer)
 asn1_gen_person(ber asn1_gen_ber ber)
 asn1_gen_person(der asn1_gen_der der)
 asn1_gen_person(jer asn1_gen_jer jer)
+add_custom_target(asn1_person_generated DEPENDS ${ASN1_PERSON_GEN_STAMPS})
 
 add_executable(asn1_codegen_roundtrip_tests
   codegen/person_roundtrip_test.cpp
   ${ASN1_PERSON_GEN_OUTPUTS}
 )
+add_dependencies(asn1_codegen_roundtrip_tests asn1_person_generated)
 target_include_directories(asn1_codegen_roundtrip_tests PRIVATE "${ASN1_PERSON_GEN_ROOT}")
 target_link_libraries(asn1_codegen_roundtrip_tests PRIVATE
   asn1::per asn1::oer asn1::coer asn1::ber asn1::der asn1::jer GTest::gtest_main)
@@ -775,6 +797,7 @@ add_executable(asn1_cross_codec_tests
   codegen/cross_codec_consistency_test.cpp
   ${ASN1_PERSON_GEN_OUTPUTS}
 )
+add_dependencies(asn1_cross_codec_tests asn1_person_generated)
 target_include_directories(asn1_cross_codec_tests PRIVATE "${ASN1_PERSON_GEN_ROOT}")
 target_link_libraries(asn1_cross_codec_tests PRIVATE
   asn1::per asn1::oer asn1::coer asn1::ber asn1::der asn1::jer GTest::gtest_main)
@@ -785,6 +808,7 @@ add_executable(asn1_codec_benchmark_tests
   codegen/codec_benchmark_test.cpp
   ${ASN1_PERSON_GEN_OUTPUTS}
 )
+add_dependencies(asn1_codec_benchmark_tests asn1_person_generated)
 target_include_directories(asn1_codec_benchmark_tests PRIVATE "${ASN1_PERSON_GEN_ROOT}")
 target_link_libraries(asn1_codec_benchmark_tests PRIVATE
   asn1::per asn1::oer asn1::coer asn1::ber asn1::der asn1::jer GTest::gtest_main)
@@ -969,6 +993,11 @@ if(Python3_Interpreter_FOUND)
       --compiler "${ASN1_GENERATOR}" --cxx "${CMAKE_CXX_COMPILER}"
       --output "${CMAKE_CURRENT_BINARY_DIR}/codec_matrix"
     DEPENDS ${ASN1_GENERATOR_DEPENDENCY} USES_TERMINAL VERBATIM)
+  add_custom_target(asn1_c_codec_matrix
+    COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/validate_c_codec_matrix.py"
+      --compiler "${ASN1_GENERATOR}" --cc "${CMAKE_C_COMPILER}"
+      --output "${CMAKE_CURRENT_BINARY_DIR}/c_codec_matrix"
+    DEPENDS ${ASN1_GENERATOR_DEPENDENCY} USES_TERMINAL VERBATIM)
 endif()
 
 # REV-25: a module dependency SCC must be one linked emission unit.
@@ -983,6 +1012,80 @@ target_link_libraries(asn1_split_cycle_tests PRIVATE asn1::per GTest::gtest_main
 gtest_discover_tests(asn1_split_cycle_tests)
 
 # Batch 1 acceptance exercises real CLI failures and existing linked codecs.
+set(_cgen7_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen7-remaining")
+add_custom_command(OUTPUT "${_cgen7_dir}/generation.stamp"
+  BYPRODUCTS "${_cgen7_dir}/generated.c" "${_cgen7_dir}/generated.h" "${_cgen7_dir}/generated_internal.h"
+  COMMAND "${ASN1_GENERATOR}" --lang c --c-prefix c7
+    --codec ber,der,cer,uper,aper,oer,coer,jer,jeri,xer,cxer,exer --emit-dir "${_cgen7_dir}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch7.asn"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/telecom/table_constraint_ie.asn"
+  COMMAND "${CMAKE_COMMAND}" -E touch "${_cgen7_dir}/generation.stamp"
+  DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch7.asn"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/telecom/table_constraint_ie.asn" VERBATIM)
+add_custom_target(asn1_cgen7_remaining_generated DEPENDS "${_cgen7_dir}/generation.stamp")
+add_executable(asn1_cgen_batch7_failure_tests c_lang/cgen_batch7_failure_test.c "${_cgen7_dir}/generated.c" ${_c_runtime_sources})
+add_dependencies(asn1_cgen_batch7_failure_tests asn1_cgen7_remaining_generated)
+target_include_directories(asn1_cgen_batch7_failure_tests PRIVATE "${_cgen7_dir}" "${PROJECT_SOURCE_DIR}/include")
+target_compile_definitions(asn1_cgen_batch7_failure_tests PRIVATE ASN1_C_RUNTIME_TEST_ALLOCATOR)
+if(NOT MSVC)
+  target_link_libraries(asn1_cgen_batch7_failure_tests PRIVATE m)
+endif()
+add_test(NAME CGenBatch7.RemainingAllocationFailures COMMAND asn1_cgen_batch7_failure_tests)
+add_executable(asn1_cgen_batch7_bigint_tests c_lang/cgen_batch7_bigint_test.c)
+target_link_libraries(asn1_cgen_batch7_bigint_tests PRIVATE asn1::c_runtime)
+add_test(NAME CGenBatch7.BigintRoot COMMAND asn1_cgen_batch7_bigint_tests)
+set(_cgen7_fuzz_dir "${CMAKE_CURRENT_BINARY_DIR}/cgen7-fuzz")
+add_custom_command(OUTPUT "${_cgen7_fuzz_dir}/generation.stamp"
+  BYPRODUCTS "${_cgen7_fuzz_dir}/generated.c" "${_cgen7_fuzz_dir}/generated.h"
+  COMMAND "${ASN1_GENERATOR}" --lang c --c-prefix cgen6
+    --codec ber,der,cer,uper,aper,oer,coer,jer,jeri,xer,cxer,exer
+    --emit-dir "${_cgen7_fuzz_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch6.asn"
+  COMMAND "${CMAKE_COMMAND}" -E touch "${_cgen7_fuzz_dir}/generation.stamp"
+  DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cgen_batch6.asn" VERBATIM)
+add_custom_target(asn1_cgen7_fuzz_generated DEPENDS "${_cgen7_fuzz_dir}/generation.stamp")
+add_executable(asn1_cgen_batch7_fuzz_regression fuzz/c_generated_decoder_fuzz.c
+  "${_cgen7_fuzz_dir}/generated.c")
+add_dependencies(asn1_cgen_batch7_fuzz_regression asn1_cgen7_fuzz_generated)
+target_include_directories(asn1_cgen_batch7_fuzz_regression PRIVATE "${_cgen7_fuzz_dir}")
+target_compile_definitions(asn1_cgen_batch7_fuzz_regression PRIVATE ASN1_C_FUZZ_REGRESSION_MAIN)
+target_link_libraries(asn1_cgen_batch7_fuzz_regression PRIVATE asn1::c_runtime)
+add_test(NAME CGenBatch7.GeneratedDecoderSeeds COMMAND asn1_cgen_batch7_fuzz_regression)
+set_tests_properties(CGenBatch7.GeneratedDecoderSeeds PROPERTIES TIMEOUT 90)
+if(ASN1_BUILD_FUZZERS)
+  if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "Generated C libFuzzer requires a Clang C compiler")
+  endif()
+  add_executable(asn1_c_generated_fuzzer fuzz/c_generated_decoder_fuzz.c
+    "${_cgen7_fuzz_dir}/generated.c")
+  add_dependencies(asn1_c_generated_fuzzer asn1_cgen7_fuzz_generated)
+  target_include_directories(asn1_c_generated_fuzzer PRIVATE "${_cgen7_fuzz_dir}")
+  target_compile_options(asn1_c_generated_fuzzer PRIVATE -fsanitize=fuzzer)
+  target_link_options(asn1_c_generated_fuzzer PRIVATE -fsanitize=fuzzer)
+  target_compile_options(asn1_c_runtime PRIVATE -fsanitize=fuzzer-no-link)
+  target_link_options(asn1_c_runtime INTERFACE -fsanitize=fuzzer-no-link)
+  target_link_libraries(asn1_c_generated_fuzzer PRIVATE asn1::c_runtime)
+endif()
+set(_cgen7_san_args)
+if(ASN1_ENABLE_SANITIZERS)
+  list(APPEND _cgen7_san_args --sanitizers)
+endif()
+add_test(NAME CGenBatch7.ConfigurePlan COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch7_plan.py"
+  --cmake "${CMAKE_COMMAND}" --compiler "${ASN1_GENERATOR}" --cc "${CMAKE_C_COMPILER}"
+  --runtime "$<TARGET_FILE:asn1_c_runtime>" --root "${PROJECT_SOURCE_DIR}"
+  --work "${CMAKE_CURRENT_BINARY_DIR}/cgen7-plan" ${_cgen7_san_args})
+if(NOT MSVC)
+  add_test(NAME CGenBatch7.RemainingFeatures COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch7_features.py"
+    --compiler "${ASN1_GENERATOR}" --cc "${CMAKE_C_COMPILER}"
+    --runtime "$<TARGET_FILE:asn1_c_runtime>" --root "${PROJECT_SOURCE_DIR}"
+    --work "${CMAKE_CURRENT_BINARY_DIR}/cgen7-features" ${_cgen7_san_args})
+  add_test(NAME CGenBatch7.OwningDefaults COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch7_values.py"
+    --compiler "${ASN1_GENERATOR}" --cc "${CMAKE_C_COMPILER}"
+    --runtime "$<TARGET_FILE:asn1_c_runtime>" --root "${PROJECT_SOURCE_DIR}"
+    --work "${CMAKE_CURRENT_BINARY_DIR}/cgen7-defaults" ${_cgen7_san_args})
+endif()
 add_test(NAME CGenBatch6.UnsupportedInstructions COMMAND "${Python3_EXECUTABLE}"
   "${CMAKE_CURRENT_SOURCE_DIR}/codegen/cgen_batch6_rejections.py" "${ASN1_GENERATOR}")
 add_test(NAME CGenBatch6.FrozenOracleReplay COMMAND "${Python3_EXECUTABLE}"

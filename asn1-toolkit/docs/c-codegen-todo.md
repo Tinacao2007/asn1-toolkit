@@ -163,27 +163,32 @@ Release 461/461、ASan+UBSan 494/494、原 C++ 7×12 语法矩阵 84/84。
 第 6 批验收：Release 472/472、ASan+UBSan 506/506、原 C++ 7×12 语法 84/84；
 39 个 C11 单/组合/三形态消费者、72 组独立 asn1tools 互解及离线双输入回放，
 原 whole-RRC/asn1c 回归保留。已同步 docs 和项目 skill。
-E-XER UNTAGGED、文本 typed-open 等边界明确 Unsupported，符合本批支持范围约定；
+第 6 批时 E-XER UNTAGGED、文本 typed-open 等边界明确 Unsupported；后者的已知表选择
+路径由第 7 批补齐，前者继续明确拒绝。
 不声明全标准值域或 Clang 门禁通过。详见 [第 6 批证据](cgen-batch6-validation.md)。
 
 ### 第 7 批：工程门禁、安装与完成验收
 
-- [ ] **CGEN-20【重要】最终 C 生成矩阵。** 7 fixture ×12 入口全部生成并独立
+- [x] **CGEN-20【重要】最终 C 生成矩阵。** 7 fixture ×12 入口全部生成并独立
   `-std=c11 -fsyntax-only`；同时保留现有 C++ 7×12 门禁。阶段中未支持的组合登记拒绝，
   不算最终 84/84 成功，也不通过删 fixture/codec 缩减目标。
-- [ ] **CGEN-21【重要】链接/运行/差分矩阵。** 三形态和模块内分片的多 TU；纯 C
+- [x] **CGEN-21【重要】链接/运行/差分矩阵。** 三形态和模块内分片的多 TU；纯 C
   可执行不依赖 C++ 标准库；代表电信 PDU、原语边界、外部 oracle、冻结向量、生成
   decoder fuzz；自有 C/C++ 对比与外部验证分别计数。
-- [ ] **CGEN-22【重要】CMake 与安装消费。** 生成文件名集合变化时采用配置期规划或
+- [x] **CGEN-22【重要】CMake 与安装消费。** 生成文件名集合变化时采用配置期规划或
   受控清单机制，明确新增类型/新模块时如何重配置，不能只依赖构建期 glob。
   安装后 C-only 工程用 SDK 和宿主生成器编译；交叉构建不在宿主执行目标程序。
   扩展分层门禁识别 C 后端，保持 compiler-only/runtime-only 独立构建。
-- [ ] **CGEN-23【重要】最终工具链门禁。** Release 与 ASan+UBSan 全量；GCC/Clang
+- [x] **CGEN-23【重要】最终工具链门禁。** Release 与 ASan+UBSan 全量；GCC/Clang
   严格 C11；MSVC 按真实 C11 支持执行并登记边界。区分 MSVC ASan 与 ASan+UBSan。
   不以构建耗时或测试数量替代覆盖证据。
-- [ ] **CGEN-24【重要】文档与收口。** 同步 README、status、usage、架构、C 契约、
+- [x] **CGEN-24【重要】文档与收口。** 同步 README、status、usage、架构、C 契约、
   生成/runtime 能力表、安装示例、changelog 和项目 skill；记录版本与 ABI/许可边界。
   只有真实 C 生成消费共享规划的验收完成才勾选 REV-27；逐项保留未验证范围。
+
+第 7 批执行记录见 [cgen-batch7-validation.md](cgen-batch7-validation.md)。新增门禁会完整
+记录所有失败组合；LPP named bits/UTCTime、S1AP 非连续 PER 根与已知表选择的 JSON/XML open type 已补齐；
+三套原 84 组合门禁、Release/Sanitizer 全量和安装消费均通过。未知动态类型等范围仍明确登记。
 
 里程碑 M2：12 入口与三形态/模块内分片达到所登记支持范围，最终 C/C++ 门禁和安装
 消费全部通过；仍不等于整部 ASN.1 标准或全部 3GPP 消息得到认证。

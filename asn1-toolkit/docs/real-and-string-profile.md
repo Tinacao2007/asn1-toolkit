@@ -51,3 +51,20 @@ UTCTime、GeneralizedTime。枚举存在说明模型可区分类型，不是 rep
   不能由前端读入一个指令推定 writer/reader 已实现其语义。
 
 需要 repertoire 与规范词法保证时，先为具体类型/规则补独立正反例，再开放相应承诺。
+
+## C11 CGEN7 UTCTime and named bits
+
+The earlier unfinished-time statement is superseded for C11 UTCTime only.
+C11 validates Gregorian days/leap years, hh/mm/ss and +/-hhmm offsets; canonical
+rules emit YYMMDDhhmmssZ. The declared century window is 1950–2049; an offset
+conversion outside that window is rejected. PER uses unconstrained VisibleString
+and canonical UTC lexical form (X.691 10.6.5), not generic octets or visible SIZE.
+OER also ignores UTCTime SIZE constraints (X.696 8.4.4) and retains the length
+determinant; both OER and COER have a SIZE(13) regression case.
+BER/BASIC-OER/BASIC-XER/JSON can preserve valid offset/minute precision spellings.
+GeneralizedTime and the other unsupported character/time profiles are unchanged.
+
+Named-bit encoders select the shortest valid effective SIZE for PER and COER,
+trim all trailing zeros for DER/CER/CXER, and pad fixed-size values where required.
+Decoders return an equivalent value satisfying SIZE, not the original padding.
+Unknown set bits are legal even when not in the NamedBitList (X.680 22.6).

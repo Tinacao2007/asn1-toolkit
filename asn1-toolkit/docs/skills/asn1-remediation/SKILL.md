@@ -331,8 +331,9 @@ budget tests, then full Release/ASan+UBSan and the original C++ 84 syntax gates.
 Use the independent asn1tools exchange separately from self-comparisons. Version
 0.169.0 flattens extension addition groups and cannot validate those group wires;
 retain the explicit oracle gap and standard vectors. Do not claim its OER/XER
-engines are independent COER/CXER canonical oracles. Keep unimplemented UNTAGGED
-and text typed-open graphs as pre-publication Unsupported, never silent BASIC fallbacks.
+engines are independent COER/CXER canonical oracles. Keep unimplemented UNTAGGED graphs as pre-publication Unsupported. Known table-driven
+text typed views are implemented; unknown runtime selectors require explicit
+Unsupported, never a hexadecimal or silent BASIC fallback.
 
 Keep the 72 external frozen inputs and their normalized output replay independent
 from self-roundtrip tests. Constrained REAL must consume the IR IEEE form, reject
@@ -348,3 +349,52 @@ CGEN6 CMake consumers share a stamp-producing generation target and explicit
 dependencies. Cache hits leave source timestamps unchanged, so direct duplicate
 custom commands can re-enter a shared output directory under parallel builds.
 Keep the publication lock; test a cold-stamp parallel build rather than disabling it.
+
+### CGEN7 final acceptance
+
+Use `scripts/validate_c_codec_matrix.py` for the same seven fixtures and twelve
+selectors as the C++ matrix. Rejection is failure, never a successful or skipped
+combination. Keep generation and C11 syntax evidence separate from linked, wire
+and oracle evidence. Run the strict matrix under GCC/Clang; do not register an
+old binary's partial matrix as final after changing the emitter.
+
+Installed C consumption includes `generated-c` (host generator, multiple C TUs,
+module shards, UPER+BER). `asn1_generate_c` plans during configuration, reads the
+source manifest and watches schemas/generator/outputs for reconfiguration. Test
+schema growth and missing-output repair. All imported schemas must be supplied;
+do not hide dependencies behind a build-time glob. Cross guard probes with a
+native compiler verify execution policy only, not an embedded target ABI.
+
+Use `asn1_test_executables` to rebuild every test/consumer executable before full
+CTest; the large C/C++ syntax matrices are separate mandatory gates. Generated C
+decoder fuzz must call emitted wrappers, cover all twelve entries and free live
+values on every outcome. Keep bounded seed regression and optional Clang libFuzzer
+runs distinct. PER finite-root/range BigInt primitives share the Variant core. X.691 13.1 uses
+the RANGE of the extensible root (including holes); non-extensible constraints
+still require exact membership. Keep the independent asn1c sparse-root vectors;
+asn1tools 0.169.0 ignores parts of some UNION roots and is not an oracle for them. Owning INTEGER DEFAULT
+materialization must charge limb allocations and avoid shadowing generated locals.
+
+
+CGEN7 generated/runtime ABI is 3. Rebuild/regenerate all consumers together:
+private runtime storage/codec descriptors changed and empty private object-set
+layouts no longer carry unusable scalar-selector views. Generated headers check
+ASN1_C_RUNTIME_ABI_VERSION, without promising cross-CRT binary compatibility.
+
+Named bits require per-family rules, not an erased preflight guard: DER/CER/CXER
+remove all trailing zeros, PER/COER use the shortest effective SIZE, fixed encodings
+pad as required, and decoded abstract values satisfy SIZE. Charge normalization
+allocations (including geometric bitstring capacity) before allocation. Preserve
+ordinary BIT STRING lengths. UTCTime validates Gregorian dates and offsets;
+PER uses canonical unconstrained VisibleString (X.691 10.6.5), not octets or visible
+SIZE. OER must also ignore UTCTime SIZE (X.696 8.4.4), retaining its length
+determinant; test constrained time under both OER and COER. Keep GeneralizedTime
+and other unsupported profiles distinct.
+
+Typed JSON/XML open fields use generated immutable selector getters/offsets.
+Defer selection until ordinary fields/governors are decoded, preserve JSON member
+order independence, enforce selected type ids, and free partial selected values.
+Use every-allocation tests, unknown-key/type/payload negatives, 21 independent
+frozen wire equalities and asn1c sparse-root vectors; full fixture syntax success
+is not a claim of whole-3GPP wire certification. Keep raw BER/OER content adapters
+and known typed PER/text adapters explicit.

@@ -34,17 +34,19 @@ slice_manifest = json.loads((slice_out / 'generated-sources.json').read_text())
 for name in slice_manifest['sources']:
     run([a.cc, '-std=c11', '-pedantic-errors', '-fsyntax-only', '-I', root / 'include',
          '-I', slice_out, slice_out / name])
-blockers = {}
+resolved_modules = {}
 for name, fixture in [('lpp', 'lpp_14_3_0/LPP-PDU-Definitions.asn'),
                       ('s1ap', 's1ap_14_4_0/s1ap_14_4_0.asn')]:
-    blocked_out = work / (name + '-blocked')
+    blocked_out = work / (name + '-resolved')
     result = subprocess.run(list(map(str, [a.compiler, '--lang', 'c', '--codec', 'uper,ber',
         '--emit-dir', blocked_out, root / 'tests/fixtures/telecom' / fixture])),
         capture_output=True, text=True)
-    assert result.returncode != 0 and 'Unsupported C' in result.stderr, result.stderr
-    assert not (blocked_out / 'generated-sources.json').exists()
-    blockers[name] = result.stderr
-    (work / (name + '-blockers.log')).write_text(result.stderr)
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads((blocked_out / 'generated-sources.json').read_text())
+    for source in manifest['sources']:
+        run([a.cc, '-std=c11', '-pedantic-errors', '-fsyntax-only', '-I', root / 'include',
+             '-I', blocked_out, blocked_out / source])
+    resolved_modules[name] = len(manifest['sources'])
 
 out = work / 'generated'
 run([a.compiler, '--lang', 'c', '--codec', 'uper,ber', '--c-prefix', 'rrc5',
@@ -65,7 +67,7 @@ evidence = {'schema_sha256': hashlib.sha256(schema.read_bytes()).hexdigest(),
             'max_source_bytes': max((out / n).stat().st_size for n in manifest['sources']),
             'compile_run_seconds': round(time.perf_counter() - start, 3), 'vectors': vectors,
             'sanitizers': a.sanitizers, 'rrc_slice_sources': len(slice_manifest['sources']),
-            'blocked_modules': list(blockers), 'oracle': 'not run'}
+            'resolved_modules_syntax': resolved_modules, 'oracle': 'not run'}
 if a.asn1c:
     oracle = work / 'asn1c'
     oracle.mkdir(exist_ok=True)

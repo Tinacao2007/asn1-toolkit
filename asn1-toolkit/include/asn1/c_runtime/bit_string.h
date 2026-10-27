@@ -55,6 +55,10 @@ void asn1_bitstring_free(asn1_bitstring_t* s);
    capacity is zeroed. Failure leaves the object unchanged; returns RESOURCE_LIMIT
    above the configured cap and OUT_OF_MEMORY on allocation failure. */
 asn1_status_t asn1_bitstring_resize(asn1_bitstring_t* s, size_t bit_count);
+/* Validates storage/padding and returns one past the highest set bit. */
+asn1_status_t asn1_bitstring_significant(const asn1_bitstring_t*,size_t*);
+/* New/zero/freed output. Exact zero padding/trimming, no significant bit loss. */
+asn1_status_t asn1_bitstring_normalize(const asn1_bitstring_t*,size_t,asn1_bitstring_t*);
 
 /* TODO sub-task 2: bitstring cmp, NamedBitList view (so the PER / BER
    encoders can read individual named bits), canonical-DER trailing-

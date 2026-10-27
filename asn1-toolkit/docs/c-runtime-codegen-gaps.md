@@ -40,9 +40,9 @@ location and resource requirements. M entries are not currently callable APIs.
 |---|---|---|---|---|---|---|
 | uper | R bool, int64/BigInt, fragments, bits/octets, open bytes, normally-small, ENUMERATED, uint64-arc OID, common REAL and restricted strings; M full string repertoire/profile | R tested root/extension CHOICE, OF, recursive SEQUENCE OF, trailing-root, collection fragmentation, extensible SEQUENCE/SET additions and version groups, opaque and selector-driven typed open payload; M unsupported unknown extension preservation | R unaligned Variant; M complete schema membership/default coverage | R tested generated PDU paths; M broader interop | R bit offset; M field path/first error | R primitive caps/depth and cumulative bytes/count budget; M complete fault matrix |
 | aper | same reusable PER primitives and value families as uper | same schema orchestration using shared Variant; same unsupported structures | R aligned Variant; M complete schema/default checks | R tested aligned PDU cases; M broader interop | R primitive caps; M field path | M aggregate bytes/count budget |
-| ber | R BOOLEAN/NULL/signed INTEGER/ENUMERATED, bits/octet/restricted strings, binary64 REAL, uint64 OID; U time/other string kinds | R recursive SEQUENCE/SET/CHOICE/OF, tags, indefinite/EOC, extensions, opaque TLV open bytes | R BER envelope/value rules | R generated transactional decode; U automatic TLV typed-open view | R reader cursor; M field path | R depth, string/limb caps and cumulative payload bytes/elements |
-| der | R shared BER value profile | R shared structures plus SET/SET OF order | R minimal/definite forms, DEFAULT omission, REAL/tail-bit checks; U time profile | R strict supported-profile decode | R reader cursor; M field path | R shared caps/budgets |
-| cer | R shared BER value profile | R indefinite constructed values and 1000-octet fragments | R SET static-CHOICE order, SET OF, DEFAULT, REAL, fragments/tail bits; U time profile | R strict supported-profile decode | R reader cursor; M field path | R shared caps/budgets |
+| ber | R BOOLEAN/NULL/signed INTEGER/ENUMERATED, bits/octet/restricted strings, binary64 REAL, uint64 OID; R UTCTime; U GeneralizedTime/other string kinds | R recursive SEQUENCE/SET/CHOICE/OF, tags, indefinite/EOC, extensions, opaque TLV open bytes | R BER envelope/value rules | R generated transactional decode; U automatic TLV typed-open view | R reader cursor; M field path | R depth, string/limb caps and cumulative payload bytes/elements |
+| der | R shared BER value profile | R shared structures plus SET/SET OF order | R minimal/definite forms, DEFAULT omission, REAL/tail-bit checks; R UTCTime canonical profile; U GeneralizedTime | R strict supported-profile decode | R reader cursor; M field path | R shared caps/budgets |
+| cer | R shared BER value profile | R indefinite constructed values and 1000-octet fragments | R SET static-CHOICE order, SET OF, DEFAULT, REAL, fragments/tail bits; R UTCTime canonical profile; U GeneralizedTime | R strict supported-profile decode | R reader cursor; M field path | R shared caps/budgets |
 | oer | R exact integer/BigInt, lengths, bool/enum/tag/open, bits/octets, OID, host-double REAL, declared strings | R SEQUENCE/SET/CHOICE/OF and extension groups | R BASIC policy | R transactional generated PDU decode | R byte cursor; M field path | R cumulative value budgets |
 | coer | same C OER values | same structures, SET OF order | R per-entry canonical lengths/integers/BOOLEAN/quantity/defaults | R strict decode | R byte cursor; M field path | R shared OER budgets |
 | jer | R exact integers, UTF-8 escaping, supported value profile | R objects/arrays/choice/OF and supported instructions | R shared X.697 syntax; no canonical JSON claim | R full document parser and structured decode | R parser byte offset; M field path | R tree/value/depth/count/byte budgets |
@@ -97,3 +97,19 @@ See [C artifact contract](c-codegen-output.md) and [batch 4 evidence](cgen-batch
 
 Batch 5 implements the C BER/DER/CER profile and whole-RRC UPER+BER PDU gate;
 see [evidence, ABI change and LPP/S1AP blockers](cgen-batch5-validation.md).
+
+## CGEN7 closure of the telecom generation blockers
+
+C11 now handles named-bit shortening/padding across the twelve entries, UTCTime
+calendar/offset validation and DER/CER/PER/COER/CXER canonical forms, and finite
+sparse INTEGER roots. X.691 13.1 uses the root RANGE for its extension bit; holes
+are still rejected for non-extensible constraints. The independent asn1c root
+vectors are separate from asn1tools, whose UNION handling has a documented gap.
+
+Known table-governed JSON/XML fields now decode into owned selected views and
+encode the actual selected value (X.697 41 / X.693 open-type notation). JSON can
+put the governor last; selection occurs after ordinary fields. Unknown selectors,
+missing contained-type context and unsupported instructions remain explicit
+errors, with transactional output and cumulative allocation limits. Empty private
+object sets use opaque complete PER payloads without inventing scalar selectors.
+C 84 syntax gates do not certify every LPP/S1AP PDU or arbitrary future IE type.

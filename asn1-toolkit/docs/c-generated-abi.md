@@ -88,13 +88,14 @@ prefix and module; headers include only C standard and C runtime headers, with
 extern-C guards for C++ consumers. No C++ types, exceptions, RTTI or standard
 library linkage are allowed in generated C.
 
-Generated headers declare a prefixed `GENERATED_ABI_VERSION` macro (currently 2)
+Generated headers declare a prefixed `GENERATED_ABI_VERSION` macro (currently 3)
 and the required C runtime ABI version. Version 2 adds selector-decoded typed views
 for table-constrained open fields while retaining their raw open-type octets.
 Layout/signature/ownership changes require a generated ABI major increment and
 regeneration/recompilation of all consumers; no stable binary interchange across
 compiler/CRT, architecture, packing or ABI versions is promised. Runtime ABI is
-versioned separately; existing runtime declarations are not changed by this plan.
+versioned separately. CGEN7 introduces ASN1_C_RUNTIME_ABI_VERSION=3 and generated
+headers check compatibility; link runtime and generated consumers from one SDK.
 
 ## Value layouts and capability boundaries
 
@@ -197,3 +198,25 @@ together when changing descriptor headers. Each entry selects its own policy.
 Encode and decode commit writer/value/cursor only on success; JSON/XML decode
 consumes a complete document. Limits, unsupported instructions, parser offsets and
 independent oracle scope are recorded in [batch 6 validation](cgen-batch6-validation.md).
+
+## Batch 7 ABI revision 3
+
+Generated ABI is 3; `ASN1_C_RUNTIME_ABI_VERSION` and the generated required-runtime
+macro are 3. Regenerate and rebuild runtime and all consumers together. Known
+nonempty table selectors own typed views; empty object sets keep opaque content
+without unusable scalar-governor slots. Private schema layouts now include named
+bit normalization and selected-view hooks, and codec fields contain immutable
+selector metadata/getters. No IR or compiler header crosses into runtime.
+
+INTEGER DEFAULT equality/materialization retain exact limbs, including negative
+values outside int64. UTCTime storage remains counted ASCII; named BIT STRINGs
+may return an equivalent zero-padded value satisfying SIZE. Text table decoders
+populate owned selected views; use generated copy/free rather than shallow copy.
+Unknown JSON/XML selectors report Unsupported. A standalone open field without a
+contained-type schema is not silently converted into a hexadecimal string.
+BER/OER adapters still consume opaque encoded octets and reject a typed-only view;
+PER and supported JSON/XML container adapters consume known typed views.
+
+Package version remains 0.1.0; neither it nor a macro promises cross-CRT/platform
+binary compatibility. The repository's proprietary runtime/header notices remain
+applicable; generation does not grant another license or remove those notices.

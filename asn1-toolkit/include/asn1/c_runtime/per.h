@@ -129,6 +129,15 @@ asn1_status_t asn1_per_encode_int_ex(asn1_bit_writer_t*, asn1_per_variant_t, con
 asn1_status_t asn1_per_decode_int_ex(asn1_bit_reader_t*, asn1_per_variant_t, const asn1_per_int_range_t*, int64_t*);
 asn1_status_t asn1_per_encode_unbounded_int_ex(asn1_bit_writer_t*, asn1_per_variant_t, const asn1_bigint_t*);
 asn1_status_t asn1_per_decode_unbounded_int_ex(asn1_bit_reader_t*, asn1_per_variant_t, asn1_bigint_t*);
+/* Finite int64 root with arbitrary-precision extension values. Root must have
+   both bounds. Decode constructs a new/zero/freed output, unchanged on failure;
+   reader cursor follows the primitive API contract (may advance on failure). */
+asn1_status_t asn1_per_encode_bigint_root_ex(asn1_bit_writer_t*, asn1_per_variant_t, const asn1_per_int_range_t*, const asn1_bigint_t*);
+asn1_status_t asn1_per_decode_bigint_root_ex(asn1_bit_reader_t*, asn1_per_variant_t, const asn1_per_int_range_t*, asn1_bigint_t*);
+/* Sorted disjoint finite root intervals. X.691 13.1 uses the envelope for
+   the extension bit and root bits. Non-extensible types enforce exact membership. */
+asn1_status_t asn1_per_encode_bigint_ranges_ex(asn1_bit_writer_t*,asn1_per_variant_t,const asn1_per_int_range_t*,size_t,int,const asn1_bigint_t*);
+asn1_status_t asn1_per_decode_bigint_ranges_ex(asn1_bit_reader_t*,asn1_per_variant_t,const asn1_per_int_range_t*,size_t,int,asn1_bigint_t*);
 /* X.691 10.6 normally-small non-negative whole number. */
 asn1_status_t asn1_per_encode_normally_small_uint_ex(asn1_bit_writer_t*, asn1_per_variant_t, uint64_t);
 asn1_status_t asn1_per_decode_normally_small_uint_ex(asn1_bit_reader_t*, asn1_per_variant_t, uint64_t*);

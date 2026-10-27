@@ -62,6 +62,7 @@ typedef struct {uint8_t* bytes;size_t size;} piece_t;
 static int compare_pieces(const void* a,const void* b){const piece_t* x=(const piece_t*)a;const piece_t* y=(const piece_t*)b;size_t n=x->size>y->size?x->size:y->size;for(size_t i=0;i<n;++i){unsigned left=i<x->size?x->bytes[i]:0,right=i<y->size?y->bytes[i]:0;if(left!=right)return left>right?1:-1;}return 0;}
 asn1_status_t asn1_schema_oer_encode(asn1_byte_writer_t* w,asn1_oer_policy_t p,const asn1_codec_schema_t* t,const void* v,size_t depth){
   if(depth>=ASN1_MAX_RECURSION_DEPTH)return ASN1_ERR_RESOURCE_LIMIT;const asn1_tlv_schema_t* l=t->layout();const uint8_t* base=(const uint8_t*)v;TRY(l->validate(v));
+  if(l->has_selected&&l->has_selected(v))return ASN1_ERR_UNSUPPORTED;
   switch(l->kind){
     case ASN1_TLV_ALIAS:{const void* child=base+l->value_offset;if(l->indirect)child=*(void*const*)child;return child?asn1_schema_oer_encode(w,p,t->element(),child,depth+1):ASN1_ERR_CONSTRAINT_VIOLATION;}
     case ASN1_TLV_BOOLEAN:return asn1_oer_encode_boolean(w,*(const int*)(base+l->value_offset));
@@ -72,8 +73,12 @@ asn1_status_t asn1_schema_oer_encode(asn1_byte_writer_t* w,asn1_oer_policy_t p,c
     case ASN1_TLV_REAL:if(t->real_form)return ieee_encode(w,t->real_form,*(const double*)(base+l->value_offset));
       /* fall through */
     case ASN1_TLV_OID:case ASN1_TLV_RELATIVE_OID:{uint8_t* bytes=NULL;size_t n=0;asn1_status_t s=l->kind==ASN1_TLV_REAL?asn1_value_encode_real(*(const double*)(base+l->value_offset),&bytes,&n):asn1_value_encode_oid(*(uint64_t*const*)(base+l->data_offset),*(const size_t*)(base+l->count_offset),l->kind==ASN1_TLV_RELATIVE_OID,&bytes,&n);if(s==ASN1_OK)s=asn1_oer_encode_open(w,asn1_byte_view(bytes,n));free(bytes);return s;}
-    case ASN1_TLV_OCTETS:case ASN1_TLV_OPEN:{asn1_byte_view_t bytes=asn1_byte_view(*(uint8_t*const*)(base+l->data_offset),*(const size_t*)(base+l->count_offset));return t->fixed_size!=SIZE_MAX&&l->kind!=ASN1_TLV_OPEN&&l->universal_tag!=12?asn1_byte_writer_append(w,bytes):asn1_oer_encode_open(w,bytes);}
-    case ASN1_TLV_BITS:{const asn1_bitstring_t* bits=(const asn1_bitstring_t*)(base+l->value_offset);size_t n=bits->bit_length/8u+(bits->bit_length%8u!=0);if(n&&bits->bit_length%8u&&(bits->bits[n-1]&((1u<<(8u-bits->bit_length%8u))-1u)))return ASN1_ERR_CONSTRAINT_VIOLATION;
+    case ASN1_TLV_OCTETS:case ASN1_TLV_OPEN:{asn1_byte_view_t bytes=asn1_byte_view(*(uint8_t*const*)(base+l->data_offset),*(const size_t*)(base+l->count_offset));if(l->universal_tag==23&&p==ASN1_OER_CANONICAL){uint8_t canonical[13];TRY(asn1_utctime_normalize(bytes,canonical));return asn1_oer_encode_open(w,asn1_byte_view(canonical,13));}return t->fixed_size!=SIZE_MAX&&l->kind!=ASN1_TLV_OPEN&&l->universal_tag!=12&&l->universal_tag!=23?asn1_byte_writer_append(w,bytes):asn1_oer_encode_open(w,bytes);}
+    case ASN1_TLV_BITS:{const asn1_bitstring_t* bits=(const asn1_bitstring_t*)(base+l->value_offset);
+      if(l->named_length){asn1_bitstring_t normalized={0};TRY(asn1_schema_named_bits(l,bits,0,&normalized));size_t n=normalized.bit_length/8u+(normalized.bit_length%8u!=0);asn1_status_t s=ASN1_OK;
+        if(t->fixed_size==SIZE_MAX){s=asn1_oer_encode_length(w,n+1u);if(s==ASN1_OK)s=write_byte(w,(uint8_t)((8u-normalized.bit_length%8u)%8u));}
+        if(s==ASN1_OK)s=asn1_byte_writer_append(w,asn1_byte_view(normalized.bits,n));asn1_bitstring_free(&normalized);return s;}
+      size_t n=bits->bit_length/8u+(bits->bit_length%8u!=0);if(n&&bits->bit_length%8u&&(bits->bits[n-1]&((1u<<(8u-bits->bit_length%8u))-1u)))return ASN1_ERR_CONSTRAINT_VIOLATION;
       if(t->fixed_size==SIZE_MAX){TRY(asn1_oer_encode_length(w,n+1u));TRY(write_byte(w,(uint8_t)((8u-bits->bit_length%8u)%8u)));}return asn1_byte_writer_append(w,asn1_byte_view(bits->bits,n));}
     case ASN1_TLV_SEQUENCE:case ASN1_TLV_SET:return encode_record(w,p,t,v,depth);
     case ASN1_TLV_CHOICE:{size_t i=l->choice_get(v);if(i>=l->field_count)return ASN1_ERR_CONSTRAINT_VIOLATION;asn1_ber_tag_t tag;TRY(choice_tag(t,v,&tag,depth));TRY(asn1_oer_encode_tag(w,tag));
@@ -133,7 +138,7 @@ asn1_status_t asn1_schema_oer_decode(asn1_byte_reader_t* r,asn1_oer_policy_t p,c
       if(l->kind==ASN1_TLV_BITS){if(t->fixed_size!=SIZE_MAX){bit_length=t->fixed_size;TRY(asn1_byte_reader_read(r,bit_length/8u+(bit_length%8u!=0),&bytes));}
         else{asn1_byte_view_t content;TRY(asn1_oer_decode_open(r,p,&content));if(!content.size||content.data[0]>7||(content.size==1&&content.data[0]))return ASN1_ERR_INVALID_ARGUMENT;bytes=asn1_byte_view(content.data+1,content.size-1);bit_length=bytes.size*8u-content.data[0];}
         if(bytes.size&&bit_length%8u&&(bytes.data[bytes.size-1]&((1u<<(8u-bit_length%8u))-1u)))return ASN1_ERR_INVALID_ARGUMENT;
-      }else if(t->fixed_size!=SIZE_MAX&&l->kind!=ASN1_TLV_OPEN&&l->universal_tag!=12)TRY(asn1_byte_reader_read(r,t->fixed_size,&bytes));else TRY(asn1_oer_decode_open(r,p,&bytes));
+      }else if(t->fixed_size!=SIZE_MAX&&l->kind!=ASN1_TLV_OPEN&&l->universal_tag!=12&&l->universal_tag!=23)TRY(asn1_byte_reader_read(r,t->fixed_size,&bytes));else TRY(asn1_oer_decode_open(r,p,&bytes));
       if(bytes.size>ASN1_MAX_STRING_BYTES)return ASN1_ERR_RESOURCE_LIMIT;uint8_t* data=NULL;TRY(asn1_schema_allocate(b,bytes.size,1,(void**)&data));if(bytes.size)memcpy(data,bytes.data,bytes.size);
       if(l->kind==ASN1_TLV_BITS){asn1_bitstring_t* bits=(asn1_bitstring_t*)(base+l->value_offset);bits->bits=data;bits->bit_length=bit_length;bits->cap_bytes=bytes.size;}else{*(void**)(base+l->data_offset)=data;*(size_t*)(base+l->count_offset)=*(size_t*)(base+l->capacity_offset)=bytes.size;}break;}
     case ASN1_TLV_SEQUENCE:case ASN1_TLV_SET:TRY(decode_record(r,p,t,v,b,depth));break;
@@ -146,5 +151,7 @@ asn1_status_t asn1_schema_oer_decode(asn1_byte_reader_t* r,asn1_oer_policy_t p,c
       for(size_t i=0;i<count;++i){void* element=data+i*l->element()->size;l->element()->init(element);*(size_t*)(base+l->count_offset)=i+1;asn1_byte_view_t start=asn1_byte_reader_view(r);size_t before=asn1_byte_reader_position(r);TRY(asn1_schema_oer_decode(r,p,t->element(),element,b,depth+1));asn1_byte_view_t current=asn1_byte_view(start.data,asn1_byte_reader_position(r)-before);
         if(p==ASN1_OER_CANONICAL&&l->kind==ASN1_TLV_SET_OF&&have_previous){piece_t a={(uint8_t*)previous.data,previous.size},c={(uint8_t*)current.data,current.size};if(compare_pieces(&a,&c)>0)return ASN1_ERR_NON_CANONICAL;}previous=current;have_previous=1;}break;}
     default:return ASN1_ERR_UNSUPPORTED;
-  }return l->validate(v);
+  }if(l->named_length&&p==ASN1_OER_CANONICAL){asn1_bitstring_t* bits=(asn1_bitstring_t*)(base+l->value_offset);size_t significant=0,count=0;TRY(asn1_bitstring_significant(bits,&significant));TRY(l->named_length(significant,&count));if(count!=bits->bit_length)return ASN1_ERR_NON_CANONICAL;}
+  if(l->kind==ASN1_TLV_OCTETS&&l->universal_tag==23&&p==ASN1_OER_CANONICAL){asn1_byte_view_t text=asn1_byte_view(*(uint8_t**)(base+l->data_offset),*(size_t*)(base+l->count_offset));uint8_t canonical[13];TRY(asn1_utctime_normalize(text,canonical));if(text.size!=13||memcmp(text.data,canonical,13))return ASN1_ERR_NON_CANONICAL;}
+  TRY(asn1_schema_named_finish(l,v,b));return l->validate(v);
 }

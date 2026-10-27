@@ -87,3 +87,13 @@ wire/decode gate. C11/C++17 single/combined output forms have 21 consumers.
 Supported-value limits, CER oracle distinction, LPP time and S1AP PER/typed-open
 blockers are authoritative in [batch 5 validation](cgen-batch5-validation.md).
 Do not infer support for other C codec families from the twelve C++ entries.
+
+CGEN batch 6 subsequently implements C OER/COER and JSON/XML structured codecs
+in the documented profile, with 72 independent exchanges and a frozen replay.
+See [batch 6](cgen-batch6-validation.md); legacy raw reader-init APIs remain distinct.
+Batch 7 adds exact owning INTEGER DEFAULTs and continuous finite-root PER BigInt
+extensions, plus actual installed C-only consumers and generated decoder fuzz.
+The unchanged seven-fixture/twelve-entry C matrix passes **84/84 under GCC and
+Clang**, with the original C++ matrix also 84/84. LPP named bits/UTCTime and S1AP
+sparse PER roots/known text selector graphs are implemented; unknown dynamic
+contained types and unimplemented instructions remain explicit errors.

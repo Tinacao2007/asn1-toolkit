@@ -39,6 +39,8 @@ struct asn1_tlv_schema {
   asn1_status_t (*validate)(const void*);
   size_t (*choice_get)(const void*);
   void (*choice_set)(void*,size_t);
+  asn1_status_t (*named_length)(size_t,size_t*); /* NULL for ordinary BIT STRING */
+  int (*has_selected)(const void*); /* typed views require a codec-aware adapter */
 };
 asn1_status_t asn1_tlv_schema_encode(asn1_byte_writer_t*,asn1_tlv_policy_t,
                                     const asn1_tlv_schema_t*,const void*);

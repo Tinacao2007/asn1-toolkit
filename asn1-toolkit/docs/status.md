@@ -6,7 +6,15 @@
 
 ## 当前阶段
 
-**Phase 49: CGEN batches 1–6 complete for their declared profiles; batch 7 is next.**
+**Phase 49: CGEN batches 1–7 complete for their declared profiles.**
+
+CGEN7 closes LPP named bits/UTCTime and S1AP sparse PER roots/known text selectors.
+GCC and Clang strict C11 matrices pass **84/84 each**; the original C++ matrix
+passes **84/84**. Full MSVC Release is **476/476**, GCC ASan+UBSan **512/512**.
+Installed C-only SDK multi-TU/shard consumption, independent compiler/runtime builds,
+configuration-time source planning, generated decoder fuzz and external frozen
+vectors pass. Generated/C runtime ABI is **3**: regenerate and rebuild together.
+See [batch 7 evidence and remaining profile boundaries](cgen-batch7-validation.md).
 
 CGEN batch 6 adds C OER/COER, JER/JERI and XER/CXER/E-XER with transactional
 byte/text I/O, exact INTEGERs, parser/structured decode, supported instructions,
@@ -17,11 +25,11 @@ See [batch 6 evidence and explicit Unsupported domains](cgen-batch6-validation.m
 
 CGEN batch 5 provides shared C BER/DER/CER value/schema codecs. Whole LTE RRC (1037 types, 9 C sources) compiles and its RRCConnectionRequest
 UPER/BER encodings match live asn1c 0.9.29, including independent decoding.
-The 21-consumer C/C++ single/combined entry/shape matrix passes. Full LPP time
-values and S1AP C PER/typed-open remain explicit blockers, not passing modules.
+The 21-consumer C/C++ single/combined entry/shape matrix passes. LPP/S1AP blockers recorded at batch 5 were subsequently resolved for the batch 7
+declared profiles; historical evidence is retained below.
 Final gates: MSVC Release **472/472**, Ubuntu GCC ASan+UBSan **506/506**,
-C++ 7×12 independent syntax matrix **84/84**. Clang is unavailable in this WSL
-environment; that later toolchain gate is not counted as passing.
+C++ 7×12 independent syntax matrix **84/84**. These are historical batch 6 counts;
+batch 7's current tool availability and validation are recorded separately.
 See [batch 5 evidence and limits](cgen-batch5-validation.md).
 
 CGEN-07..09 adds explicit `--lang c --types-only` output in ordinary, static-inline,

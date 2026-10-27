@@ -10,6 +10,7 @@ extern "C" {
    These additional descriptors carry wire planning and names, not compiler IR. */
 typedef struct asn1_codec_schema asn1_codec_schema_t;
 typedef const asn1_codec_schema_t* (*asn1_codec_schema_fn)(void);
+typedef struct {int64_t key;uint32_t type_id;asn1_codec_schema_fn type;const char* xml_name;} asn1_codec_selection_t;
 typedef struct {
   asn1_codec_schema_fn type;
   const char *name,*instruction_name;
@@ -17,6 +18,10 @@ typedef struct {
   int nested_group,optional;
   unsigned flags;
   asn1_ber_tag_t tag;
+  const asn1_codec_selection_t* selections;
+  size_t selection_count;
+  asn1_status_t (*governor)(const void*,int64_t*);
+  size_t selected_type_offset,selected_value_offset;
 } asn1_codec_field_t;
 typedef struct {int64_t value;const char *name,*xml_name;} asn1_codec_enum_t;
 enum { ASN1_SCHEMA_ARRAY=1, ASN1_SCHEMA_BASE64=2, ASN1_SCHEMA_OBJECT=4,

@@ -2,10 +2,16 @@
 #define ASN1_SCHEMA_INTERNAL_H
 #include <asn1/c_runtime/schema_codec.h>
 #include <asn1/c_runtime/limits.h>
+#include <asn1/c_runtime/bit_string.h>
 #include <string.h>
 typedef struct {size_t bytes,elements;} asn1_schema_budget_t;
 asn1_status_t asn1_schema_charge(asn1_schema_budget_t*,size_t,size_t);
 asn1_status_t asn1_schema_allocate(asn1_schema_budget_t*,size_t,size_t,void**);
+asn1_status_t asn1_schema_named_finish(const asn1_tlv_schema_t*,void*,asn1_schema_budget_t*);
+asn1_status_t asn1_schema_named_bits(const asn1_tlv_schema_t*,const asn1_bitstring_t*,int,asn1_bitstring_t*);
+asn1_status_t asn1_schema_selection(const asn1_codec_field_t*,const void*,const asn1_codec_selection_t**);
+asn1_status_t asn1_schema_selected_value(const asn1_codec_field_t*,const void*,const asn1_codec_selection_t**,const void**);
+asn1_status_t asn1_schema_selected_destination(const asn1_codec_field_t*,void*,const asn1_codec_selection_t*,asn1_schema_budget_t*,void**);
 const void* asn1_schema_field_value(const void*,const asn1_tlv_field_t*);
 int asn1_schema_field_present(const void*,const asn1_tlv_field_t*);
 asn1_status_t asn1_schema_field_destination(void*,const asn1_tlv_field_t*,asn1_schema_budget_t*,void**);

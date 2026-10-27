@@ -344,7 +344,7 @@ class Types {
     for (const auto& item : names) {
       if (!unique.insert(item.second).second) diag.error({}, "C types: duplicate qualified type name");
       const auto& t = model.arena.get(item.first);
-      if (const auto* size = planning::storage_size(t)) {
+      if (const auto* size = planning::storage_size(t);size && !(t.kind==TypeKind::BitString&&!t.bit_string.named_bits.empty())) {
         for (const auto& range : planning::constraint(*size).descriptor->root_ranges)
           if ((range.lower && (!range.lower->as_i64 || *range.lower->as_i64 < 0)) ||
               (range.upper && (!range.upper->as_i64 || *range.upper->as_i64 < 0)))
@@ -466,7 +466,6 @@ class Types {
   }
   std::string per_int_range(const Type& t) const {
     const auto& c=t.integer.constraint;
-    if (c.root_ranges.size()>1) return {};
     std::optional<std::int64_t> lower,upper;
     if(c.lower) { if(!c.lower->as_i64) return {}; lower=*c.lower->as_i64; }
     if(c.upper) { if(!c.upper->as_i64) return {}; upper=*c.upper->as_i64; }
@@ -487,6 +486,12 @@ class Types {
         << "," << (c.upper?"(size_t)UINT64_C("+std::to_string(static_cast<std::uint64_t>(*c.upper->as_i64))+")":"0")
         << "," << c.extensible << "}";
     return out.str();
+  }
+  std::string per_root_ranges(const Type& t) const {
+    std::string text="static const asn1_per_int_range_t roots[]={";
+    for(const auto& r:t.integer.constraint.root_ranges)
+      text+="{"+literal(*r.lower->as_i64)+",1,"+literal(*r.upper->as_i64)+",1,0},";
+    return text+"};";
   }
   const SequenceDesc& per_sequence(const Type& t) const {
     return t.kind==TypeKind::Set?t.set:t.sequence;
@@ -513,6 +518,16 @@ class Types {
       return "("+value+".value == "+(def.boolean?"1":"0")+")";
     if(t.kind==TypeKind::Integer && !big_integer(t) && def.kind==ValueKind::Integer && def.integer.as_i64)
       return "("+value+".value == "+literal(*def.integer.as_i64)+")";
+    if(big_integer(t) && def.kind==ValueKind::Integer) {
+      const auto words=limbs(def.integer);
+      const auto base=value+".value";
+      std::string test="("+base+".sign == "+std::to_string(words.empty()?0:def.integer.negative?-1:1)+
+        " && "+base+".nlimbs == "+std::to_string(words.size());
+      if(!words.empty())test+=" && "+base+".limbs";
+      for(std::size_t i=0;i<words.size();++i)
+        test+=" && "+base+".limbs["+std::to_string(i)+"] == UINT32_C("+std::to_string(words[i])+")";
+      return test+")";
+    }
     if(t.kind==TypeKind::Enumerated && def.kind==ValueKind::Reference) {
       for(const auto* list:{&t.enumerated.root,&t.enumerated.extensions})
         for(const auto& item:*list) if(item.name==def.name && item.value.as_i64)
@@ -531,12 +546,23 @@ class Types {
   }
   std::size_t owning_default_bytes(const Field& f) const {
     const auto& value=model.arena.get_value(*f.default_value);
+    if(value.kind==ValueKind::Integer && big_integer(model.arena.get(underlying(f.type))))
+      return limbs(value.integer).size()*sizeof(std::uint32_t);
     if(const auto b=planning::binary_default(value))return b->bytes.size();
     if(const auto text=planning::string_default(value))return text->size();return 0;
   }
   void emit_owned_default(const Field& f,std::string path,std::ostream& s) const {
     TypeId id=f.type;while(model.arena.get(id).kind==TypeKind::Referenced){path+=".value";id=model.arena.get(id).referenced.resolved;}
     const auto& value=model.arena.get_value(*f.default_value);std::string bytes;std::size_t bits=0;
+    if(big_integer(model.arena.get(id)) && value.kind==ValueKind::Integer) {
+      const auto words=limbs(value.integer);
+      s << "{\n";big_constant(value.integer,"default_constant",s);
+      s << "if(default_constant.nlimbs){ " << path << ".value.limbs=(uint32_t*)malloc(" << words.size()*sizeof(std::uint32_t)
+        << "); if(!" << path << ".value.limbs)return ASN1_ERR_OUT_OF_MEMORY; memcpy(" << path
+        << ".value.limbs,default_constant.limbs," << words.size()*sizeof(std::uint32_t) << "); } " << path
+        << ".value.sign=default_constant.sign; " << path << ".value.nlimbs=" << path << ".value.cap=default_constant.nlimbs; }\n";
+      return;
+    }
     if(const auto binary=planning::binary_default(value)){for(auto b:binary->bytes)bytes+=static_cast<char>(b);bits=binary->bits;}
     else if(const auto text=planning::string_default(value))bytes=*text;
     const bool is_bits=model.arena.get(id).kind==TypeKind::BitString;const auto data=path+(is_bits?".value.bits":".data");
@@ -558,7 +584,7 @@ class Types {
         if(!t.object_class_field.open_type && !c_per_supported(t.object_class_field.fixed_type,active,diagnose)) ok=false;
         break;
       case TypeKind::BitString:
-        if(!t.bit_string.named_bits.empty() || t.bit_string.containing!=kInvalidType ||
+        if(t.bit_string.containing!=kInvalidType ||
            per_size_range(t.bit_string.size).empty()) ok=false;
         break;
       case TypeKind::OctetString:
@@ -570,7 +596,9 @@ class Types {
       case TypeKind::ObjectIdentifier: case TypeKind::RelativeOid: break;
       case TypeKind::Integer:
         if(big_integer(t)) {
-          if(t.integer.constraint.lower || t.integer.constraint.upper || t.integer.constraint.extensible) ok=false;
+          const auto& c=t.integer.constraint;
+          if((c.lower || c.upper || c.extensible) &&
+             (!c.lower || !c.upper || per_int_range(t).empty()))ok=false;
         } else if(per_int_range(t).empty()) ok=false;
         break;
       case TypeKind::Enumerated:
@@ -598,6 +626,7 @@ class Types {
         const auto& sequence=per_sequence(t);
         auto check_selectors=[&](const std::vector<Field>& fields) {
           for(const auto& field:fields) if(field.table_constraint) {
+            if(field.table_constraint->entries.empty())continue;
             const auto field_type=underlying(field.type);
             if(field_type==kInvalidType) { ok=false; continue; }
             if(model.arena.get(field_type).kind!=TypeKind::ObjectClassField ||
@@ -652,7 +681,7 @@ class Types {
   }
   std::string selector_function_suffix(const Field& field) const { return spell(field.name); }
   bool typed_open_field(const Field& field) const {
-    if(!field.table_constraint) return false;
+    if(!field.table_constraint || field.table_constraint->entries.empty()) return false;
     const auto u=underlying(field.type);
     return u!=kInvalidType && model.arena.get(u).kind==TypeKind::ObjectClassField &&
            model.arena.get(u).object_class_field.open_type;
@@ -740,10 +769,13 @@ class Types {
       case TypeKind::Real:
         s << ind << "status=asn1_per_encode_real_ex(w," << v << "," << value << ".value); if(status!=ASN1_OK) return status;\n"; break;
       case TypeKind::BitString:
-        s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(t.bit_string.size) << "; status=asn1_per_encode_bitstring_ex(w," << v << ",&size,&" << value << ".value); if(status!=ASN1_OK) return status; }\n"; break;
+        if(!t.bit_string.named_bits.empty()){
+          s << ind << "{size_t significant=0,count=0;asn1_bitstring_t normalized={0};status=asn1_bitstring_significant(&" << value << ".value,&significant);if(status==ASN1_OK)status=" << name(id) << "_named_length(significant,&count);if(status==ASN1_OK)status=asn1_bitstring_normalize(&" << value << ".value,count,&normalized);const asn1_per_length_constraint_t size=" << per_size_range(t.bit_string.size) << ";if(status==ASN1_OK)status=asn1_per_encode_bitstring_ex(w," << v << ",&size,&normalized);asn1_bitstring_free(&normalized);if(status!=ASN1_OK)return status;}\n";
+        }else s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(t.bit_string.size) << "; status=asn1_per_encode_bitstring_ex(w," << v << ",&size,&" << value << ".value); if(status!=ASN1_OK) return status; }\n"; break;
       case TypeKind::OctetString:
         s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(t.octet_string.size) << "; if(" << value << ".count>" << value << ".capacity || (" << value << ".count && !" << value << ".data)) return ASN1_ERR_INVALID_ARGUMENT; status=asn1_per_encode_octetstring_ex(w," << v << ",&size,asn1_byte_view(" << value << ".data," << value << ".count)); if(status!=ASN1_OK) return status; }\n"; break;
       case TypeKind::String: {
+        if(t.string.kind==StringKind::UTCTime){s << ind << "{uint8_t canonical[13];status=asn1_utctime_normalize(asn1_byte_view(" << value << ".data," << value << ".count),canonical);if(status!=ASN1_OK)return status;const asn1_per_length_constraint_t size={ASN1_PER_LENGTH_UNCONSTRAINED,0,0,0};status=asn1_per_encode_restricted_string_ex(w," << v << ",&size,ASN1_PER_STRING_VISIBLE,asn1_byte_view(canonical,13));if(status!=ASN1_OK)return status;}\n";break;}
         const bool restricted = t.string.kind==StringKind::IA5String || t.string.kind==StringKind::PrintableString ||
           t.string.kind==StringKind::VisibleString || t.string.kind==StringKind::NumericString ||
           t.string.kind==StringKind::BMPString || t.string.kind==StringKind::UniversalString;
@@ -760,7 +792,11 @@ class Types {
       case TypeKind::ObjectIdentifier: case TypeKind::RelativeOid:
         s << ind << "if(" << value << ".count>" << value << ".capacity || (" << value << ".count && !" << value << ".data)) return ASN1_ERR_INVALID_ARGUMENT; status=asn1_per_encode_oid_ex(w," << v << "," << value << ".data," << value << ".count," << (t.kind==TypeKind::RelativeOid?1:0) << "); if(status!=ASN1_OK) return status;\n"; break;
       case TypeKind::Integer:
-        if(big_integer(t))
+        if(big_integer(t) && t.integer.constraint.root_ranges.size()>1)
+          s << ind << "{" << per_root_ranges(t) << "status=asn1_per_encode_bigint_ranges_ex(w," << v << ",roots,sizeof(roots)/sizeof(roots[0])," << t.integer.constraint.extensible << ",&" << value << ".value);if(status!=ASN1_OK)return status;}\n";
+        else if(big_integer(t) && t.integer.constraint.lower && t.integer.constraint.upper)
+          s << ind << "{ const asn1_per_int_range_t range=" << per_int_range(t) << "; status=asn1_per_encode_bigint_root_ex(w," << v << ",&range,&" << value << ".value); if(status!=ASN1_OK) return status; }\n";
+        else if(big_integer(t))
           s << ind << "status=asn1_per_encode_unbounded_int_ex(w," << v << ",&" << value << ".value); if(status!=ASN1_OK) return status;\n";
         else
           s << ind << "{ const asn1_per_int_range_t range=" << per_int_range(t) << "; status=asn1_per_encode_int_ex(w," << v << ",&range," << value << ".value); if(status!=ASN1_OK) return status; }\n";
@@ -898,6 +934,7 @@ class Types {
       case TypeKind::OctetString:
         s << ind << "{ const asn1_per_length_constraint_t size=" << per_size_range(t.octet_string.size) << "; uint8_t* decoded=NULL; size_t count=0; status=asn1_per_decode_octetstring_ex(r," << v << ",&size,&decoded,&count); if(status!=ASN1_OK) " << fail << " " << value << ".data=decoded; " << value << ".count=" << value << ".capacity=count; }\n"; break;
       case TypeKind::String: {
+        if(t.string.kind==StringKind::UTCTime){s << ind << "{const asn1_per_length_constraint_t size={ASN1_PER_LENGTH_UNCONSTRAINED,0,0,0};uint8_t* data=NULL;size_t count=0;status=asn1_per_decode_restricted_string_ex(r," << v << ",&size,ASN1_PER_STRING_VISIBLE,&data,&count);if(status!=ASN1_OK) " << fail << " " << value << ".data=data;" << value << ".count=" << value << ".capacity=count;uint8_t canonical[13];status=asn1_utctime_normalize(asn1_byte_view(data,count),canonical);if(status==ASN1_OK&&(count!=13||memcmp(data,canonical,13)))status=ASN1_ERR_NON_CANONICAL;if(status!=ASN1_OK) " << fail << "}\n";break;}
         const bool restricted = t.string.kind==StringKind::IA5String || t.string.kind==StringKind::PrintableString ||
           t.string.kind==StringKind::VisibleString || t.string.kind==StringKind::NumericString ||
           t.string.kind==StringKind::BMPString || t.string.kind==StringKind::UniversalString;
@@ -914,7 +951,11 @@ class Types {
       case TypeKind::ObjectIdentifier: case TypeKind::RelativeOid:
         s << ind << "{ uint64_t* arcs=NULL; size_t count=0; status=asn1_per_decode_oid_ex(r," << v << ",&arcs,&count," << (t.kind==TypeKind::RelativeOid?1:0) << "); if(status!=ASN1_OK) " << fail << " " << value << ".data=arcs; " << value << ".count=" << value << ".capacity=count; }\n"; break;
       case TypeKind::Integer:
-        if(big_integer(t))
+        if(big_integer(t) && t.integer.constraint.root_ranges.size()>1)
+          s << ind << "{" << per_root_ranges(t) << "status=asn1_per_decode_bigint_ranges_ex(r," << v << ",roots,sizeof(roots)/sizeof(roots[0])," << t.integer.constraint.extensible << ",&" << value << ".value);if(status!=ASN1_OK) " << fail << "}\n";
+        else if(big_integer(t) && t.integer.constraint.lower && t.integer.constraint.upper)
+          s << ind << "{ const asn1_per_int_range_t range=" << per_int_range(t) << "; status=asn1_per_decode_bigint_root_ex(r," << v << ",&range,&" << value << ".value); if(status!=ASN1_OK) " << fail << " }\n";
+        else if(big_integer(t))
           s << ind << "status=asn1_per_decode_unbounded_int_ex(r," << v << ",&" << value << ".value); if(status!=ASN1_OK) " << fail << "\n";
         else
           s << ind << "{ const asn1_per_int_range_t range=" << per_int_range(t) << "; status=asn1_per_decode_int_ex(r," << v << ",&range,&" << value << ".value); if(status!=ASN1_OK) " << fail << " }\n";
@@ -1029,16 +1070,23 @@ class Types {
   }
   void emit_per_codec(TypeId id, const char* variant, std::ostream& s) const {
     const auto n=name(id);
+    const auto& t=model.arena.get(id);
+    const auto check_sparse=[&](){
+      if(t.kind!=TypeKind::Integer||big_integer(t)||t.integer.constraint.root_ranges.size()<2)return;
+      s << "if(!(0";for(const auto& r:t.integer.constraint.root_ranges){s << " || (1";if(r.lower)s << " && value->value>=" << literal(*r.lower->as_i64);if(r.upper)s << " && value->value<=" << literal(*r.upper->as_i64);s << ')';}s << "))return ASN1_ERR_CONSTRAINT_VIOLATION;\n";
+    };
     s << linkage(true) << "asn1_status_t " << n << "_encode_" << variant << "_at(asn1_bit_writer_t *w,const " << n << " *value,size_t depth) { asn1_status_t status=ASN1_OK; if(!w||!value) return ASN1_ERR_INVALID_ARGUMENT; if(depth>=ASN1_MAX_RECURSION_DEPTH) return ASN1_ERR_RESOURCE_LIMIT;\n";
+    check_sparse();
     emit_per_encode_value(id,"(*value)",variant,s,"  ");
     s << "  return ASN1_OK; }\n" << linkage() << "asn1_status_t " << n << "_encode_" << variant << "(asn1_bit_writer_t *w,const " << n << " *value) { return " << n << "_encode_" << variant << "_at(w,value,0); }\n";
     s << linkage(true) << "asn1_status_t " << n << "_decode_" << variant << "_at(asn1_bit_reader_t *r," << n << " *value,size_t depth) { asn1_status_t status=ASN1_OK; if(!r||!value) return ASN1_ERR_INVALID_ARGUMENT; if(depth>=ASN1_MAX_RECURSION_DEPTH) return ASN1_ERR_RESOURCE_LIMIT;\n";
     emit_per_decode_value(id,"(*value)",variant,s,"  ","return status;");
+    check_sparse();
     s << "  return ASN1_OK; }\n" << linkage() << "asn1_status_t " << n << "_decode_" << variant << "(asn1_bit_reader_t *r," << n << " *out) { if(!r||!out) return ASN1_ERR_INVALID_ARGUMENT; asn1_status_t status=asn1_bit_reader_begin_decode(r); if(status!=ASN1_OK) return status; " << n << " tmp; " << n << "_init(&tmp); status=" << n << "_decode_" << variant << "_at(r,&tmp,0); if(status!=ASN1_OK) { " << n << "_free(&tmp); return status; } " << n << "_free(out); *out=tmp; return ASN1_OK; }\n";
     if(model.arena.get(id).kind==TypeKind::Sequence || model.arena.get(id).kind==TypeKind::Set) {
       const auto& seq=per_sequence(model.arena.get(id));
       for(const auto* fields:{&seq.root,&seq.trailing_root})
-        for(const auto& field:*fields) if(field.table_constraint) emit_selector_decoder(id,field,variant,s);
+          for(const auto& field:*fields) if(typed_open_field(field)) emit_selector_decoder(id,field,variant,s);
     }
   }
   bool c_json_nullable(TypeId id,std::size_t depth=0,bool unwrapped=false) const {
@@ -1071,15 +1119,14 @@ class Types {
       if(valid){const auto& entry=c_resolved(shape.set_of.element);const auto fields=members(entry);valid=entry.kind==TypeKind::Sequence&&fields.size()==2;
         if(valid){for(const auto& field:fields)if(field.field->presence!=Presence::Mandatory||field.extension)valid=false;const auto& key=c_resolved(fields[0].field->type);valid=valid&&(key.kind==TypeKind::String||key.kind==TypeKind::Enumerated);}}
       if(!valid){diag.error({},"Unsupported C JER OBJECT requires SET OF two mandatory components with string/enumeration key: "+name(id));ok=false;}}
-    if((json||xml)&&t.kind==TypeKind::ObjectClassField&&t.object_class_field.open_type){diag.error({},"Unsupported C text codec typed open-type schema: "+name(id));ok=false;}
     switch(t.kind) {
       case TypeKind::Boolean:case TypeKind::Integer:case TypeKind::Enumerated:
       case TypeKind::Null:break;
-      case TypeKind::BitString:ok=t.bit_string.containing==kInvalidType && t.bit_string.named_bits.empty();break;
+      case TypeKind::BitString:ok=t.bit_string.containing==kInvalidType;break;
       case TypeKind::OctetString:ok=t.octet_string.containing==kInvalidType;break;
       case TypeKind::Real:case TypeKind::ObjectIdentifier:case TypeKind::RelativeOid:break;
       case TypeKind::String:
-        ok=t.string.kind==StringKind::UTF8String||t.string.kind==StringKind::IA5String||t.string.kind==StringKind::NumericString||t.string.kind==StringKind::PrintableString||t.string.kind==StringKind::VisibleString;break;
+        ok=t.string.kind==StringKind::UTF8String||t.string.kind==StringKind::IA5String||t.string.kind==StringKind::NumericString||t.string.kind==StringKind::PrintableString||t.string.kind==StringKind::VisibleString||t.string.kind==StringKind::UTCTime;break;
       case TypeKind::Referenced:ok=c_tlv_supported(t.referenced.resolved,seen);break;
       case TypeKind::ObjectClassField:if(!t.object_class_field.open_type)ok=c_tlv_supported(t.object_class_field.fixed_type,seen);break;
       case TypeKind::SequenceOf:case TypeKind::SetOf:ok=c_tlv_supported(t.kind==TypeKind::SequenceOf?t.sequence_of.element:t.set_of.element,seen);break;
@@ -1126,15 +1173,22 @@ class Types {
       }
     }
     if(t.kind==TypeKind::Enumerated && !t.enumerated.extensible){s << "if(!(0";for(const auto& e:t.enumerated.root)s << " || value->value==" << literal(*e.value.as_i64);s << "))return ASN1_ERR_CONSTRAINT_VIOLATION;\n";}
-    if(t.kind==TypeKind::BitString){s << "{size_t bytes=value->value.bit_length/8u+(value->value.bit_length%8u!=0); if(bytes>value->value.cap_bytes || (bytes&&!value->value.bits))return ASN1_ERR_INVALID_ARGUMENT;if(bytes>ASN1_MAX_STRING_BYTES)return ASN1_ERR_RESOURCE_LIMIT;}\n";membership(t.bit_string.size,"value->value.bit_length");}
+    if(t.kind==TypeKind::BitString){
+      if(!t.bit_string.named_bits.empty())s << "{size_t significant=0,n=0;asn1_status_t status=asn1_bitstring_significant(&value->value,&significant);if(status!=ASN1_OK)return status;status=" << n << "_named_length(significant,&n);if(status!=ASN1_OK)return status;}\n";
+      else {s << "{size_t bytes=value->value.bit_length/8u+(value->value.bit_length%8u!=0); if(bytes>value->value.cap_bytes || (bytes&&!value->value.bits))return ASN1_ERR_INVALID_ARGUMENT;if(bytes>ASN1_MAX_STRING_BYTES)return ASN1_ERR_RESOURCE_LIMIT;}\n";membership(t.bit_string.size,"value->value.bit_length");}
+    }
     if(octets(t)||t.kind==TypeKind::SequenceOf||t.kind==TypeKind::SetOf||t.kind==TypeKind::ObjectIdentifier||t.kind==TypeKind::RelativeOid){s << "if(value->count>value->capacity || (value->count&&!value->data))return ASN1_ERR_INVALID_ARGUMENT;\n";
       if(octets(t))s << "if(value->count>ASN1_MAX_STRING_BYTES)return ASN1_ERR_RESOURCE_LIMIT;\n";
       if(t.kind!=TypeKind::String)if(const auto* constraint=planning::storage_size(t))membership(*constraint,"value->count");
     }
-    if(t.kind==TypeKind::String){const unsigned tag=t.string.kind==StringKind::NumericString?18:t.string.kind==StringKind::PrintableString?19:t.string.kind==StringKind::IA5String?22:t.string.kind==StringKind::VisibleString?26:12;
+    if(t.kind==TypeKind::String){const unsigned tag=t.string.kind==StringKind::UTCTime?23:t.string.kind==StringKind::NumericString?18:t.string.kind==StringKind::PrintableString?19:t.string.kind==StringKind::IA5String?22:t.string.kind==StringKind::VisibleString?26:12;
       s << "{size_t characters=0;asn1_status_t status=asn1_tlv_string_length(" << tag << ",asn1_byte_view(value->data,value->count),&characters);if(status!=ASN1_OK)return status;\n";membership(t.string.size,"characters");s << "}\n";}
     if(t.kind==TypeKind::Sequence || t.kind==TypeKind::Set){
-      for(const auto& member:members(t))if(typed_open_field(*member.field))s << "if(value->" << decoded_value_member(*member.field) << ")return ASN1_ERR_UNSUPPORTED;\n";
+      for(const auto& member:members(t))if(typed_open_field(*member.field)){
+        s << "if(value->" << decoded_value_member(*member.field) << "){switch(value->" << decoded_type_member(*member.field) << "){";
+        std::set<TypeId> ids;for(const auto& e:member.field->table_constraint->entries)if(ids.insert(e.type).second)s << "case UINT32_C(" << e.type << "):break;";
+        s << "default:return ASN1_ERR_INVALID_ARGUMENT;}}\n";
+      }
       const auto plan=planning::sequence(per_sequence(t));
       for(const auto& group:plan.extensions)if(group.nested_sequence){s << "if(0";for(const auto& f:group.group->fields)s << " || value->has_f" << spell(f.name);s << ") {\n";for(const auto& f:group.group->fields)if(f.presence==Presence::Mandatory)s << "if(!value->has_f" << spell(f.name) << ")return ASN1_ERR_CONSTRAINT_VIOLATION;\n";s << "}\n";}
     }
@@ -1169,7 +1223,7 @@ class Types {
       case TypeKind::BitString:kind="BITS";universal=3;value_offset=offset("value");break;
       case TypeKind::OctetString:kind="OCTETS";universal=4;break;
       case TypeKind::String:kind="OCTETS";
-        universal=t.string.kind==StringKind::NumericString?18:t.string.kind==StringKind::PrintableString?19:t.string.kind==StringKind::IA5String?22:t.string.kind==StringKind::VisibleString?26:12;break;
+        universal=t.string.kind==StringKind::UTCTime?23:t.string.kind==StringKind::NumericString?18:t.string.kind==StringKind::PrintableString?19:t.string.kind==StringKind::IA5String?22:t.string.kind==StringKind::VisibleString?26:12;break;
       case TypeKind::Sequence:kind="SEQUENCE";universal=16;break;
       case TypeKind::Set:kind="SET";universal=17;break;
       case TypeKind::Choice:kind="CHOICE";break;
@@ -1185,6 +1239,9 @@ class Types {
     s << linkage(true) << "void " << n << "_tlv_init(void* v) { " << n << "_init((" << n << "*)v); }\n"
       << linkage(true) << "void " << n << "_tlv_clear(void* v) { " << n << "_free((" << n << "*)v); }\n";
     emit_tlv_validation(id,s);
+    s << linkage(true) << "int " << n << "_has_selected(const void* opaque){const " << n << "* value=(const " << n << "*)opaque;(void)value;return 0";
+    if(t.kind==TypeKind::Sequence||t.kind==TypeKind::Set)for(const auto& m:members(t))if(typed_open_field(*m.field))s << " || value->" << decoded_value_member(*m.field) << "!=NULL";
+    s << ";}\n";
     if(t.kind==TypeKind::Choice){
       s << linkage(true) << "size_t " << n << "_tlv_choice_get(const void* value) { switch(((const " << n << "*)value)->kind) {\n";
       for(std::size_t i=0;i<fields.size();++i)s << "case " << n << "_arm_f" << spell(fields[i].field->name) << ":return " << i << ";\n";
@@ -1215,7 +1272,7 @@ class Types {
     const bool extensible=t.kind==TypeKind::Sequence?t.sequence.extensible:t.kind==TypeKind::Set?t.set.extensible:t.kind==TypeKind::Choice?t.choice.extensible:false;
     s << "static const asn1_tlv_schema_t schema={ASN1_TLV_" << kind << ",sizeof(" << n << ")," << universal << ',' << tlv_tag(t.tag,tagged) << ',' << t.tag.is_explicit << ',' << extensible << ',' << (alias&&pointer(id,dep)) << ','
       << value_offset << ',' << data_offset << ',' << count_offset << ',' << capacity_offset << ',' << element << ',' << (fields.empty()?"NULL":"fields") << ',' << fields.size() << ',' << n << "_tlv_init," << n << "_tlv_clear," << n << "_tlv_validate,"
-      << (t.kind==TypeKind::Choice?n+"_tlv_choice_get":"NULL") << ',' << (t.kind==TypeKind::Choice?n+"_tlv_choice_set":"NULL") << "};return &schema;}\n";
+      << (t.kind==TypeKind::Choice?n+"_tlv_choice_get":"NULL") << ',' << (t.kind==TypeKind::Choice?n+"_tlv_choice_set":"NULL") << ',' << (t.kind==TypeKind::BitString&&!t.bit_string.named_bits.empty()?n+"_named_length":"NULL") << ',' << n << "_has_selected};return &schema;}\n";
     for(const auto* codec:{"ber","der","cer"})if((std::string(codec)=="ber"&&c_ber)||(std::string(codec)=="der"&&c_der)||(std::string(codec)=="cer"&&c_cer)) {
       const auto policy=std::string("ASN1_TLV_")+(std::string(codec)=="ber"?"BER":std::string(codec)=="der"?"DER":"CER");
       s << linkage() << "asn1_status_t " << n << "_encode_" << codec << "(asn1_byte_writer_t* w,const " << n << "* value) { return asn1_tlv_schema_encode(w," << policy << ',' << n << "_tlv_schema(),value); }\n"
@@ -1260,14 +1317,35 @@ class Types {
     if(size&&!size->extensible&&size->lower&&size->upper&&size->lower->as_i64&&size->upper->as_i64&&*size->lower==*size->upper)
       fixed="UINT64_C("+std::to_string(*size->lower->as_i64)+")";
     unsigned flags=xml_flags(t.exer)|(t.jer.array?1u:0u)|(t.jer.base64?2u:0u)|(t.jer.object?4u:0u)|(t.jer.unwrapped?8u:0u);
+    for(std::size_t i=0;i<fields.size();++i)if(typed_open_field(*fields[i].field)){
+      const auto& f=*fields[i].field;const Field* governor=nullptr;
+      for(const auto& p:fields)if(p.field->name==f.table_constraint->governor_field_name)governor=p.field;
+      if(!governor){diag.error({},"C open type governor is not in the containing record");continue;}
+      const auto key=scalar_value_path(governor->type,"((const "+n+"*)parent)->f"+spell(governor->name));
+      if(key.empty()){diag.error({},"C typed open type requires an integer/enumerated governor");continue;}
+      s << linkage(true) << "asn1_status_t " << n << "_governor_" << i << "(const void* parent,int64_t* out){";
+      if(big_integer(model.arena.get(scalar_underlying(governor->type))))s << "return asn1_bigint_to_int64(&" << key << ",out);";
+      else s << "*out=" << key << ";return ASN1_OK;";
+      s << "}\n";
+    }
     s << linkage(true) << "const asn1_codec_schema_t* " << n << "_codec_schema(void) {\n";
+    for(std::size_t i=0;i<fields.size();++i)if(typed_open_field(*fields[i].field)){
+      s << "static const asn1_codec_selection_t selections_" << i << "[]={\n";
+      for(const auto& e:fields[i].field->table_constraint->entries){
+        if(!e.has_id_value||!e.id_value.as_i64){diag.error({},"C typed open type key is outside int64");continue;}
+        s << '{' << literal(*e.id_value.as_i64) << ",UINT32_C(" << e.type << ")," << name(e.type) << "_codec_schema," << c_string(e.type_name.empty()?model.arena.get(e.type).name:e.type_name) << "},\n";
+      }s << "};\n";
+    }
     if(!fields.empty()){
       s << "static const asn1_codec_field_t fields[]={\n";
-      for(const auto& plan:fields){const auto& f=*plan.field;const bool tag=f.tag.cls!=TagClass::Universal||f.tag.number!=0;
+      for(std::size_t i=0;i<fields.size();++i){const auto& plan=fields[i];const auto& f=*plan.field;const bool tag=f.tag.cls!=TagClass::Universal||f.tag.number!=0;
         s << '{' << name(f.type) << "_codec_schema," << c_string(f.name) << ','
           << c_string(instruction_name(f.name,static_cast<unsigned>(f.jer_name_form),f.jer_name_literal)) << ','
           << (plan.extension_group?std::to_string(*plan.extension_group):"SIZE_MAX") << ',' << plan.nested_sequence << ','
-          << (f.presence==Presence::Optional) << ',' << xml_flags(f.exer) << ',' << tlv_tag(f.tag,tag) << "},\n";
+          << (f.presence==Presence::Optional) << ',' << xml_flags(f.exer) << ',' << tlv_tag(f.tag,tag);
+        if(typed_open_field(f))s << ",selections_" << i << ',' << f.table_constraint->entries.size() << ',' << n << "_governor_" << i << ",offsetof(" << n << ',' << decoded_type_member(f) << "),offsetof(" << n << ',' << decoded_value_member(f) << ')';
+        else s << ",NULL,0,NULL,SIZE_MAX,SIZE_MAX";
+        s << "},\n";
       }s << "};\n";
     }
     std::size_t enum_count=0;
@@ -1285,7 +1363,7 @@ class Types {
     }
     const auto& shape=c_resolved(id);
     const char* builtin=shape.kind==TypeKind::Boolean?"BOOLEAN":shape.kind==TypeKind::Integer?"INTEGER":shape.kind==TypeKind::Null?"NULL":shape.kind==TypeKind::Real?"REAL":shape.kind==TypeKind::Enumerated?"ENUMERATED":shape.kind==TypeKind::BitString?"BIT_STRING":shape.kind==TypeKind::OctetString?"OCTET_STRING":shape.kind==TypeKind::ObjectIdentifier?"OBJECT_IDENTIFIER":shape.kind==TypeKind::RelativeOid?"RELATIVE_OID":shape.kind==TypeKind::Sequence?"SEQUENCE":shape.kind==TypeKind::Set?"SET":shape.kind==TypeKind::Choice?"CHOICE":shape.kind==TypeKind::SequenceOf?"SEQUENCE_OF":shape.kind==TypeKind::SetOf?"SET_OF":"Type";
-    if(shape.kind==TypeKind::String)builtin=shape.string.kind==StringKind::IA5String?"IA5String":shape.string.kind==StringKind::NumericString?"NumericString":shape.string.kind==StringKind::PrintableString?"PrintableString":shape.string.kind==StringKind::VisibleString?"VisibleString":"UTF8String";
+    if(shape.kind==TypeKind::String)builtin=shape.string.kind==StringKind::UTCTime?"UTCTime":shape.string.kind==StringKind::IA5String?"IA5String":shape.string.kind==StringKind::NumericString?"NumericString":shape.string.kind==StringKind::PrintableString?"PrintableString":shape.string.kind==StringKind::VisibleString?"VisibleString":"UTF8String";
     const auto xml_name=!t.name.empty()?t.name:t.kind==TypeKind::Referenced&&!t.referenced.name.empty()?t.referenced.name:std::string(builtin);
     s << "static const asn1_codec_schema_t schema={" << n << "_tlv_schema," << c_string(xml_name) << ','
       << (element==kInvalidType?"NULL":name(element)+"_codec_schema") << ',' << (fields.empty()?"NULL":"fields") << ','
@@ -1298,9 +1376,10 @@ class Types {
     }
   }
   void header(std::ostream& h) const {
-  h << (c_uper||c_aper?"/* Generated C11 types and supported PER codecs. */\n":"/* Generated C11 types only; no codec implementation. */\n") << "#ifndef " << prefix << "_types_h\n#define " << prefix
-    << "_types_h\n#define " << prefix << "_GENERATED_ABI_VERSION 2\n"
-    << "#include <asn1/c_runtime/asn1_c_common.h>\n#include <asn1/c_runtime/bit_string.h>\n#include <asn1/c_runtime/limits.h>\n";
+  h << (c_uper||c_aper||c_schema()?"/* Generated C11 types and selected codec entries. */\n":"/* Generated C11 types only; no codec implementation. */\n") << "#ifndef " << prefix << "_types_h\n#define " << prefix
+    << "_types_h\n#define " << prefix << "_GENERATED_ABI_VERSION 3\n#define " << prefix << "_REQUIRED_C_RUNTIME_ABI_VERSION 3\n"
+    << "#include <asn1/c_runtime/asn1_c_common.h>\n#include <asn1/c_runtime/bit_string.h>\n#include <asn1/c_runtime/value_content.h>\n#include <asn1/c_runtime/limits.h>\n";
+  h << "#if !defined(ASN1_C_RUNTIME_ABI_VERSION) || ASN1_C_RUNTIME_ABI_VERSION != 3\n#error Incompatible ASN.1 C runtime headers: regenerate and rebuild together\n#endif\n";
   if(c_uper||c_aper) h << "#include <asn1/c_runtime/per.h>\n";
   if(c_extra()) h << "#include <asn1/c_runtime/schema_codec.h>\n";
   if(c_schema()) h << "#include <asn1/c_runtime/tlv_schema.h>\n#include <stddef.h>\n";
@@ -1367,6 +1446,19 @@ class Types {
   void body(TypeId id, std::ostream& s) const {
     const auto& t = model.arena.get(id);
     const auto n = name(id);
+    if(t.kind==TypeKind::BitString&&!t.bit_string.named_bits.empty()){
+      s << linkage(true) << "asn1_status_t " << n << "_named_length(size_t bits,size_t* out){\n";
+      const auto& c=t.bit_string.size;
+      for(const auto& r:c.root_ranges){
+        s << "{size_t candidate=bits;";
+        if(r.lower&&r.lower->as_i64)s << "if(candidate<UINT64_C(" << *r.lower->as_i64 << "))candidate=UINT64_C(" << *r.lower->as_i64 << ");";
+        s << "if(";if(r.upper&&r.upper->as_i64)s << "candidate<=UINT64_C(" << *r.upper->as_i64 << ')';else s << '1';
+        s << "){*out=candidate;return ASN1_OK;}}\n";
+      }
+      if(c.extensible||(!c.empty&&c.root_ranges.empty()))s << "*out=bits;return ASN1_OK;";
+      else s << "return ASN1_ERR_CONSTRAINT_VIOLATION;";
+      s << "}\n";
+    }
     s << linkage() << "void " << n << "_init(" << n << " *v) { if (v) {\n";
     zero_declaration(n,"zero",s); s << "*v = zero;\n";
     if (t.kind == TypeKind::Sequence || t.kind == TypeKind::Set) {
@@ -1403,7 +1495,7 @@ class Types {
       if (const auto* size = planning::storage_size(t)) {
         const auto plan = planning::constraint(*size);
         if(t.kind==TypeKind::String && c_schema()) {
-          const unsigned tag=t.string.kind==StringKind::NumericString?18:t.string.kind==StringKind::PrintableString?19:t.string.kind==StringKind::IA5String?22:t.string.kind==StringKind::VisibleString?26:12;
+          const unsigned tag=t.string.kind==StringKind::UTCTime?23:t.string.kind==StringKind::NumericString?18:t.string.kind==StringKind::PrintableString?19:t.string.kind==StringKind::IA5String?22:t.string.kind==StringKind::VisibleString?26:12;
           s << "size_t size_characters=0; if(src->count>src->capacity || (src->count&&!src->data)) { status=ASN1_ERR_INVALID_ARGUMENT;goto fail; } status=asn1_tlv_string_length(" << tag << ",asn1_byte_view(src->data,src->count),&size_characters);if(status!=ASN1_OK)goto fail;\n";
         }
         const std::string count = t.kind == TypeKind::String && c_schema()?"size_characters":t.kind == TypeKind::BitString ? "src->value.bit_length" : "src->count";
@@ -1427,6 +1519,7 @@ class Types {
       bigint_contents(t,s,copy);
     } else if (t.kind == TypeKind::BitString) {
       if (!copy) s << "free(v->value.bits);\n";
+      else if(!t.bit_string.named_bits.empty())s << "{size_t significant=0,count=0;status=asn1_bitstring_significant(&src->value,&significant);if(status==ASN1_OK)status=" << n << "_named_length(significant,&count);if(status==ASN1_OK)status=asn1_bitstring_normalize(&src->value,count,&tmp.value);if(status!=ASN1_OK)goto fail;}\n";
       else s << "{ size_t bytes = src->value.bit_length/8 + (src->value.bit_length%8 != 0);\n"
         << "if (bytes > ASN1_MAX_STRING_BYTES) { status = ASN1_ERR_RESOURCE_LIMIT; goto fail; }\n"
         << "if (bytes > src->value.cap_bytes || (bytes && !src->value.bits)) { status = ASN1_ERR_INVALID_ARGUMENT; goto fail; }\n"
@@ -1650,11 +1743,12 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
   const std::size_t per_functions=(types.c_uper?4u:0u)+(types.c_aper?4u:0u);
   const auto function_count=[&](TypeId id) {
     const auto& t=model.arena.get(id);std::size_t count=9u+per_functions;
+    if(t.kind==TypeKind::BitString&&!t.bit_string.named_bits.empty())++count;
     if(t.kind==TypeKind::Sequence||t.kind==TypeKind::Set){const auto& sequence=types.per_sequence(t);
-      for(const auto* list:{&sequence.root,&sequence.trailing_root})for(const auto& f:*list)if(types.typed_open_field(f))count+=1u+(types.c_uper?2u:0u)+(types.c_aper?2u:0u);
+      for(const auto* list:{&sequence.root,&sequence.trailing_root})for(const auto& f:*list)if(types.typed_open_field(f))count+=1u+(types.c_uper?2u:0u)+(types.c_aper?2u:0u)+(types.c_extra()?1u:0u);
     }
     if(types.c_schema()){
-      count+=4u+(types.c_ber?2u:0u)+(types.c_der?2u:0u)+(types.c_cer?2u:0u)+(t.kind==TypeKind::Choice?2u:0u);
+      count+=5u+(types.c_ber?2u:0u)+(types.c_der?2u:0u)+(types.c_cer?2u:0u)+(t.kind==TypeKind::Choice?2u:0u);
       for(const auto& m:members(t))if(m.field->presence==Presence::Default)count+=types.owning_default(*m.field)?2u:1u;
     }
     if(types.c_extra()){++count;for(const auto& entry:extra_entries())if(types.c_extra(entry.second))count+=2u;}
@@ -1719,7 +1813,7 @@ std::vector<CGeneratedFile> render_c_type_files(const ir::Model& model,
         std::string stem=opt.emit_split?module.first:opt.basename;
         if(opt.split_max_types){std::ostringstream suffix;suffix << '_' << std::setw(4) << std::setfill('0') << i+1;stem+=suffix.str();}
         std::ostringstream source;
-      source << (types.c_uper||types.c_aper?"/* Generated C11 types and PER codecs. */\n":"/* Generated C11 types only; no codec implementation. */\n") << "#include \"" << opt.basename << "_internal.h\"\n#include <stdlib.h>\n#include <string.h>\n";
+      source << (types.c_uper||types.c_aper||types.c_schema()?"/* Generated C11 types and selected codec entries. */\n":"/* Generated C11 types only; no codec implementation. */\n") << "#include \"" << opt.basename << "_internal.h\"\n#include <stdlib.h>\n#include <string.h>\n";
       for(auto id:chunks[i]){
         types.body(id,source);types.defaults_body(id,source);types.metadata(id,source);
         if(types.c_uper) types.emit_per_codec(id,"uper",source);

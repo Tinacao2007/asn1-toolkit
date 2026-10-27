@@ -1,19 +1,22 @@
 # asn1-toolkit
 
-C++17 ASN.1 编译器与编解码运行时：将 ASN.1 规范（X.680 系列）编译为 C++17 值类型与
+C++17 ASN.1 编译器与编解码运行时：将 ASN.1 规范（X.680 系列）编译为 C++17 / C11 值类型与
 编解码代码，并提供 12 个产品 codec 入口及运行时原语库。JERI 是项目的 JER 指令入口，
 与 JER 共享 X.697 线路语法；12 个入口不表示 12 种独立标准线路格式。
 
 | 项目    | 值                                                                                                                                                                                     |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 当前阶段 | Phase 49 — C11 12 入口的已声明 profile、三形态/模块内分片可用；整份 RRC 的 C UPER+BER PDU 已通过 asn1c 对验，完整标准值域仍有明确限制。见 [状态](docs/status.md) |
-| 测试状态 | MSVC Release **472/472**；GCC ASan+UBSan **506/506**；C++ 7×12 实际入口语法矩阵 **84/84**。见 [CGEN 第 6 批验收](docs/cgen-batch6-validation.md) |
+| 测试状态 | MSVC Release **476/476**；GCC ASan+UBSan **512/512**；GCC/Clang C 各 **84/84**，原 C++ **84/84**。见 [第 7 批记录](docs/cgen-batch7-validation.md) |
 | 编码入口  | BER / DER / CER / UPER / APER / OER / COER / XER / CXER / E-XER / JER / JERI                                                                                                          |
 | 语言/构建 | C++17（GCC / Clang；MSVC 本地可用）+ CMake 3.16+                                                                                                                                             |
 | 依赖    | 零第三方运行时依赖（BigInt 自研，无 Boost、无 multiprecision）                                                                                                                                         |
 
 显式 `--lang c --types-only` 可生成纯 C11 类型/生命周期及模块内分片；C 的 12 入口在已声明 profile 内可生成真实编解码；限制与证据见 [第 6 批验收](docs/cgen-batch6-validation.md)。
 用法见 [C 输出与集成](docs/c-codegen-output.md)。
+
+第 7 批已完成：补齐 named bits、UTCTime、离散 PER 根和已知表约束的 JSON/XML typed open，
+原 C/C++ 矩阵及安装后的 C-only 多文件消费均通过。支持范围与证据见 [第 7 批记录](docs/cgen-batch7-validation.md)。
 
 ## 特性
 
@@ -26,7 +29,7 @@ C++17 ASN.1 编译器与编解码运行时：将 ASN.1 规范（X.680 系列）�
 | 三种生成产物形态   | 默认 out-of-line（声明在头、定义在 `.cpp`）、`--emit-inline` 全 inline 单头、`--emit-split` 按 ASN.1 模块分文件                                   |
 | 编译门禁       | 7 个 fixture × 12 codec 全量 emit 产物 `-fsyntax-only` 零错误（emit 成功 ≠ 可编译）                                                       |
 | 无异常错误模型    | 业务错误用 `Result<T>` / 编译诊断（仅 `std::bad_alloc` 可传播）；源范围与线路偏移单位见 [错误契约](docs/cpp-error-contracts.md)                                                           |
-| 严格分层       | 编译器链（lexer/parser/IR/codegen）不链接运行时；运行时不包含 AST/IR 头；生成产物是唯一桥梁（inline 模式为生成 `.hpp`）                                                       |
+| 严格分层       | 编译器链（lexer/parser/IR/codegen）不链接运行时；运行时不包含 AST/IR 头；生成产物是唯一桥梁（inline 模式为生成 `.hpp` / `.h`）                                                       |
 
 ## 环境要求
 

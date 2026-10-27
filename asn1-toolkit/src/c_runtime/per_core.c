@@ -661,3 +661,67 @@ asn1_status_t asn1_per_decode_int_ex(asn1_bit_reader_t* r, asn1_per_variant_t v,
   if ((!ext && !in_int(c, n)) || (ext && in_int(c, n))) return ASN1_ERR_CONSTRAINT_VIOLATION;
   *out = n; return ASN1_OK;
 }
+static int root_envelope(const asn1_per_int_range_t* roots,size_t count,int ext,asn1_per_int_range_t* out){
+  if(!roots||!count||count>ASN1_MAX_PDU_ELEMENTS||(ext!=0&&ext!=1))return 0;
+  for(size_t i=0;i<count;++i)if(!valid_int(roots+i)||!roots[i].lower_set||!roots[i].upper_set||
+      (i&&roots[i].lower<=roots[i-1].upper))return 0;
+  *out=roots[0];out->upper=roots[count-1].upper;out->extensible=ext;return 1;
+}
+static int root_member(const asn1_per_int_range_t* roots,size_t count,int64_t n){
+  for(size_t i=0;i<count;++i)if(in_int(roots+i,n))return 1;return 0;
+}
+asn1_status_t asn1_per_encode_bigint_ranges_ex(asn1_bit_writer_t* w, asn1_per_variant_t v,
+    const asn1_per_int_range_t* roots,size_t count,int extensible,const asn1_bigint_t* value) {
+  asn1_per_int_range_t envelope; if(!root_envelope(roots,count,extensible,&envelope))return ASN1_ERR_INVALID_ARGUMENT;const asn1_per_int_range_t* c=&envelope;
+  if(!w || !value || !valid_variant(v) || !valid_int(c) || !c->lower_set || !c->upper_set)
+    return ASN1_ERR_INVALID_ARGUMENT;
+  if(value->nlimbs>value->cap || (value->nlimbs && (!value->limbs ||
+      !value->limbs[value->nlimbs-1] || (value->sign!=1 && value->sign!=-1))) ||
+      (!value->nlimbs && value->sign))return ASN1_ERR_INVALID_ARGUMENT;
+  if(value->nlimbs>ASN1_MAX_BIGINT_LIMBS)return ASN1_ERR_RESOURCE_LIMIT;
+  int64_t n=0;
+  const asn1_status_t fit=asn1_bigint_to_int64(value,&n);
+  if(fit!=ASN1_OK && fit!=ASN1_ERR_LENGTH_OVERFLOW)return fit;
+  /* X.691 13.1 tests the RANGE of the extension root; holes do not
+     shrink that range. Exact membership still constrains non-extensible types. */
+  const int ext=fit!=ASN1_OK || !in_int(c,n);
+  if(!c->extensible && fit==ASN1_OK && !root_member(roots,count,n))return ASN1_ERR_CONSTRAINT_VIOLATION;
+  if(ext && !c->extensible)return ASN1_ERR_CONSTRAINT_VIOLATION;
+  if(c->extensible)TRY(asn1_bit_writer_put_bit(w,ext));
+  if(ext)return asn1_per_encode_unbounded_int_ex(w,v,value);
+  asn1_per_int_range_t root=*c;root.extensible=0;
+  return asn1_per_encode_int_ex(w,v,&root,n);
+}
+asn1_status_t asn1_per_decode_bigint_ranges_ex(asn1_bit_reader_t* r, asn1_per_variant_t v,
+    const asn1_per_int_range_t* roots,size_t count,int extensible,asn1_bigint_t* out) {
+  asn1_per_int_range_t envelope; if(!root_envelope(roots,count,extensible,&envelope))return ASN1_ERR_INVALID_ARGUMENT;const asn1_per_int_range_t* c=&envelope;
+  if(!r || !out || !valid_variant(v) || !valid_int(c) || !c->lower_set || !c->upper_set)
+    return ASN1_ERR_INVALID_ARGUMENT;
+  int ext=0;
+  if(c->extensible)TRY(asn1_bit_reader_get_bit(r,&ext));
+  asn1_bigint_t tmp;asn1_bigint_init(&tmp);
+  if(ext){
+    TRY(asn1_per_decode_unbounded_int_ex(r,v,&tmp));
+    int64_t n=0;
+    if(asn1_bigint_to_int64(&tmp,&n)==ASN1_OK && in_int(c,n)){
+      asn1_bigint_free(&tmp);return ASN1_ERR_CONSTRAINT_VIOLATION;
+    }
+  }else{
+    asn1_per_int_range_t root=*c;root.extensible=0;
+    int64_t n=0;TRY(asn1_per_decode_int_ex(r,v,&root,&n));if(!c->extensible&&!root_member(roots,count,n))return ASN1_ERR_CONSTRAINT_VIOLATION;
+    uint8_t bytes[8];const uint64_t bits=(uint64_t)n;
+    for(size_t i=0;i<8;++i)bytes[7-i]=(uint8_t)(bits>>(i*8u));
+    size_t start=0;
+    while(start<7 && ((bytes[start]==0 && !(bytes[start+1]&128u)) ||
+                     (bytes[start]==255 && (bytes[start+1]&128u))))++start;
+    TRY(asn1_bit_reader_reserve(r,8,0));
+    TRY(asn1_bigint_init_from_twos_complement(&tmp,asn1_byte_view(bytes+start,8-start)));
+  }
+  *out=tmp;return ASN1_OK;
+}
+asn1_status_t asn1_per_encode_bigint_root_ex(asn1_bit_writer_t* w,asn1_per_variant_t v,const asn1_per_int_range_t* c,const asn1_bigint_t* n){
+  if(!c)return ASN1_ERR_INVALID_ARGUMENT;return asn1_per_encode_bigint_ranges_ex(w,v,c,1,c->extensible,n);
+}
+asn1_status_t asn1_per_decode_bigint_root_ex(asn1_bit_reader_t* r,asn1_per_variant_t v,const asn1_per_int_range_t* c,asn1_bigint_t* n){
+  if(!c)return ASN1_ERR_INVALID_ARGUMENT;return asn1_per_decode_bigint_ranges_ex(r,v,c,1,c->extensible,n);
+}

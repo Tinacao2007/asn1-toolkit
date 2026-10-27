@@ -6,6 +6,20 @@
 
 ## 近期变更详录
 
+### 2026-10-26 (CGEN batch 7 complete)
+
+- Add the unchanged seven-fixture C syntax matrix, configure-time source planning,
+  installed C-only generated multi-TU consumption, generated decoder seed/fuzz
+  harness and an aggregate target for all test executables.
+- Correct arbitrary-precision INTEGER DEFAULT comparison/materialization; add
+  shared Variant PER finite-root/arbitrary-extension primitives. Extend C runtime
+  dependency graph negative probes and remove parallel shared-producer duplication.
+- Complete LPP named bits/UTCTime, sparse S1AP PER roots and known JSON/XML typed
+  open selectors, with allocation faults, independent vectors and ABI revision 3.
+  GCC/Clang C matrices and the original C++ matrix each pass 84/84; MSVC Release
+  476/476 and GCC ASan+UBSan 512/512. Installed consumers and independent builds pass;
+  precise profile/oracle boundaries are in [batch 7 validation](cgen-batch7-validation.md).
+
 ### 2026-10-26 (CGEN batch 5 C BER/DER/CER and whole RRC)
 
 - Add transactional byte I/O and shared policy-based C TLV value/schema runtime,

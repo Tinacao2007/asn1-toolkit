@@ -1,7 +1,33 @@
 #include "schema_internal.h"
+#include <asn1/c_runtime/bit_string.h>
 #include <stdlib.h>
 #include "alloc_internal.h"
 #define TRY(x) do{asn1_status_t s_=(x);if(s_!=ASN1_OK)return s_;}while(0)
+asn1_status_t asn1_schema_selection(const asn1_codec_field_t* f,const void* parent,const asn1_codec_selection_t** out){
+  if(!f->governor)return ASN1_ERR_UNSUPPORTED;int64_t key=0;TRY(f->governor(parent,&key));
+  for(size_t i=0;i<f->selection_count;++i)if(f->selections[i].key==key){*out=f->selections+i;return ASN1_OK;}return ASN1_ERR_UNSUPPORTED;
+}
+asn1_status_t asn1_schema_selected_value(const asn1_codec_field_t* f,const void* parent,const asn1_codec_selection_t** selected,const void** value){
+  TRY(asn1_schema_selection(f,parent,selected));const uint8_t* base=(const uint8_t*)parent;
+  if(*(const uint32_t*)(base+f->selected_type_offset)!=(*selected)->type_id)return ASN1_ERR_CONSTRAINT_VIOLATION;
+  *value=*(void*const*)(base+f->selected_value_offset);return *value?ASN1_OK:ASN1_ERR_INVALID_ARGUMENT;
+}
+asn1_status_t asn1_schema_selected_destination(const asn1_codec_field_t* f,void* parent,const asn1_codec_selection_t* selected,asn1_schema_budget_t* b,void** out){
+  const asn1_tlv_schema_t* l=selected->type()->layout();void* value=NULL;TRY(asn1_schema_allocate(b,l->size,1,&value));l->init(value);
+  uint8_t* base=(uint8_t*)parent;*(void**)(base+f->selected_value_offset)=value;*(uint32_t*)(base+f->selected_type_offset)=selected->type_id;*out=value;return ASN1_OK;
+}
+asn1_status_t asn1_schema_named_bits(const asn1_tlv_schema_t* l,const asn1_bitstring_t* src,int trim,asn1_bitstring_t* out){
+  size_t significant=0,count=0;TRY(asn1_bitstring_significant(src,&significant));TRY(l->named_length(significant,&count));
+  return asn1_bitstring_normalize(src,trim?significant:count,out);
+}
+asn1_status_t asn1_schema_named_finish(const asn1_tlv_schema_t* l,void* value,asn1_schema_budget_t* b){
+  if(!l->named_length)return ASN1_OK;
+  asn1_bitstring_t* bits=(asn1_bitstring_t*)((uint8_t*)value+l->value_offset);size_t significant=0,count=0;
+  TRY(asn1_bitstring_significant(bits,&significant));TRY(l->named_length(significant,&count));
+  if(bits->bit_length==count)return ASN1_OK;
+  TRY(asn1_schema_charge(b,2u*(count/8u+(count%8u!=0))+8u,0));asn1_bitstring_t tmp={0};
+  TRY(asn1_bitstring_normalize(bits,count,&tmp));asn1_bitstring_free(bits);*bits=tmp;return ASN1_OK;
+}
 asn1_status_t asn1_schema_charge(asn1_schema_budget_t* b,size_t bytes,size_t elements){
   if(bytes>ASN1_MAX_PDU_ALLOCATION_BYTES-b->bytes||elements>ASN1_MAX_PDU_ELEMENTS-b->elements)return ASN1_ERR_RESOURCE_LIMIT;
   b->bytes+=bytes;b->elements+=elements;return ASN1_OK;

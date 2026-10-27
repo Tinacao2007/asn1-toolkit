@@ -97,7 +97,11 @@ static asn1_status_t json_at(asn1_byte_writer_t* w,const asn1_codec_schema_t* t,
     case ASN1_TLV_REAL:return real_number(w,*(const double*)(base+l->value_offset));
     case ASN1_TLV_OID:case ASN1_TLV_RELATIVE_OID:{const uint64_t* data=*(uint64_t*const*)(base+l->data_offset);size_t n=*(const size_t*)(base+l->count_offset);TRY(put(w,"\""));for(size_t i=0;i<n;++i){if(i)TRY(put(w,"."));char s[32];int count=snprintf(s,sizeof(s),"%" PRIu64,data[i]);if(count<=0||(size_t)count>=sizeof(s))return ASN1_ERR_INVALID_ARGUMENT;TRY(put(w,s));}return put(w,"\"");}
     case ASN1_TLV_OCTETS:case ASN1_TLV_OPEN:{asn1_byte_view_t bytes=asn1_byte_view(*(uint8_t*const*)(base+l->data_offset),*(const size_t*)(base+l->count_offset));if(l->universal_tag!=4&&l->kind!=ASN1_TLV_OPEN)return asn1_json_quote(w,bytes);return json_binary(w,bytes,(flags&ASN1_SCHEMA_BASE64)!=0);}
-    case ASN1_TLV_BITS:{const asn1_bitstring_t* b=(const asn1_bitstring_t*)(base+l->value_offset);asn1_byte_view_t bytes=asn1_byte_view(b->bits,b->bit_length/8+(b->bit_length%8!=0));
+    case ASN1_TLV_BITS:{const asn1_bitstring_t* b=(const asn1_bitstring_t*)(base+l->value_offset);
+      if(l->named_length){asn1_bitstring_t normalized={0};TRY(asn1_schema_named_bits(l,b,0,&normalized));asn1_status_t status=ASN1_OK;
+        if(t->fixed_size==SIZE_MAX)status=put(w,"{\"value\":");if(status==ASN1_OK)status=json_binary(w,asn1_byte_view(normalized.bits,normalized.bit_length/8u+(normalized.bit_length%8u!=0)),0);
+        if(status==ASN1_OK&&t->fixed_size==SIZE_MAX){status=put(w,",\"length\":");if(status==ASN1_OK)status=number(w,(int64_t)normalized.bit_length);if(status==ASN1_OK)status=put(w,"}");}asn1_bitstring_free(&normalized);return status;}
+      asn1_byte_view_t bytes=asn1_byte_view(b->bits,b->bit_length/8+(b->bit_length%8!=0));
       if(t->fixed_size!=SIZE_MAX)return json_binary(w,bytes,0);TRY(put(w,"{\"value\":"));TRY(json_binary(w,bytes,0));TRY(put(w,",\"length\":"));TRY(number(w,(int64_t)b->bit_length));return put(w,"}");}
     case ASN1_TLV_CHOICE:{size_t selected=l->choice_get(value);if(selected>=l->field_count)return ASN1_ERR_CONSTRAINT_VIOLATION;const void* child=asn1_schema_field_value(value,l->fields+selected);if(!child)return ASN1_ERR_CONSTRAINT_VIOLATION;
       size_t start=asn1_byte_writer_view(w).size;
@@ -108,7 +112,9 @@ static asn1_status_t json_at(asn1_byte_writer_t* w,const asn1_codec_schema_t* t,
       return put(w,"}");}
     case ASN1_TLV_SEQUENCE:case ASN1_TLV_SET:{int array=(flags&ASN1_SCHEMA_ARRAY)!=0;TRY(put(w,array?"[":"{"));int first=1;
       for(size_t ordinal=0;ordinal<l->field_count;++ordinal){size_t i=array?array_field(t,ordinal):ordinal;const asn1_tlv_field_t* f=l->fields+i;if(!asn1_schema_field_present(value,f)){if(array){if(!first)TRY(put(w,","));TRY(put(w,"null"));first=0;}continue;}
-        const void* child=asn1_schema_field_value(value,f);if(!child)return ASN1_ERR_CONSTRAINT_VIOLATION;if(!first)TRY(put(w,","));first=0;if(!array){TRY(quote(w,t->fields[i].instruction_name));TRY(put(w,":"));}TRY(json_at(w,t->fields[i].type(),child,depth+1,0));}
+        const void* child=asn1_schema_field_value(value,f);if(!child)return ASN1_ERR_CONSTRAINT_VIOLATION;if(!first)TRY(put(w,","));first=0;if(!array){TRY(quote(w,t->fields[i].instruction_name));TRY(put(w,":"));}
+        if(t->fields[i].selection_count){const asn1_codec_selection_t* selected=NULL;TRY(asn1_schema_selected_value(t->fields+i,value,&selected,&child));TRY(json_at(w,selected->type(),child,depth+1,0));}
+        else TRY(json_at(w,t->fields[i].type(),child,depth+1,0));}
       return put(w,array?"]":"}");}
     case ASN1_TLV_SEQUENCE_OF:case ASN1_TLV_SET_OF:{if(flags&ASN1_SCHEMA_OBJECT)return object_encode(w,t,value,depth);size_t count=*(const size_t*)(base+l->count_offset);if(count>ASN1_MAX_PDU_ELEMENTS)return ASN1_ERR_RESOURCE_LIMIT;
       const uint8_t* data=*(uint8_t*const*)(base+l->data_offset);TRY(put(w,"["));for(size_t i=0;i<count;++i){if(i)TRY(put(w,","));TRY(json_at(w,t->element(),data+i*l->element()->size,depth+1,0));}return put(w,"]");}
@@ -172,20 +178,23 @@ static asn1_status_t json_decode_body(const asn1_text_node_t* n,const asn1_codec
           TRY(json_decode_at(&record,t->element(),child,budget,depth+1,0));
         }}return ASN1_OK;}
     case ASN1_TLV_SEQUENCE:case ASN1_TLV_SET:{int array=(flags&ASN1_SCHEMA_ARRAY)!=0;if(n->kind!=(array?ASN1_TEXT_ARRAY:ASN1_TEXT_OBJECT))return ASN1_ERR_INVALID_ARGUMENT;
-      uint8_t* seen=NULL;TRY(asn1_schema_allocate(budget,l->field_count,1,(void**)&seen));asn1_status_t s=ASN1_OK;size_t index=0;
+      uint8_t* seen=NULL;TRY(asn1_schema_allocate(budget,l->field_count,1,(void**)&seen));const asn1_text_node_t** deferred=NULL;int has_selections=0;for(size_t i=0;i<l->field_count;++i)has_selections|=t->fields[i].selection_count!=0;asn1_status_t allocation=has_selections?asn1_schema_allocate(budget,sizeof(*deferred),l->field_count,(void**)&deferred):ASN1_OK;if(allocation!=ASN1_OK){free(seen);return allocation;}asn1_status_t s=ASN1_OK;size_t index=0;
       for(const asn1_text_node_t* f=n->children;f;f=f->next){size_t selected=l->field_count;if(array)selected=array_field(t,index++);else for(size_t i=0;i<l->field_count;++i)if(equals(f->name,f->name_size,t->fields[i].instruction_name)){selected=i;break;}
         if(selected>=l->field_count){if(!l->extensible){s=ASN1_ERR_TAG_MISMATCH;break;}continue;}
         const asn1_tlv_field_t* field=l->fields+selected;
         if(f->kind==ASN1_TEXT_NULL&&(field->is_default||field->presence!=SIZE_MAX)&&!nullable(t->fields[selected].type(),0,0))continue;
-        if(seen[selected]){s=ASN1_ERR_INVALID_ARGUMENT;break;}seen[selected]=1;void* dst=NULL;s=asn1_schema_field_destination(value,field,budget,&dst);if(s!=ASN1_OK)break;
+        if(seen[selected]){s=ASN1_ERR_INVALID_ARGUMENT;break;}seen[selected]=1;
+        if(t->fields[selected].selection_count){deferred[selected]=f;if(field->presence!=SIZE_MAX)*(int*)(base+field->presence)=1;continue;}
+        void* dst=NULL;s=asn1_schema_field_destination(value,field,budget,&dst);if(s!=ASN1_OK)break;
         s=json_decode_at(f,t->fields[selected].type(),dst,budget,depth+1,0);if(s!=ASN1_OK)break;if(field->presence!=SIZE_MAX)*(int*)(base+field->presence)=1;
       }
       for(size_t i=0;s==ASN1_OK&&i<l->field_count;++i)if(!seen[i]){const asn1_tlv_field_t* f=l->fields+i;if(f->presence==SIZE_MAX&&!f->is_default)s=ASN1_ERR_CONSTRAINT_VIOLATION;else if(f->default_init){s=asn1_schema_charge(budget,f->default_bytes,0);if(s==ASN1_OK)s=f->default_init(value);}}
-      free(seen);return s;}
+      for(size_t i=0;s==ASN1_OK&&i<l->field_count;++i)if(deferred&&deferred[i]){const asn1_codec_selection_t* selected=NULL;void* dst=NULL;s=asn1_schema_selection(t->fields+i,value,&selected);if(s==ASN1_OK)s=asn1_schema_selected_destination(t->fields+i,value,selected,budget,&dst);if(s==ASN1_OK)s=json_decode_at(deferred[i],selected->type(),dst,budget,depth+1,0);}
+      free(deferred);free(seen);return s;}
     default:return ASN1_ERR_UNSUPPORTED;
   }
 }
 static asn1_status_t json_decode_at(const asn1_text_node_t* n,const asn1_codec_schema_t* t,void* v,asn1_schema_budget_t* b,size_t d,unsigned flags){
-  if(d>=ASN1_MAX_RECURSION_DEPTH)return ASN1_ERR_RESOURCE_LIMIT;TRY(json_decode_body(n,t,v,b,d,flags));return t->layout()->validate(v);
+  if(d>=ASN1_MAX_RECURSION_DEPTH)return ASN1_ERR_RESOURCE_LIMIT;TRY(json_decode_body(n,t,v,b,d,flags));TRY(asn1_schema_named_finish(t->layout(),v,b));return t->layout()->validate(v);
 }
 asn1_status_t asn1_schema_json_decode(const asn1_text_node_t* n,const asn1_codec_schema_t* t,void* v,asn1_schema_budget_t* b,size_t d){return json_decode_at(n,t,v,b,d,0);}

@@ -88,3 +88,21 @@ asn1_status_t asn1_bitstring_resize(asn1_bitstring_t* s, size_t bit_count) {
   s->bit_length = bit_count;
   return ASN1_OK;
 }
+asn1_status_t asn1_bitstring_significant(const asn1_bitstring_t* s,size_t* out) {
+  if(!s||!out)return ASN1_ERR_INVALID_ARGUMENT;
+  const size_t n=s->bit_length/8u+(s->bit_length%8u!=0);
+  if(n>s->cap_bytes||(n&&!s->bits))return ASN1_ERR_INVALID_ARGUMENT;
+  if(n>ASN1_MAX_STRING_BYTES)return ASN1_ERR_RESOURCE_LIMIT;
+  if(n&&s->bit_length%8u&&(s->bits[n-1]&((1u<<(8u-s->bit_length%8u))-1u)))return ASN1_ERR_CONSTRAINT_VIOLATION;
+  size_t bits=s->bit_length;
+  while(bits&&!(s->bits[(bits-1)/8u]&(128u>>((bits-1)%8u))))--bits;
+  *out=bits;return ASN1_OK;
+}
+asn1_status_t asn1_bitstring_normalize(const asn1_bitstring_t* src,size_t count,asn1_bitstring_t* out){
+  if(!out||src==out)return ASN1_ERR_INVALID_ARGUMENT;
+  size_t significant=0;asn1_status_t s=asn1_bitstring_significant(src,&significant);
+  if(s!=ASN1_OK)return s;if(count<significant)return ASN1_ERR_CONSTRAINT_VIOLATION;
+  asn1_bitstring_t tmp;asn1_bitstring_init(&tmp);s=asn1_bitstring_resize(&tmp,count);if(s!=ASN1_OK)return s;
+  const size_t n=significant/8u+(significant%8u!=0);if(n)memcpy(tmp.bits,src->bits,n);
+  *out=tmp;return ASN1_OK;
+}

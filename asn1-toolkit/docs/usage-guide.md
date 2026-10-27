@@ -313,4 +313,10 @@ Historical dispatch rejection:
 编译 `.c` 并链接 `asn1::c_runtime`。七个入口均使用 byte reader/writer，
 文本按 UTF-8 字节传入。失败保留输出值/游标或已有 writer 内容。
 支持范围、共享 NAME/TEXT 的语义、明确 Unsupported 的指令和独立对验见
-[第 6 批证据](cgen-batch6-validation.md)。C 7 fixture×12 最终语法与安装验收仍属第 7 批。
+[第 6 批证据](cgen-batch6-validation.md)。最终 C 7 fixture×12 语法与安装验收已由
+[第 7 批](cgen-batch7-validation.md) 完成；使用 ABI 3 的 runtime/生成头并一同重编译。
+
+安装后的 C-only 多文件消费可用 `CONSUMER_KIND=generated-c`，指定
+`ASN1_HOST_COMPILER` 为已构建的宿主生成器。自动清单规划与新增模块触发重配置的
+示例见 [安装集成](build-and-package.md)。完整 C 语法门禁可执行
+`cmake --build build --target asn1_c_codec_matrix`；拒绝的组合会返回失败，不能当作通过。

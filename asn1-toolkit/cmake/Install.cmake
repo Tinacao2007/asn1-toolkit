@@ -24,4 +24,5 @@ configure_package_config_file("${PROJECT_SOURCE_DIR}/cmake/asn1ToolkitConfig.cma
 write_basic_package_version_file("${PROJECT_BINARY_DIR}/asn1ToolkitConfigVersion.cmake"
   VERSION ${PROJECT_VERSION} COMPATIBILITY SameMinorVersion)
 install(FILES "${PROJECT_BINARY_DIR}/asn1ToolkitConfig.cmake" "${PROJECT_BINARY_DIR}/asn1ToolkitConfigVersion.cmake"
+  "${PROJECT_SOURCE_DIR}/cmake/GenerateC.cmake"
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/asn1Toolkit)

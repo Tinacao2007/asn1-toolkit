@@ -48,6 +48,9 @@ def main():
         with tempfile.TemporaryDirectory(prefix="asn1-layer-graph-") as temporary:
             folder = Path(temporary)
             cases = [([], True), (["target_link_libraries(asn1_codegen INTERFACE asn1_ber)"], False),
+                     (["target_link_libraries(asn1_codegen INTERFACE asn1_c_runtime)"], False),
+                     (["target_link_libraries(asn1_c_runtime INTERFACE helper)",
+                       "target_link_libraries(helper INTERFACE asn1_ir)"], False),
                      (["target_link_libraries(asn1_runtime INTERFACE helper)",
                        "target_link_libraries(helper INTERFACE asn1_ir)"], False)]
             for i, (edges, success) in enumerate(cases):
@@ -55,7 +58,7 @@ def main():
                 source.mkdir()
                 text = ["cmake_minimum_required(VERSION 3.16)", "project(LayerProbe NONE)"]
                 text += [f"add_library({target} INTERFACE)" for target in
-                         ("asn1_codegen", "asn1_ber", "asn1_runtime", "asn1_common", "asn1_ir", "helper")]
+                         ("asn1_codegen", "asn1_ber", "asn1_runtime", "asn1_c_runtime", "asn1_common", "asn1_ir", "helper")]
                 text += edges + [f'include("{(args.root / "cmake/Layering.cmake").as_posix()}")']
                 (source / "CMakeLists.txt").write_text("\n".join(text), encoding="utf-8")
                 result = subprocess.run([args.cmake, "-S", str(source), "-B", str(source/"build")],
@@ -64,7 +67,7 @@ def main():
                     raise SystemExit("Layer graph probe failed: " + result.stdout)
                 if not success and "layer violation" not in result.stdout:
                     raise SystemExit("Negative probe failed for unrelated reason: " + result.stdout)
-        print("Target graph: valid graph and two forbidden direct/transitive probes passed")
+        print("Target graph: valid graph and four forbidden C/C++ direct/transitive probes passed")
     print(f'Layer boundaries: {count} files passed; positive/negative probes passed')
 
 if __name__ == '__main__': main()

@@ -1,9 +1,14 @@
 # C11 runtime 错误与所有权契约
 
-适用于当前 `include/asn1/c_runtime/*.h` 已实现原语。此契约不代表完整 codec
-或 C emitter 已完成。标准线路支持范围仍按 Phase49/后续修正项登记。
+适用于当前 `include/asn1/c_runtime/*.h` 和生成 C 的声明接口。C emitter 与十二入口
+已完成登记 profile；标准线路范围与验收边界见 [第 7 批记录](cgen-batch7-validation.md)。
 
 ## 状态码
+
+新增 `per_*_bigint_root_ex` 支持 int64 有限根范围及任意精度扩展值；两种 Variant
+共用实现。根必须同时有上下界，构造解码的输出须为新/零/已释放对象，失败保持
+输出不变，reader 游标沿用原语契约，可能已推进。生成公共 decoder 仍通过临时对象
+保持目标值失败不变。该原语只表示连续根区间，不能替代不连续约束的成员检查。
 
 原有 0..7 数值保持不变，不应把 C/C++ 错误枚举直接强制转换后假设永远对应。
 
@@ -18,6 +23,11 @@
 
 已有 BER length 原语对 indefinite indicator 返回 LengthOverflow 的历史行为
 暂保留；这不表示 indefinite 本身是非法 BER，后续实现另行处理。
+
+`per_*_bigint_ranges_ex` 接受排序的不连续有限根区间。扩展类型的 PER 扩展位按
+X.691 13.1 的根 RANGE 判断；非扩展类型仍精确检查成员，空洞非法。named-bit
+normalization 与 typed selector 分配计入累计预算。C runtime/生成 ABI 3 要求
+一同重编译；primitive、生成入口的游标/输出保证仍分别按各自契约处理。
 
 ## 生命周期和输出
 

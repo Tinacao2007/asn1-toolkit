@@ -413,4 +413,17 @@ Text trees and typed values use bounded ownership, transactional decode and
 explicit status propagation. Unsupported instruction/type graphs fail before
 publication. The CMake batch-6 consumers depend on single stamp-producing generation
 targets so parallel builds preserve publication locking rather than bypassing it.
-These gates do not close batch-7 installation, full C fixture or toolchain work.
+Those historical gates are supplemented by batch-7 installation, full C fixture
+and toolchain acceptance.
+
+Batch 7 adds SDK configuration-time C generation: a prebuilt native tool emits
+the source manifest before target creation. Schema, generator and declared
+artifacts are configuration dependencies, so source-set changes reconfigure the
+consumer rather than relying on a build-time glob. The consumer enables C only;
+cross builds never execute target test programs. Generated decoder fuzz reaches
+all twelve wrappers and remains a separate gate from primitive/self comparisons.
+The unchanged C 84-combination matrix passes under GCC and Clang, with the
+original C++ 84 matrix. Runtime ABI 3 adds named-bit normalization and typed
+selector metadata without compiler/runtime links. Known JSON/XML selectors own
+their decoded values; unknown selectors remain explicit errors. Whole-module
+syntax success does not imply whole-3GPP wire certification.
