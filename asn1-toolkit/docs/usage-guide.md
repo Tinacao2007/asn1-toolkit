@@ -256,7 +256,7 @@ ctest --test-dir build -R Cli --output-on-failure  # 按名字过滤
 
 **Q：电信测试样例测试是否等于 3GPP 完整编解码对等？**
 不等于。当前覆盖 parse + analyze + emit 编译门禁 + 字节级金标准差分向量，
-协议级逐消息 PDU 的完整对验仍在路线图上（见 [status.md](status.md#剩余工作)）。
+LPP/S1AP/LTE RRC 已增加代表顶层 PDU 的独立双向对验，范围见 [状态](status.md#protocol-interoperability)；不代表所有消息或 NR 全文通过。
 
 **Q：许可证？**
 README 标注 TBD（计划开源，发布时补齐 LICENSE 文件）；源码文件头已标注
@@ -711,3 +711,19 @@ python -X utf8 .\tests\scripts\test_nightly_c_codegen.py
 在临时 Git 仓库验证门禁失败不暂存/提交、父目录修改拒绝、中文/删除路径、保护脚本、
 提交 checkpoint、HEAD 漂移、互斥锁和提交后状态中断恢复。它不访问网络，不调用模型，
 不替代 C 后端的真实验收。普通预检查也不等于验证了模型请求额度或整夜网络连通性。
+
+## 电信 PDU 外部对验环境
+
+常规构建离线运行冻结向量，无需安装外部工具。需要现场重新编译完整模式、三方核验时，在独立测试环境安装固定版本：
+
+```sh
+python3 -m venv build/protocol-oracle-env
+build/protocol-oracle-env/bin/python -m pip install -r tests/telecom/oracle-requirements.txt
+cmake -S . -B build -DASN1_PROTOCOL_ORACLE_PYTHON="$PWD/build/protocol-oracle-env/bin/python"
+cmake --build build --target asn1_test_executables -j2
+ctest --test-dir build -R '^Protocol\.' --output-on-failure
+```
+
+上述为 Linux/WSL 命令；Windows Python 使用环境内 `Scripts/python.exe`。asn1c 应在 PATH 中，非 MSVC 测试工具链找到它后会自动加入 LPP/LTE UPER/BER 对验；它不提供此次 S1AP APER 金标准。不要混用 Windows 和 WSL 的 Python/编译器路径。关闭现场门禁可将缓存参数设为空字符串。
+
+固定版本仅为测试依赖，不随运行时链接或分发。现场门禁失败时保留 `tests/protocol-live/` 的生成物与日志；不能删掉失败向量再声明通过。准确数据来源、网络规则、工具覆盖和 NR 边界见 [状态](status.md#protocol-interoperability)，执行纪律见 [开发指南](development.md#protocol-interoperability-tests)。

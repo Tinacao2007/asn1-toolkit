@@ -7,7 +7,7 @@ C++17 ASN.1 编译器与编解码运行时：将 ASN.1 规范（X.680 系列）�
 | 项目    | 值                                                                                                                                                   |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 当前阶段  | Phase 49 — C11 12 入口的已声明支持范围、三形态/模块内分片可用；整份 RRC 的 C UPER+BER PDU 已通过 asn1c 对验，完整标准值域仍有明确限制。见 [状态](docs/status.md)                                   |
-| 测试状态  | MSVC Release **476/476**；GCC ASan+UBSan **512/512**；GCC/Clang C 各 **84/84**，原 C++ **84/84**。见 [第 7 批记录](docs/changelog.md#cgen-validation--batch-7) |
+| 测试状态  | MSVC Release **482/482**；GCC Release **519/519**（含现场对验）；GCC ASan+UBSan **518/518**；GCC/Clang C 各 **84/84**，原 C++ **84/84**。见 [当前协议验收](docs/status.md#protocol-interoperability) |
 | 编码入口  | BER / DER / CER / UPER / APER / OER / COER / XER / CXER / E-XER / JER / JERI                                                                        |
 | 语言/构建 | C++17（GCC / Clang；MSVC 本地可用）+ CMake 3.16+                                                                                                           |
 | 依赖    | 零第三方运行时依赖（BigInt 自研，无 Boost、无 multiprecision）                                                                                                       |
@@ -17,6 +17,8 @@ C++17 ASN.1 编译器与编解码运行时：将 ASN.1 规范（X.680 系列）�
 
 第 7 批已完成：补齐命名位串、UTCTime、离散 PER 根和已知表约束的 JSON/XML 类型化开放字段，
 原 C/C++ 矩阵及安装后的纯 C 多文件消费均通过。支持范围与证据见 [第 7 批记录](docs/changelog.md#cgen-validation--batch-7)。
+
+P1-3 已完成 LPP/S1AP/LTE RRC 代表顶层 PDU 独立对验与 NR 验收定义；实际覆盖和 NR 尚未执行的边界见 [状态](docs/status.md#protocol-interoperability)。
 
 `--lang cpp|c` 选择目标语言，默认 C++；`--c-prefix` 仅用于 C。C 后端在登记的值域/指令范围内支持十二入口，不支持的类型图在发布前诊断。ABI、能力范围及历史验收分别见架构、状态和变更历史。
 

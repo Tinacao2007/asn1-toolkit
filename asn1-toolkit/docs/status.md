@@ -16,7 +16,7 @@
 
 当前 C11 和 C++17 共用前端/IR/生成规划，分别使用目标语言后端及运行时。C 的十二入口、仅类型模式、普通/单头/模块拆分和模块内分片均可用；支持范围不能等同完整 ASN.1 标准。
 
-第 7 批补齐 LPP 命名位串/UTCTime、S1AP 离散 PER 根及已知 JSON/XML 类型开放字段。GCC 和 Clang 严格 C11 矩阵各 **84/84**，原 C++ 矩阵 **84/84**；完整 MSVC Release **476/476**，GCC ASan+UBSan **512/512**。安装 SDK 的纯 C 多翻译单元/分片消费、独立编译器/runtime 构建、配置期源规划、生成解码模糊测试与外部冻结向量均通过。生成/C 运行时 ABI 为 **3**，必须一起重新生成和编译，见 [最终验收](changelog.md#cgen-validation--batch-7)。
+第 7 批补齐 LPP 命名位串/UTCTime、S1AP 离散 PER 根及已知 JSON/XML 类型开放字段。GCC 和 Clang 严格 C11 矩阵各 **84/84**，原 C++ 矩阵 **84/84**；当前完整 MSVC Release **482/482**，GCC ASan+UBSan **518/518**。安装 SDK 的纯 C 多翻译单元/分片消费、独立编译器/runtime 构建、配置期源规划、生成解码模糊测试与外部冻结向量均通过。生成/C 运行时 ABI 为 **3**，必须一起重新生成和编译，见 [最终验收](changelog.md#cgen-validation--batch-7)。
 
 C OER/COER、JER/JERI、XER/CXER/E-XER 提供字节/文本事务读写、精确 INTEGER、完整解析及结构解码、已支持指令、规范策略与资源/失败门禁；39 个单/组合入口三形态消费者及 72 组独立 asn1tools 交换/冻结回放通过。C BER/DER/CER 共用策略引擎，完整 LTE RRC（1037 类型、9 个 C 源）编译通过，代表 PDU RRCConnectionRequest 的 UPER/BER 与现场 asn1c 0.9.29 字节及独立解码一致；这不是 NR TS 38.331 全文支持或所有 LTE PDU 互操作证明。
 
@@ -28,8 +28,8 @@ C PER 支持登记的标量、集合/递归、扩展 CHOICE、尾根、扩展添
 
 | 门禁                  | 结果                                                                     |
 | ------------------- | ---------------------------------------------------------------------- |
-| Release 构建 CTest    | MSVC 19.44 **476/476**（第 7 批最终验收）；GCC/Clang 历史完整轮次见验收记录                |
-| ASan+UBSan 完整 CTest | GCC 13.3 **512/512**；Clang 严格 C11/公共头/功能及插桩模糊测试另行登记，不冒充完整 Clang C++ 回归 |
+| Release 构建 CTest    | MSVC 19.44 **482/482**；GCC 13.3 **519/519**（含可选现场外部对验，默认离线为 518 项）                |
+| ASan+UBSan 完整 CTest | GCC 13.3 **518/518**；Clang 严格 C11/公共头/功能及插桩模糊测试另行登记，不冒充完整 Clang C++ 回归 |
 | `-Wall -Wextra`     | 无新增警告                                                                  |
 
 ## 编译门禁状态
@@ -41,6 +41,30 @@ C PER 支持登记的标量、集合/递归、扩展 CHOICE、尾根、扩展添
 | 分文件 emit 门禁（UPER）      | `asn1_split_lpp_split`（LPP 单模块路径）、`asn1_split_s1ap_split`（S1AP 三 emit 单元，含合并的 IEs+Containers+PDU-Contents 递归环）静态库编译通过                                                                                   |
 | 历史分文件 emit 手工矩阵        | LPP uper/aper/coer/ber/der/oer/jer 零错误；S1AP uper/ber/der/oer/jer 零错误；RRC uper 零错误；xer/exer/cxer 单编码规则零错误（XML 缺口已修复，见上）；flat 产物与改动前逐字节一致                                                                 |
 | 三大 3GPP 测试样例 emit 产物编译 | RRC/LPP/S1AP 全量 emit 产物作为 CMake 静态库编译通过（编译的是真实定义，非 stub）                                                                                                                                                |
+
+<a id="protocol-interoperability"></a>
+
+## 电信协议 PDU 独立对验
+
+2026-10-27 完成 P1-3，实际使用完整原模式生成 C11/C++17 消费者，未用裁剪类型替代。测试值是依据模式构造的真实顶层 PDU，**不是现场抓包**，也不等于所有消息互操作认证。
+
+| 协议与模式 | 顶层 PDU 测试值 | 适用网络规则 | 实际差分范围 |
+| --- | --- | --- | --- |
+| LPP 14.3.0 | 3 个 LPP-Message：最小、请求能力、边界中止 | UPER | UPER/APER/BER |
+| S1AP 14.4.0 | 4 个 S1AP-PDU：三个 ErrorIndication、一个 MMEConfigurationUpdateAcknowledge | APER | UPER/APER/BER，另测 10 个内部 IE/消息体 |
+| LTE TS 36.331 V8.12.0 | 6 个广播 MIB/连接请求：各含最小、典型、边界 | UPER | UPER/APER/BER |
+
+原 `rrc_8_6_0` 目录为历史名称，文件头实际写明 **TS 36.331 V8.12.0 (2010-12)**，本次以文件内容和 SHA-256 记账。其他模式版本与历史来源也登记在 [测试目录](../tests/telecom/protocol_cases.json)。BER 和非网络 PER 变体属于库能力验证，不宣称协议采用这些规则。
+
+- 13 个顶层值 × 3 规则 = **39** 组顶层线路；加内部开放内容共 **69** 组独立线路。C/C++ 各执行 69 组，合计 **138** 次项目输出经 pycrate 0.8.1 独立解码。
+- pycrate 从同一完整模式独立编译，生成冻结字节、解码及抽象值对照。asn1tools 0.169.0 对 LPP/LTE 的 **27** 组提供第二编码/解码交叉检查；S1AP 表约束不由它充当金标准。
+- asn1c 0.9.29 对 LPP/LTE 的 UPER/BER 提供 **54** 次独立编码或项目输出反向解码比较；该安装没有 APER，对 S1AP APER 的独立证据来自 pycrate。
+- 每个消费者逐字节截断、追加尾随字节并测试非法值；六个消费者共 **1860** 个异常输入。S1AP 内层开放内容由项目自身逐层编码，再交给顶层编码器，不转发 oracle 内层字节冒充成功。
+- [冻结向量](../tests/telecom/protocol_vectors.json) 保存模式、工具源码/生成物 hash、值和规则；[本次验收摘要](../tests/telecom/protocol_validation.json) 保存实际平台与计数。离线重放与现场独立编译分别登记。
+
+本次同时修复动态 CHOICE/open type 标签包装、隐式命名 OF 重复包装，以及 C++ BER 开放内容入口。C++ 未知类型的原始 BER 开放内容目前限单个定长 TLV；不定长和无法校验内部模式的 DER/CER 仍明确 Unsupported，不能据本次扩大其规范范围。
+
+NR TS 38.331 独立 [验收定义](../tests/telecom/nr_38331_acceptance.json) 已固定 V15.3.0、官方来源、全文三个模块和 NR-0～NR-6。**全文尚未引入、尚未执行**，后续见 [NR-01](todo.md#nr-01)，不能把上述 LTE 结果当作 NR 结果。
 
 ## 金标准差分验证状态
 
@@ -66,7 +90,7 @@ C PER 支持登记的标量、集合/递归、扩展 CHOICE、尾根、扩展添
    include 带进产物；历史 XML 家族 include 缺口曾由此暴露，当前保持 12 个实际入口逐项检查，不能仅跑组合；
 3. **电信测试样例测试不等于 3GPP 完整对等** —— 当前覆盖 parse + analyze +
    emit 编译门禁 + 字节级金标准差分，协议级逐消息 PDU 对验见
-   [TODO 清单](todo.md#p1-3)；
+   [协议对验范围](#protocol-interoperability)；
 4. **CER 无外部外部对照工具** —— asn1c v0.9.29 与 asn1tools 均无 CER 实现，
    金标准由 X.690 条文推导 + DER 值等价交叉验证；
 5. **许可证未定** —— 源码头已标 PROCODEC 版权，正式许可证文件发布时补齐。

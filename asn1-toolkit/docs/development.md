@@ -341,3 +341,22 @@ differential。枚举映射由调用方提供排序后的根/扩展 ordinal，�
 ## 任务与完成状态
 
 当前未完成事项统一在 [项目 TODO](todo.md)；已完成的批次、验收要求和历史路线统一在 [变更历史](changelog.md#remediation-tasks)。本页只保留代码规范、测试体系、验证纪律和可复用覆盖登记。
+
+<a id="protocol-interoperability-tests"></a>
+
+## 电信 PDU 独立差分门禁
+
+`Protocol.{lpp,s1ap,rrc}.{c,cpp}` 六个 CTest 从完整模式生成并链接真实消费者，离线重放 `tests/telecom/protocol_vectors.json`。冻结目录包含 schema/catalog SHA-256；`.gitattributes` 固定这些模式和 JSON 为 LF，避免 Windows 检出改变校验值。模式或目录变化必须重新核查，不能为通过测试静默刷新期望。
+
+```sh
+cmake --build build --target asn1_test_executables -j2
+ctest --test-dir build -R '^Protocol\.' --output-on-failure
+```
+
+现场门禁可用 `ASN1_PROTOCOL_ORACLE_PYTHON` 指向独立测试环境的 Python（安装见使用指南），注册 `Protocol.LiveOracles`。它先运行六个消费者产生新报告，再由独立工具编译完整原模式，验证冻结字节并反向解码项目输出。若找到 asn1c，非 MSVC 环境追加第三工具编译/链接与对验；未找到时不会冒充该工具已验证，必须另行记录实际范围。
+
+项目输入使用 JER/直接结构作为测试值接口；固定位串的 C++ JSON 表示转换仅在测试适配层，不转换线路。S1AP 依赖按内层 IE、消息体、顶层顺序，以**项目实际编码结果**组装开放内容，禁止复制 oracle 内层字节。每条线路比较独立字节、解码抽象值和重编码，另检查逐字节截断、尾随字节及非法值；异常退出不能计为拒绝。
+
+外部工具版本、源码/生成物 hash、值、参数和来源见冻结向量；运行报告写入构建目录 `tests/protocol-evidence/`，现场证据写入 `tests/protocol-live/`。pycrate 覆盖 S1AP 表约束；asn1tools 不承担它，当前 asn1c 不提供 APER。asn1c 通过规范 XER 传递解码值仅是测试适配，不构成项目 CXER 的独立验证。
+
+此门禁不能替代原七样例十二入口语法矩阵、单入口依赖检查、三产物形态及全量 Release/ASan+UBSan。协议网络编码与额外库编码验证分别记账，构造 PDU 不称为抓包。当前范围见 [状态](status.md#protocol-interoperability)；NR 只完成 [独立验收定义](../tests/telecom/nr_38331_acceptance.json)，不允许用 LTE 目录或 NR 切片关闭全文验收。

@@ -1,0 +1,1594 @@
+{
+  "format": 1,
+  "catalog_sha256": "167edabb53e2091bf07b66d66cdeee5534513a42684f440fba078707a2c93e57",
+  "schemas": {
+    "lpp": {
+      "path": "tests/fixtures/telecom/lpp_14_3_0/LPP-PDU-Definitions.asn",
+      "module": "LPP-PDU-Definitions",
+      "specification": "3GPP TS 37.355",
+      "version": "14.3.0（历史测试样例来源版本）",
+      "source": "仓库原有完整模式；不修改或裁剪",
+      "source_url": "https://github.com/eerimoq/asn1tools/tree/master/tests/files/lpp_14_3_0",
+      "sha256": "24b5919b538e7e8b94012568cd70eacaa85bdb306dace361187c6caad0e34633"
+    },
+    "s1ap": {
+      "path": "tests/fixtures/telecom/s1ap_14_4_0/s1ap_14_4_0.asn",
+      "module": "S1AP-PDU-Descriptions",
+      "specification": "3GPP TS 36.413",
+      "version": "14.4.0（历史测试样例来源版本）",
+      "source": "仓库原有完整模式；不修改或裁剪",
+      "source_url": "https://github.com/eerimoq/asn1tools/tree/master/tests/files/s1ap_14_4_0",
+      "sha256": "215d819ce10c574f5c9c64d8f58c90f68b80ec3efa2476359b4d423b203883c1"
+    },
+    "rrc": {
+      "path": "tests/fixtures/telecom/rrc_8_6_0/EUTRA-RRC-Definitions.asn",
+      "module": "EUTRA-RRC-Definitions",
+      "specification": "3GPP TS 36.331",
+      "version": "8.12.0（文件头 TS 36.331 V8.12.0 (2010-12)）",
+      "source": "仓库原有完整模式；目录 8.6.0 为历史名，不能替代文件头版本",
+      "source_url": "https://github.com/eerimoq/asn1tools/tree/master/tests/files/rrc_8_6_0",
+      "sha256": "9fa72c4bb1abaa8e29d2c91afb4ee3c3ba52fb69d5002f79439b212ba3c4bd58"
+    }
+  },
+  "network_rules": {
+    "lpp": "uper",
+    "rrc": "uper",
+    "s1ap": "aper"
+  },
+  "oracle": {
+    "name": "pycrate",
+    "version": "0.8.1",
+    "source_url": "https://github.com/pycrate-org/pycrate",
+    "package_source_sha256": "d2a89d41ba9e1f746e459c7e800a01d24fca07f3738063cf57fcb15c5d970949",
+    "generated_sha256": {
+      "lpp": "bc94b82a5a43de295c5e7a78a33bce37d093a3cc830c25b8203d09ee861bc40c",
+      "s1ap": "b09342d5f12963f2dc9e60f55f76a1bb6c7338f627a8c803cb7a2fedb488e39a",
+      "rrc": "b48590e76734a3d19423e44fd327b4eae11e6ca0f537f09e9a1a7dd60feec052"
+    }
+  },
+  "second_oracle": {
+    "name": "asn1tools",
+    "version": "0.169.0",
+    "comparisons": 27,
+    "scope": "LPP/LTE RRC; S1AP table constraints use pycrate"
+  },
+  "rows": [
+    {
+      "id": "lpp-min",
+      "protocol": "lpp",
+      "type": "LPP-Message",
+      "category": "minimum",
+      "value": {
+        "endTransaction": false
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "endTransaction": false
+      },
+      "wire": {
+        "uper": "00",
+        "aper": "00",
+        "ber": "3003810100"
+      },
+      "project_input": {
+        "uper": {
+          "endTransaction": false
+        },
+        "aper": {
+          "endTransaction": false
+        },
+        "ber": {
+          "endTransaction": false
+        }
+      }
+    },
+    {
+      "id": "lpp-capabilities",
+      "protocol": "lpp",
+      "type": "LPP-Message",
+      "category": "typical",
+      "value": {
+        "transactionID": {
+          "initiator": "locationServer",
+          "transactionNumber": 7
+        },
+        "endTransaction": false,
+        "sequenceNumber": 5,
+        "acknowledgement": {
+          "ackRequested": true,
+          "ackIndicator": 4
+        },
+        "lpp-MessageBody": {
+          "c1": {
+            "requestCapabilities": {
+              "criticalExtensions": {
+                "c1": {
+                  "requestCapabilities-r9": {}
+                }
+              }
+            }
+          }
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "transactionID": {
+          "initiator": "locationServer",
+          "transactionNumber": 7
+        },
+        "endTransaction": false,
+        "sequenceNumber": 5,
+        "acknowledgement": {
+          "ackRequested": true,
+          "ackIndicator": 4
+        },
+        "lpp-MessageBody": {
+          "c1": {
+            "requestCapabilities": {
+              "criticalExtensions": {
+                "c1": {
+                  "requestCapabilities-r9": {}
+                }
+              }
+            }
+          }
+        }
+      },
+      "wire": {
+        "uper": "f00e05c10000",
+        "aper": "f0070005c0040000",
+        "ber": "3022a006800100810107810100820105a3068001ff810104a40aa008a006a004a002a000"
+      },
+      "project_input": {
+        "uper": {
+          "transactionID": {
+            "initiator": "locationServer",
+            "transactionNumber": 7
+          },
+          "endTransaction": false,
+          "sequenceNumber": 5,
+          "acknowledgement": {
+            "ackRequested": true,
+            "ackIndicator": 4
+          },
+          "lpp-MessageBody": {
+            "c1": {
+              "requestCapabilities": {
+                "criticalExtensions": {
+                  "c1": {
+                    "requestCapabilities-r9": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aper": {
+          "transactionID": {
+            "initiator": "locationServer",
+            "transactionNumber": 7
+          },
+          "endTransaction": false,
+          "sequenceNumber": 5,
+          "acknowledgement": {
+            "ackRequested": true,
+            "ackIndicator": 4
+          },
+          "lpp-MessageBody": {
+            "c1": {
+              "requestCapabilities": {
+                "criticalExtensions": {
+                  "c1": {
+                    "requestCapabilities-r9": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "ber": {
+          "transactionID": {
+            "initiator": "locationServer",
+            "transactionNumber": 7
+          },
+          "endTransaction": false,
+          "sequenceNumber": 5,
+          "acknowledgement": {
+            "ackRequested": true,
+            "ackIndicator": 4
+          },
+          "lpp-MessageBody": {
+            "c1": {
+              "requestCapabilities": {
+                "criticalExtensions": {
+                  "c1": {
+                    "requestCapabilities-r9": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "lpp-abort-max",
+      "protocol": "lpp",
+      "type": "LPP-Message",
+      "category": "boundary",
+      "value": {
+        "transactionID": {
+          "initiator": "targetDevice",
+          "transactionNumber": 255
+        },
+        "endTransaction": true,
+        "sequenceNumber": 255,
+        "acknowledgement": {
+          "ackRequested": false,
+          "ackIndicator": 255
+        },
+        "lpp-MessageBody": {
+          "c1": {
+            "abort": {
+              "criticalExtensions": {
+                "c1": {
+                  "abort-r9": {
+                    "commonIEsAbort": {
+                      "abortCause": "networkAbort"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "transactionID": {
+          "initiator": "targetDevice",
+          "transactionNumber": 255
+        },
+        "endTransaction": true,
+        "sequenceNumber": 255,
+        "acknowledgement": {
+          "ackRequested": false,
+          "ackIndicator": 255
+        },
+        "lpp-MessageBody": {
+          "c1": {
+            "abort": {
+              "criticalExtensions": {
+                "c1": {
+                  "abort-r9": {
+                    "commonIEsAbort": {
+                      "abortCause": "networkAbort"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "wire": {
+        "uper": "f3ffffbfcc16",
+        "aper": "f2ff80ff80ff3058",
+        "ber": "302aa007800101810200ff8101ff820200ffa307800100810200ffa40fa00da60ba009a007a005a003800103"
+      },
+      "project_input": {
+        "uper": {
+          "transactionID": {
+            "initiator": "targetDevice",
+            "transactionNumber": 255
+          },
+          "endTransaction": true,
+          "sequenceNumber": 255,
+          "acknowledgement": {
+            "ackRequested": false,
+            "ackIndicator": 255
+          },
+          "lpp-MessageBody": {
+            "c1": {
+              "abort": {
+                "criticalExtensions": {
+                  "c1": {
+                    "abort-r9": {
+                      "commonIEsAbort": {
+                        "abortCause": "networkAbort"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aper": {
+          "transactionID": {
+            "initiator": "targetDevice",
+            "transactionNumber": 255
+          },
+          "endTransaction": true,
+          "sequenceNumber": 255,
+          "acknowledgement": {
+            "ackRequested": false,
+            "ackIndicator": 255
+          },
+          "lpp-MessageBody": {
+            "c1": {
+              "abort": {
+                "criticalExtensions": {
+                  "c1": {
+                    "abort-r9": {
+                      "commonIEsAbort": {
+                        "abortCause": "networkAbort"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "ber": {
+          "transactionID": {
+            "initiator": "targetDevice",
+            "transactionNumber": 255
+          },
+          "endTransaction": true,
+          "sequenceNumber": 255,
+          "acknowledgement": {
+            "ackRequested": false,
+            "ackIndicator": 255
+          },
+          "lpp-MessageBody": {
+            "c1": {
+              "abort": {
+                "criticalExtensions": {
+                  "c1": {
+                    "abort-r9": {
+                      "commonIEsAbort": {
+                        "abortCause": "networkAbort"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "s1ap-error-min-body",
+      "protocol": "s1ap",
+      "type": "ErrorIndication",
+      "category": "minimum",
+      "value": {
+        "protocolIEs": []
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "body",
+      "input": {
+        "protocolIEs": []
+      },
+      "wire": {
+        "uper": "000000",
+        "aper": "000000",
+        "ber": "3002a000"
+      },
+      "project_input": {
+        "uper": {
+          "protocolIEs": []
+        },
+        "aper": {
+          "protocolIEs": []
+        },
+        "ber": {
+          "protocolIEs": []
+        }
+      }
+    },
+    {
+      "id": "s1ap-error-min",
+      "protocol": "s1ap",
+      "type": "S1AP-PDU",
+      "category": "minimum",
+      "value": {
+        "initiatingMessage": {
+          "procedureCode": 15,
+          "criticality": "ignore",
+          "value": {
+            "protocolIEs": []
+          }
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "initiatingMessage": {
+          "procedureCode": 15,
+          "criticality": "ignore",
+          "value": {
+            "$wire": "s1ap-error-min-body"
+          }
+        }
+      },
+      "wire": {
+        "uper": "01e818000000",
+        "aper": "000f4003000000",
+        "ber": "a00c80010f810101a2043002a000"
+      },
+      "project_input": {
+        "uper": {
+          "initiatingMessage": {
+            "procedureCode": 15,
+            "criticality": "ignore",
+            "value": "000000"
+          }
+        },
+        "aper": {
+          "initiatingMessage": {
+            "procedureCode": 15,
+            "criticality": "ignore",
+            "value": "000000"
+          }
+        },
+        "ber": {
+          "initiatingMessage": {
+            "procedureCode": 15,
+            "criticality": "ignore",
+            "value": "3002A000"
+          }
+        }
+      }
+    },
+    {
+      "id": "s1ap-error-typical-ie-0",
+      "protocol": "s1ap",
+      "type": "MME-UE-S1AP-ID",
+      "category": "typical",
+      "value": 42,
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "leaf",
+      "input": 42,
+      "wire": {
+        "uper": "0000002a",
+        "aper": "002a",
+        "ber": "02012a"
+      },
+      "project_input": {
+        "uper": 42,
+        "aper": 42,
+        "ber": 42
+      }
+    },
+    {
+      "id": "s1ap-error-typical-ie-1",
+      "protocol": "s1ap",
+      "type": "ENB-UE-S1AP-ID",
+      "category": "typical",
+      "value": 7,
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "leaf",
+      "input": 7,
+      "wire": {
+        "uper": "000007",
+        "aper": "0007",
+        "ber": "020107"
+      },
+      "project_input": {
+        "uper": 7,
+        "aper": 7,
+        "ber": 7
+      }
+    },
+    {
+      "id": "s1ap-error-typical-ie-2",
+      "protocol": "s1ap",
+      "type": "Cause",
+      "category": "typical",
+      "value": {
+        "radioNetwork": "unspecified"
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "leaf",
+      "input": {
+        "radioNetwork": "unspecified"
+      },
+      "wire": {
+        "uper": "0000",
+        "aper": "0000",
+        "ber": "800100"
+      },
+      "project_input": {
+        "uper": {
+          "radioNetwork": "unspecified"
+        },
+        "aper": {
+          "radioNetwork": "unspecified"
+        },
+        "ber": {
+          "radioNetwork": "unspecified"
+        }
+      }
+    },
+    {
+      "id": "s1ap-error-typical-body",
+      "protocol": "s1ap",
+      "type": "ErrorIndication",
+      "category": "typical",
+      "value": {
+        "protocolIEs": [
+          {
+            "id": 0,
+            "criticality": "ignore",
+            "value": 42
+          },
+          {
+            "id": 8,
+            "criticality": "ignore",
+            "value": 7
+          },
+          {
+            "id": 2,
+            "criticality": "ignore",
+            "value": {
+              "radioNetwork": "unspecified"
+            }
+          }
+        ]
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "body",
+      "input": {
+        "protocolIEs": [
+          {
+            "id": 0,
+            "criticality": "ignore",
+            "value": {
+              "$wire": "s1ap-error-typical-ie-0"
+            }
+          },
+          {
+            "id": 8,
+            "criticality": "ignore",
+            "value": {
+              "$wire": "s1ap-error-typical-ie-1"
+            }
+          },
+          {
+            "id": 2,
+            "criticality": "ignore",
+            "value": {
+              "$wire": "s1ap-error-typical-ie-2"
+            }
+          }
+        ]
+      },
+      "wire": {
+        "uper": "000180002080000005400108180000380012040000",
+        "aper": "00000300004002002a000840020007000240020000",
+        "ber": "3029a027300b800100810101a20302012a300b800108810101a203020107300b800102810101a203800100"
+      },
+      "project_input": {
+        "uper": {
+          "protocolIEs": [
+            {
+              "id": 0,
+              "criticality": "ignore",
+              "value": "0000002A"
+            },
+            {
+              "id": 8,
+              "criticality": "ignore",
+              "value": "000007"
+            },
+            {
+              "id": 2,
+              "criticality": "ignore",
+              "value": "0000"
+            }
+          ]
+        },
+        "aper": {
+          "protocolIEs": [
+            {
+              "id": 0,
+              "criticality": "ignore",
+              "value": "002A"
+            },
+            {
+              "id": 8,
+              "criticality": "ignore",
+              "value": "0007"
+            },
+            {
+              "id": 2,
+              "criticality": "ignore",
+              "value": "0000"
+            }
+          ]
+        },
+        "ber": {
+          "protocolIEs": [
+            {
+              "id": 0,
+              "criticality": "ignore",
+              "value": "02012A"
+            },
+            {
+              "id": 8,
+              "criticality": "ignore",
+              "value": "020107"
+            },
+            {
+              "id": 2,
+              "criticality": "ignore",
+              "value": "800100"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "s1ap-error-typical",
+      "protocol": "s1ap",
+      "type": "S1AP-PDU",
+      "category": "typical",
+      "value": {
+        "initiatingMessage": {
+          "procedureCode": 15,
+          "criticality": "ignore",
+          "value": {
+            "protocolIEs": [
+              {
+                "id": 0,
+                "criticality": "ignore",
+                "value": 42
+              },
+              {
+                "id": 8,
+                "criticality": "ignore",
+                "value": 7
+              },
+              {
+                "id": 2,
+                "criticality": "ignore",
+                "value": {
+                  "radioNetwork": "unspecified"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "initiatingMessage": {
+          "procedureCode": 15,
+          "criticality": "ignore",
+          "value": {
+            "$wire": "s1ap-error-typical-body"
+          }
+        }
+      },
+      "wire": {
+        "uper": "01e8a8000c0001040000002a000840c00001c00090200000",
+        "aper": "000f401500000300004002002a000840020007000240020000",
+        "ber": "a03380010f810101a22b3029a027300b800100810101a20302012a300b800108810101a203020107300b800102810101a203800100"
+      },
+      "project_input": {
+        "uper": {
+          "initiatingMessage": {
+            "procedureCode": 15,
+            "criticality": "ignore",
+            "value": "000180002080000005400108180000380012040000"
+          }
+        },
+        "aper": {
+          "initiatingMessage": {
+            "procedureCode": 15,
+            "criticality": "ignore",
+            "value": "00000300004002002A000840020007000240020000"
+          }
+        },
+        "ber": {
+          "initiatingMessage": {
+            "procedureCode": 15,
+            "criticality": "ignore",
+            "value": "3029A027300B800100810101A20302012A300B800108810101A203020107300B800102810101A203800100"
+          }
+        }
+      }
+    },
+    {
+      "id": "s1ap-error-max-ie-0",
+      "protocol": "s1ap",
+      "type": "MME-UE-S1AP-ID",
+      "category": "boundary",
+      "value": 4294967295,
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "leaf",
+      "input": 4294967295,
+      "wire": {
+        "uper": "ffffffff",
+        "aper": "c0ffffffff",
+        "ber": "020500ffffffff"
+      },
+      "project_input": {
+        "uper": 4294967295,
+        "aper": 4294967295,
+        "ber": 4294967295
+      }
+    },
+    {
+      "id": "s1ap-error-max-ie-1",
+      "protocol": "s1ap",
+      "type": "ENB-UE-S1AP-ID",
+      "category": "boundary",
+      "value": 16777215,
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "leaf",
+      "input": 16777215,
+      "wire": {
+        "uper": "ffffff",
+        "aper": "80ffffff",
+        "ber": "020400ffffff"
+      },
+      "project_input": {
+        "uper": 16777215,
+        "aper": 16777215,
+        "ber": 16777215
+      }
+    },
+    {
+      "id": "s1ap-error-max-ie-2",
+      "protocol": "s1ap",
+      "type": "Cause",
+      "category": "boundary",
+      "value": {
+        "protocol": "semantic-error"
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "leaf",
+      "input": {
+        "protocol": "semantic-error"
+      },
+      "wire": {
+        "uper": "34",
+        "aper": "34",
+        "ber": "830104"
+      },
+      "project_input": {
+        "uper": {
+          "protocol": "semantic-error"
+        },
+        "aper": {
+          "protocol": "semantic-error"
+        },
+        "ber": {
+          "protocol": "semantic-error"
+        }
+      }
+    },
+    {
+      "id": "s1ap-error-max-body",
+      "protocol": "s1ap",
+      "type": "ErrorIndication",
+      "category": "boundary",
+      "value": {
+        "protocolIEs": [
+          {
+            "id": 0,
+            "criticality": "ignore",
+            "value": 4294967295
+          },
+          {
+            "id": 8,
+            "criticality": "ignore",
+            "value": 16777215
+          },
+          {
+            "id": 2,
+            "criticality": "ignore",
+            "value": {
+              "protocol": "semantic-error"
+            }
+          }
+        ]
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "body",
+      "input": {
+        "protocolIEs": [
+          {
+            "id": 0,
+            "criticality": "ignore",
+            "value": {
+              "$wire": "s1ap-error-max-ie-0"
+            }
+          },
+          {
+            "id": 8,
+            "criticality": "ignore",
+            "value": {
+              "$wire": "s1ap-error-max-ie-1"
+            }
+          },
+          {
+            "id": 2,
+            "criticality": "ignore",
+            "value": {
+              "$wire": "s1ap-error-max-ie-2"
+            }
+          }
+        ]
+      },
+      "wire": {
+        "uper": "00018000209fffffffe001081ffffff800120268",
+        "aper": "00000300004005c0ffffffff0008400480ffffff0002400134",
+        "ber": "3030a02e300f800100810101a207020500ffffffff300e800108810101a206020400ffffff300b800102810101a203830104"
+      },
+      "project_input": {
+        "uper": {
+          "protocolIEs": [
+            {
+              "id": 0,
+              "criticality": "ignore",
+              "value": "FFFFFFFF"
+            },
+            {
+              "id": 8,
+              "criticality": "ignore",
+              "value": "FFFFFF"
+            },
+            {
+              "id": 2,
+              "criticality": "ignore",
+              "value": "34"
+            }
+          ]
+        },
+        "aper": {
+          "protocolIEs": [
+            {
+              "id": 0,
+              "criticality": "ignore",
+              "value": "C0FFFFFFFF"
+            },
+            {
+              "id": 8,
+              "criticality": "ignore",
+              "value": "80FFFFFF"
+            },
+            {
+              "id": 2,
+              "criticality": "ignore",
+              "value": "34"
+            }
+          ]
+        },
+        "ber": {
+          "protocolIEs": [
+            {
+              "id": 0,
+              "criticality": "ignore",
+              "value": "020500FFFFFFFF"
+            },
+            {
+              "id": 8,
+              "criticality": "ignore",
+              "value": "020400FFFFFF"
+            },
+            {
+              "id": 2,
+              "criticality": "ignore",
+              "value": "830104"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "s1ap-error-max",
+      "protocol": "s1ap",
+      "type": "S1AP-PDU",
+      "category": "boundary",
+      "value": {
+        "initiatingMessage": {
+          "procedureCode": 15,
+          "criticality": "ignore",
+          "value": {
+            "protocolIEs": [
+              {
+                "id": 0,
+                "criticality": "ignore",
+                "value": 4294967295
+              },
+              {
+                "id": 8,
+                "criticality": "ignore",
+                "value": 16777215
+              },
+              {
+                "id": 2,
+                "criticality": "ignore",
+                "value": {
+                  "protocol": "semantic-error"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "initiatingMessage": {
+          "procedureCode": 15,
+          "criticality": "ignore",
+          "value": {
+            "$wire": "s1ap-error-max-body"
+          }
+        }
+      },
+      "wire": {
+        "uper": "01e8a0000c000104ffffffff000840ffffffc000901340",
+        "aper": "000f401900000300004005c0ffffffff0008400480ffffff0002400134",
+        "ber": "a03a80010f810101a2323030a02e300f800100810101a207020500ffffffff300e800108810101a206020400ffffff300b800102810101a203830104"
+      },
+      "project_input": {
+        "uper": {
+          "initiatingMessage": {
+            "procedureCode": 15,
+            "criticality": "ignore",
+            "value": "00018000209FFFFFFFE001081FFFFFF800120268"
+          }
+        },
+        "aper": {
+          "initiatingMessage": {
+            "procedureCode": 15,
+            "criticality": "ignore",
+            "value": "00000300004005C0FFFFFFFF0008400480FFFFFF0002400134"
+          }
+        },
+        "ber": {
+          "initiatingMessage": {
+            "procedureCode": 15,
+            "criticality": "ignore",
+            "value": "3030A02E300F800100810101A207020500FFFFFFFF300E800108810101A206020400FFFFFF300B800102810101A203830104"
+          }
+        }
+      }
+    },
+    {
+      "id": "s1ap-config-ack-body",
+      "protocol": "s1ap",
+      "type": "MMEConfigurationUpdateAcknowledge",
+      "category": "typical",
+      "value": {
+        "protocolIEs": []
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "body",
+      "input": {
+        "protocolIEs": []
+      },
+      "wire": {
+        "uper": "000000",
+        "aper": "000000",
+        "ber": "3002a000"
+      },
+      "project_input": {
+        "uper": {
+          "protocolIEs": []
+        },
+        "aper": {
+          "protocolIEs": []
+        },
+        "ber": {
+          "protocolIEs": []
+        }
+      }
+    },
+    {
+      "id": "s1ap-config-ack",
+      "protocol": "s1ap",
+      "type": "S1AP-PDU",
+      "category": "typical",
+      "value": {
+        "successfulOutcome": {
+          "procedureCode": 30,
+          "criticality": "reject",
+          "value": {
+            "protocolIEs": []
+          }
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "successfulOutcome": {
+          "procedureCode": 30,
+          "criticality": "reject",
+          "value": {
+            "$wire": "s1ap-config-ack-body"
+          }
+        }
+      },
+      "wire": {
+        "uper": "23c018000000",
+        "aper": "201e0003000000",
+        "ber": "a10c80011e810100a2043002a000"
+      },
+      "project_input": {
+        "uper": {
+          "successfulOutcome": {
+            "procedureCode": 30,
+            "criticality": "reject",
+            "value": "000000"
+          }
+        },
+        "aper": {
+          "successfulOutcome": {
+            "procedureCode": 30,
+            "criticality": "reject",
+            "value": "000000"
+          }
+        },
+        "ber": {
+          "successfulOutcome": {
+            "procedureCode": 30,
+            "criticality": "reject",
+            "value": "3002A000"
+          }
+        }
+      }
+    },
+    {
+      "id": "rrc-mib-min",
+      "protocol": "rrc",
+      "type": "BCCH-BCH-Message",
+      "category": "minimum",
+      "value": {
+        "message": {
+          "dl-Bandwidth": "n6",
+          "phich-Config": {
+            "phich-Duration": "normal",
+            "phich-Resource": "oneSixth"
+          },
+          "systemFrameNumber": "00",
+          "spare": "0000"
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "message": {
+          "dl-Bandwidth": "n6",
+          "phich-Config": {
+            "phich-Duration": "normal",
+            "phich-Resource": "oneSixth"
+          },
+          "systemFrameNumber": "00",
+          "spare": "0000"
+        }
+      },
+      "wire": {
+        "uper": "000000",
+        "aper": "000000",
+        "ber": "3016a014800100a106800100810100820200008303060000"
+      },
+      "project_input": {
+        "uper": {
+          "message": {
+            "dl-Bandwidth": "n6",
+            "phich-Config": {
+              "phich-Duration": "normal",
+              "phich-Resource": "oneSixth"
+            },
+            "systemFrameNumber": "00",
+            "spare": "0000"
+          }
+        },
+        "aper": {
+          "message": {
+            "dl-Bandwidth": "n6",
+            "phich-Config": {
+              "phich-Duration": "normal",
+              "phich-Resource": "oneSixth"
+            },
+            "systemFrameNumber": "00",
+            "spare": "0000"
+          }
+        },
+        "ber": {
+          "message": {
+            "dl-Bandwidth": "n6",
+            "phich-Config": {
+              "phich-Duration": "normal",
+              "phich-Resource": "oneSixth"
+            },
+            "systemFrameNumber": "00",
+            "spare": "0000"
+          }
+        }
+      }
+    },
+    {
+      "id": "rrc-mib-typical",
+      "protocol": "rrc",
+      "type": "BCCH-BCH-Message",
+      "category": "typical",
+      "value": {
+        "message": {
+          "dl-Bandwidth": "n50",
+          "phich-Config": {
+            "phich-Duration": "normal",
+            "phich-Resource": "half"
+          },
+          "systemFrameNumber": "12",
+          "spare": "0000"
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "message": {
+          "dl-Bandwidth": "n50",
+          "phich-Config": {
+            "phich-Duration": "normal",
+            "phich-Resource": "half"
+          },
+          "systemFrameNumber": "12",
+          "spare": "0000"
+        }
+      },
+      "wire": {
+        "uper": "644800",
+        "aper": "644800",
+        "ber": "3016a014800103a106800100810101820200128303060000"
+      },
+      "project_input": {
+        "uper": {
+          "message": {
+            "dl-Bandwidth": "n50",
+            "phich-Config": {
+              "phich-Duration": "normal",
+              "phich-Resource": "half"
+            },
+            "systemFrameNumber": "12",
+            "spare": "0000"
+          }
+        },
+        "aper": {
+          "message": {
+            "dl-Bandwidth": "n50",
+            "phich-Config": {
+              "phich-Duration": "normal",
+              "phich-Resource": "half"
+            },
+            "systemFrameNumber": "12",
+            "spare": "0000"
+          }
+        },
+        "ber": {
+          "message": {
+            "dl-Bandwidth": "n50",
+            "phich-Config": {
+              "phich-Duration": "normal",
+              "phich-Resource": "half"
+            },
+            "systemFrameNumber": "12",
+            "spare": "0000"
+          }
+        }
+      }
+    },
+    {
+      "id": "rrc-mib-max",
+      "protocol": "rrc",
+      "type": "BCCH-BCH-Message",
+      "category": "boundary",
+      "value": {
+        "message": {
+          "dl-Bandwidth": "n100",
+          "phich-Config": {
+            "phich-Duration": "extended",
+            "phich-Resource": "two"
+          },
+          "systemFrameNumber": "FF",
+          "spare": "0000"
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "message": {
+          "dl-Bandwidth": "n100",
+          "phich-Config": {
+            "phich-Duration": "extended",
+            "phich-Resource": "two"
+          },
+          "systemFrameNumber": "FF",
+          "spare": "0000"
+        }
+      },
+      "wire": {
+        "uper": "bffc00",
+        "aper": "bffc00",
+        "ber": "3016a014800105a106800101810103820200ff8303060000"
+      },
+      "project_input": {
+        "uper": {
+          "message": {
+            "dl-Bandwidth": "n100",
+            "phich-Config": {
+              "phich-Duration": "extended",
+              "phich-Resource": "two"
+            },
+            "systemFrameNumber": "FF",
+            "spare": "0000"
+          }
+        },
+        "aper": {
+          "message": {
+            "dl-Bandwidth": "n100",
+            "phich-Config": {
+              "phich-Duration": "extended",
+              "phich-Resource": "two"
+            },
+            "systemFrameNumber": "FF",
+            "spare": "0000"
+          }
+        },
+        "ber": {
+          "message": {
+            "dl-Bandwidth": "n100",
+            "phich-Config": {
+              "phich-Duration": "extended",
+              "phich-Resource": "two"
+            },
+            "systemFrameNumber": "FF",
+            "spare": "0000"
+          }
+        }
+      }
+    },
+    {
+      "id": "rrc-request-min",
+      "protocol": "rrc",
+      "type": "UL-CCCH-Message",
+      "category": "minimum",
+      "value": {
+        "message": {
+          "c1": {
+            "rrcConnectionRequest": {
+              "criticalExtensions": {
+                "rrcConnectionRequest-r8": {
+                  "ue-Identity": {
+                    "randomValue": "0000000000"
+                  },
+                  "establishmentCause": "emergency",
+                  "spare": "00"
+                }
+              }
+            }
+          }
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "message": {
+          "c1": {
+            "rrcConnectionRequest": {
+              "criticalExtensions": {
+                "rrcConnectionRequest-r8": {
+                  "ue-Identity": {
+                    "randomValue": "0000000000"
+                  },
+                  "establishmentCause": "emergency",
+                  "spare": "00"
+                }
+              }
+            }
+          }
+        }
+      },
+      "wire": {
+        "uper": "500000000000",
+        "aper": "50000000000000",
+        "ber": "301ba019a017a115a013a011a008810600000000000081010082020700"
+      },
+      "project_input": {
+        "uper": {
+          "message": {
+            "c1": {
+              "rrcConnectionRequest": {
+                "criticalExtensions": {
+                  "rrcConnectionRequest-r8": {
+                    "ue-Identity": {
+                      "randomValue": "0000000000"
+                    },
+                    "establishmentCause": "emergency",
+                    "spare": "00"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aper": {
+          "message": {
+            "c1": {
+              "rrcConnectionRequest": {
+                "criticalExtensions": {
+                  "rrcConnectionRequest-r8": {
+                    "ue-Identity": {
+                      "randomValue": "0000000000"
+                    },
+                    "establishmentCause": "emergency",
+                    "spare": "00"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "ber": {
+          "message": {
+            "c1": {
+              "rrcConnectionRequest": {
+                "criticalExtensions": {
+                  "rrcConnectionRequest-r8": {
+                    "ue-Identity": {
+                      "randomValue": "0000000000"
+                    },
+                    "establishmentCause": "emergency",
+                    "spare": "00"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "rrc-request-typical",
+      "protocol": "rrc",
+      "type": "UL-CCCH-Message",
+      "category": "typical",
+      "value": {
+        "message": {
+          "c1": {
+            "rrcConnectionRequest": {
+              "criticalExtensions": {
+                "rrcConnectionRequest-r8": {
+                  "ue-Identity": {
+                    "randomValue": "0102030405"
+                  },
+                  "establishmentCause": "mo-Signalling",
+                  "spare": "00"
+                }
+              }
+            }
+          }
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "message": {
+          "c1": {
+            "rrcConnectionRequest": {
+              "criticalExtensions": {
+                "rrcConnectionRequest-r8": {
+                  "ue-Identity": {
+                    "randomValue": "0102030405"
+                  },
+                  "establishmentCause": "mo-Signalling",
+                  "spare": "00"
+                }
+              }
+            }
+          }
+        }
+      },
+      "wire": {
+        "uper": "501020304056",
+        "aper": "50010203040560",
+        "ber": "301ba019a017a115a013a011a008810600010203040581010382020700"
+      },
+      "project_input": {
+        "uper": {
+          "message": {
+            "c1": {
+              "rrcConnectionRequest": {
+                "criticalExtensions": {
+                  "rrcConnectionRequest-r8": {
+                    "ue-Identity": {
+                      "randomValue": "0102030405"
+                    },
+                    "establishmentCause": "mo-Signalling",
+                    "spare": "00"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aper": {
+          "message": {
+            "c1": {
+              "rrcConnectionRequest": {
+                "criticalExtensions": {
+                  "rrcConnectionRequest-r8": {
+                    "ue-Identity": {
+                      "randomValue": "0102030405"
+                    },
+                    "establishmentCause": "mo-Signalling",
+                    "spare": "00"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "ber": {
+          "message": {
+            "c1": {
+              "rrcConnectionRequest": {
+                "criticalExtensions": {
+                  "rrcConnectionRequest-r8": {
+                    "ue-Identity": {
+                      "randomValue": "0102030405"
+                    },
+                    "establishmentCause": "mo-Signalling",
+                    "spare": "00"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "rrc-request-max",
+      "protocol": "rrc",
+      "type": "UL-CCCH-Message",
+      "category": "boundary",
+      "value": {
+        "message": {
+          "c1": {
+            "rrcConnectionRequest": {
+              "criticalExtensions": {
+                "rrcConnectionRequest-r8": {
+                  "ue-Identity": {
+                    "randomValue": "FFFFFFFFFF"
+                  },
+                  "establishmentCause": "mo-Data",
+                  "spare": "00"
+                }
+              }
+            }
+          }
+        }
+      },
+      "origin": "依据同一模式构造的真实顶层 PDU 类型测试值；非现场抓包",
+      "phase": "pdu",
+      "input": {
+        "message": {
+          "c1": {
+            "rrcConnectionRequest": {
+              "criticalExtensions": {
+                "rrcConnectionRequest-r8": {
+                  "ue-Identity": {
+                    "randomValue": "FFFFFFFFFF"
+                  },
+                  "establishmentCause": "mo-Data",
+                  "spare": "00"
+                }
+              }
+            }
+          }
+        }
+      },
+      "wire": {
+        "uper": "5ffffffffff8",
+        "aper": "50ffffffffff80",
+        "ber": "301ba019a017a115a013a011a008810600ffffffffff81010482020700"
+      },
+      "project_input": {
+        "uper": {
+          "message": {
+            "c1": {
+              "rrcConnectionRequest": {
+                "criticalExtensions": {
+                  "rrcConnectionRequest-r8": {
+                    "ue-Identity": {
+                      "randomValue": "FFFFFFFFFF"
+                    },
+                    "establishmentCause": "mo-Data",
+                    "spare": "00"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "aper": {
+          "message": {
+            "c1": {
+              "rrcConnectionRequest": {
+                "criticalExtensions": {
+                  "rrcConnectionRequest-r8": {
+                    "ue-Identity": {
+                      "randomValue": "FFFFFFFFFF"
+                    },
+                    "establishmentCause": "mo-Data",
+                    "spare": "00"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "ber": {
+          "message": {
+            "c1": {
+              "rrcConnectionRequest": {
+                "criticalExtensions": {
+                  "rrcConnectionRequest-r8": {
+                    "ue-Identity": {
+                      "randomValue": "FFFFFFFFFF"
+                    },
+                    "establishmentCause": "mo-Data",
+                    "spare": "00"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "invalid_values": [
+    {
+      "protocol": "lpp",
+      "type": "LPP-Message",
+      "value": {
+        "endTransaction": false,
+        "sequenceNumber": 256
+      }
+    },
+    {
+      "protocol": "rrc",
+      "type": "BCCH-BCH-Message",
+      "value": {
+        "message": {
+          "dl-Bandwidth": "invalid"
+        }
+      }
+    },
+    {
+      "protocol": "s1ap",
+      "type": "MME-UE-S1AP-ID",
+      "value": 4294967296
+    },
+    {
+      "protocol": "s1ap",
+      "type": "ENB-UE-S1AP-ID",
+      "value": 16777216
+    }
+  ]
+}

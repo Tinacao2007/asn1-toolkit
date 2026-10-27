@@ -223,3 +223,16 @@ CXER 按 X.693 9.5/9.6 显式输出 DEFAULT，与 DER/COER 不同；规范 REAL 
 当前生成/运行时 ABI 为 3，空私有对象集不含不可用的标量选择槽；私有描述符变更须成套重新生成/编译，生成头检查运行时 ABI，不能承诺跨 CRT。
 
 命名位串：DER/CER/CXER 全裁尾零，PER/COER 取最短有效 SIZE，固定编码补零，解码等价值满足 SIZE；归一化前记入含几何容量的分配预算，普通位串保持长度。UTCTime 校验公历日期/偏移；PER 用规范无约束 VisibleString（X.691 10.6.5），OER 同样忽略时间 SIZE（X.696 8.4.4）并保留长度，OER/COER 都测试约束时间。GeneralizedTime 等未支持种类单独登记。全测试样例语法通过不是全 3GPP 线路认证。
+
+
+## 电信 PDU 与 NR 独立验收
+
+协议修改复跑 `Protocol.{lpp,s1ap,rrc}.{c,cpp}`，并在固定测试环境启用 `ASN1_PROTOCOL_ORACLE_PYTHON` 执行现场独立编译。原七样例十二入口、全部消费者重建及 Release/ASan+UBSan 不省略。检查模式原文版本和 SHA-256，保留 `.gitattributes` 的 LF 检出约定，避免平台换行改变证据；目录名不能替代文件头；`rrc_8_6_0` 实际文件头是 LTE V8.12.0。
+
+独立工具从完整同源模式编译，不用项目 IR、生成物或手裁切片充当独立来源。固定目录/向量包含值、编码参数、工具版本和源码/生成物 hash，现场先复跑消费者避免过期报告。冻结变化必须明确评审；测试工具仅为开发依赖。构造的顶层 PDU 不能称现场抓包，代表消息不能推定全部协议。
+
+S1AP 开放内容从项目内层编码结果逐层构造，禁止直接转发 oracle octets；同时检查独立字节、项目解码抽象值、外部解码项目输出和错误正常返回。pycrate 覆盖表约束，asn1tools 不承担 S1AP 表约束，当前 asn1c 无 APER；BER/非网络 PER 变体单独作为库能力登记。测试中规范 XER 值传递不等于项目 CXER 外部验证。
+
+动态 CHOICE/open type 的自动标签保留完整内层 TLV，命名 OF 隐式字段只能替换外层包装。C++ 原始未知模式 BER 开放内容目前只支持单个定长 TLV；不定长和无法校验模式的 DER/CER 明确拒绝，不通过放松检查伪装完成。
+
+NR 以 `tests/telecom/nr_38331_acceptance.json` 固定的 V15.3.0 和 NR-0～NR-6 为基线。验收定义完成与全文实际执行分开；尚无全文/hash 时不得宣布 NR 支持，不以 LTE、NR 精选切片或其他 Release 代替。已完成 P1-3 记录在 changelog，当前 TODO 只留 NR-01 等尚未执行工作。

@@ -10,6 +10,19 @@
 
 ## 近期变更详录
 
+<a id="p1-3-completion"></a>
+
+### 2026-10-27 P1-3：协议 PDU 独立对验与 NR 验收定义
+
+- 完成原任务的代表值登记、独立双向线路、真实 C/C++ 消费者回归和 NR 验收定义。LPP/S1AP/LTE RRC 共 13 个真实顶层类型测试值（构造值，非抓包），最小/典型/边界及异常值均有回归；UPER/APER/BER 共 39 组顶层线路，连同 10 个 S1AP 内层值为 69 组。
+- pycrate 0.8.1 从完整原模式独立编译，冻结字节及抽象值；项目双语言编码、解码、重编码和 pycrate 对项目输出反向解码共 138 组。asn1tools 0.169.0 交叉检查 LPP/LTE 27 组，asn1c 0.9.29 追加 LPP/LTE UPER/BER 54 次独立编码/反向解码比较。工具不支持的 S1AP 表约束/APER 不算通过；S1AP 由 pycrate 提供独立证据。
+- 六个消费者执行 1860 个异常输入，要求正常错误返回，崩溃不算拒绝。开放内容逐层用项目实际输出组装；同时修复 C/C++ 动态标签包装、C++ 隐式命名 OF 多余包装及 BER 原始开放内容入口。不放松未知内部模式的 DER/CER 检查。
+- 核对到 LTE 文件头为 TS 36.331 V8.12.0，`rrc_8_6_0` 只是历史目录名。固定来源/hash 和逐向量结果见 [目录](../tests/telecom/protocol_cases.json)、[冻结向量](../tests/telecom/protocol_vectors.json)、[验收摘要](../tests/telecom/protocol_validation.json)。
+- NR TS 38.331 [验收定义](../tests/telecom/nr_38331_acceptance.json) 单独选定 V15.3.0 和官方来源，要求全文三个模块、十二入口三形态、代表 NR PDU UPER、异常资源及全量门禁。全文实际执行未完成，另列 [NR-01](todo.md#nr-01)，不宣称 NR 已支持。
+- 最终门禁：GCC Release **519/519**（含现场三工具对验），GCC ASan+UBSan **518/518**，MSVC Release **482/482**；GCC/Clang C 严格矩阵各 **84/84**，原 C++ 矩阵 **84/84**。全量前重建全部消费者，未关闭插桩或出版锁；现场门禁未启用时默认离线为 518 项。
+- 复现：按 [开发指南](development.md#protocol-interoperability-tests) 执行 `Protocol.*`；外部工具仅为测试依赖，运行时仍零第三方依赖。完成项从当前 TODO 移除；更广消息、标准及资源矩阵仍按未完成任务推进。
+
+
 ### 2026-10-27 TODO 职责修正与构建目录恢复
 
 - `todo.md` 只保留整个项目当前未完成的实现、核查、验证和发布事项；已完成 REV/CGEN 清单和历史功能路线移入本页，执行规范仍在开发指南。
@@ -438,7 +451,7 @@
 | 45    | 大模块分文件/分命名空间 emit（`--emit-split`，P2-2）                                 | ✅ 已完成（XML include 缺口修复 + 单编码规则 × 全家族门禁就位，2026-10-15 收尾）                                                                                                                                                                                                                                                                                                                                                             |
 | 46    | 增量代码生成（P2-3）                                                           | ✅ 已完成（2026-10-16，缓存就位 + 7 项单元 + 3 项 CLI 门禁）                                                                                                                                                                                                                                                                                                                                                                         |
 | 47    | 前端并行分析（P3-1）                                                           | ✅ 已完成（2026-10-17，`--parallel <N>` + declare/resolve 并行 + 11 项门禁；`lower_pass` 串行 deferred；commit `5856565`）                                                                                                                                                                                                                                                                                                          |
-| 48    | 3GPP 协议消息级金标准向量对验（P1-3）                                                | ⏳ 已规划，未排期；子任务清单见 [TODO 清单](todo.md#p1-3)                                                                                                                                                                                                                                                                                                                                  |
+| 48    | 3GPP 协议消息级金标准向量对验（P1-3）                                                | ✅ 代表协议 PDU 对验和 NR 验收定义已完成，见 [P1-3 验收](#p1-3-completion)；NR 全文执行另列 NR-01                                                                                                                                                                                                                                                                                                                                  |
 | 49    | C 语言代码生成器（P2-4）                                                        | 🟡 子任务 1（`include/asn1/c_runtime/*` 头骨架 + `-fsyntax-only` 门禁，commit `c137142`）+ 子任务 2（`src/c_runtime/*.c` 纯 C11 实现 + `asn1::c_runtime` 静态库 + `Asn1CRuntimeSmoke` 链接+运行门禁）已落地；ctest **345/345**。子任务 3+（`src/codegen/emit_c/*` + CLI `--lang c` + 全测试样例编译门禁 + P1-3 外部对照工具复用）未排期；目标字节输出与 `--lang cpp` 逐字节一致（复用 P1-3 外部对照工具）；估时 ~43 h / 5-6 工作日；子任务清单见 [TODO 清单](changelog.md#roadmap--p2-4--c-语言代码生成器-lang-c) |
 
 ## 2026-10-26 — CGEN 第 6 批

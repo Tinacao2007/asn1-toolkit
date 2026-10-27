@@ -76,17 +76,17 @@ static int compare_tags(const void* a,const void* b) {
      (yt.cls==255 && asn1_ber_tag_decode(asn1_byte_view(y->data,y->size),&yt,&unused)!=ASN1_OK))return 0;
   return tag_order(xt,yt);
 }
-/* X.680 automatic tagging of an untagged CHOICE retains the selected tag
+/* X.680 automatic tagging of an untagged CHOICE/open type retains its tag
  * inside an explicit wrapper. An already tagged alias has an outer tag that
  * an IMPLICIT tag may replace. */
-static int untagged_choice(const asn1_tlv_schema_t* t,size_t depth) {
+static int untagged_dynamic(const asn1_tlv_schema_t* t,size_t depth) {
   if(depth>=ASN1_MAX_RECURSION_DEPTH || t->tag.cls!=255)return 0;
-  if(t->kind==ASN1_TLV_ALIAS)return untagged_choice(t->element(),depth+1u);
-  return t->kind==ASN1_TLV_CHOICE;
+  if(t->kind==ASN1_TLV_ALIAS)return untagged_dynamic(t->element(),depth+1u);
+  return t->kind==ASN1_TLV_CHOICE || t->kind==ASN1_TLV_OPEN;
 }
 static int schema_explicit(const asn1_tlv_schema_t* t) {
-  return t->explicit_tag || t->kind==ASN1_TLV_CHOICE ||
-    (t->kind==ASN1_TLV_ALIAS && untagged_choice(t->element(),0));
+  return t->explicit_tag || t->kind==ASN1_TLV_CHOICE || t->kind==ASN1_TLV_OPEN ||
+    (t->kind==ASN1_TLV_ALIAS && untagged_dynamic(t->element(),0));
 }
 static asn1_status_t transform(asn1_byte_writer_t* out,asn1_tlv_policy_t p,asn1_ber_tag_t tag,int explicit_tag,asn1_byte_view_t wire) {
   if(tag.cls==255)return asn1_byte_writer_append(out,wire);
@@ -99,7 +99,7 @@ static asn1_status_t encode_field(asn1_byte_writer_t* out,asn1_tlv_policy_t p,co
   const void* value=field_value(parent,f);if(!value)return ASN1_ERR_CONSTRAINT_VIOLATION;
   asn1_byte_writer_t* w=NULL;TRY(asn1_byte_writer_create(&w));
   asn1_status_t s=encode_at(w,p,f->type(),value,depth+1u);
-  if(s==ASN1_OK)s=transform(out,p,f->tag,f->explicit_tag || untagged_choice(f->type(),0),asn1_byte_writer_view(w));
+  if(s==ASN1_OK)s=transform(out,p,f->tag,f->explicit_tag || untagged_dynamic(f->type(),0),asn1_byte_writer_view(w));
   asn1_byte_writer_destroy(w);return s;
 }
 static asn1_status_t blob_encode(asn1_byte_writer_t* out,asn1_tlv_policy_t p,asn1_ber_tag_t tag,asn1_byte_view_t data,int unused) {
@@ -198,7 +198,7 @@ static asn1_status_t decode_field(const asn1_tlv_field_t* f,void* v,asn1_tlv_pol
   uint8_t* place=(uint8_t*)v+f->offset;
   if(f->indirect){TRY(reserve(b,f->type()->size,1));void* value=calloc(1,f->type()->size);if(!value)return ASN1_ERR_OUT_OF_MEMORY;*(void**)place=value;f->type()->init(value);place=(uint8_t*)value;}
   size_t consumed=0;asn1_status_t s;
-  if(f->tag.cls!=255 && (f->explicit_tag || untagged_choice(f->type(),0))){if(!outer.tag.constructed)return ASN1_ERR_TAG_MISMATCH;s=decode_at(f->type(),place,p,outer.content,&consumed,b,depth+1u,0);if(s==ASN1_OK && consumed!=outer.content.size)s=ASN1_ERR_INVALID_ARGUMENT;}
+  if(f->tag.cls!=255 && (f->explicit_tag || untagged_dynamic(f->type(),0))){if(!outer.tag.constructed)return ASN1_ERR_TAG_MISMATCH;s=decode_at(f->type(),place,p,outer.content,&consumed,b,depth+1u,0);if(s==ASN1_OK && consumed!=outer.content.size)s=ASN1_ERR_INVALID_ARGUMENT;}
   else s=decode_at(f->type(),place,p,outer.encoding,&consumed,b,depth+1u,f->tag.cls!=255);
   if(s!=ASN1_OK)return s;
   if(p!=ASN1_TLV_BER && f->is_default && f->is_default(v))return ASN1_ERR_NON_CANONICAL;

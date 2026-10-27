@@ -1139,3 +1139,79 @@ foreach(_case IN ITEMS shapes single_module rrc_types publication cache options 
     --work "${CMAKE_CURRENT_BINARY_DIR}/cgen3-${_case}" --case "${_case}"
     --cmake "${CMAKE_COMMAND}" ${_cgen3_san_args})
 endforeach()
+
+# P1-3: complete telecom schemas, actual C11/C++17 consumers and independent frozen PDU vectors.
+set(_protocol_schemas
+  "lpp|lpp_14_3_0/LPP-PDU-Definitions.asn"
+  "s1ap|s1ap_14_4_0/s1ap_14_4_0.asn"
+  "rrc|rrc_8_6_0/EUTRA-RRC-Definitions.asn")
+foreach(_entry IN LISTS _protocol_schemas)
+  string(REPLACE "|" ";" _fields "${_entry}")
+  list(GET _fields 0 _protocol)
+  list(GET _fields 1 _schema)
+  string(TOUPPER "${_protocol}" _protocol_define)
+  foreach(_language IN ITEMS c cpp)
+    set(_dir "${CMAKE_CURRENT_BINARY_DIR}/protocol-${_protocol}-${_language}")
+    if(_language STREQUAL "c")
+      set(_header "${_dir}/generated.h")
+      set(_c_options --c-prefix proto)
+    else()
+      set(_header "${_dir}/generated.hpp")
+      set(_c_options)
+    endif()
+    set(_target "asn1_protocol_${_protocol}_${_language}")
+    add_custom_command(OUTPUT "${_dir}/generation.stamp"
+      BYPRODUCTS "${_header}"
+      COMMAND "${ASN1_GENERATOR}" --lang "${_language}" ${_c_options}
+        --codec uper,aper,ber,jer --emit-inline --emit-dir "${_dir}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/telecom/${_schema}"
+      COMMAND "${CMAKE_COMMAND}" -E touch "${_dir}/generation.stamp"
+      DEPENDS ${ASN1_GENERATOR_DEPENDENCY} "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/telecom/${_schema}"
+      VERBATIM)
+    add_custom_target(${_target}_generated DEPENDS "${_dir}/generation.stamp")
+    add_executable(${_target} "telecom/protocol_driver.${_language}")
+    add_dependencies(${_target} ${_target}_generated)
+    target_include_directories(${_target} PRIVATE "${_dir}")
+    target_compile_definitions(${_target} PRIVATE "PROTOCOL_${_protocol_define}")
+    if(_language STREQUAL "c")
+      target_link_libraries(${_target} PRIVATE asn1::c_runtime)
+    else()
+      target_link_libraries(${_target} PRIVATE asn1::per asn1::ber asn1::jer asn1::jeri)
+    endif()
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      target_compile_options(${_target} PRIVATE -O0 -g0)
+    elseif(MSVC)
+      target_compile_options(${_target} PRIVATE /Od /bigobj)
+    endif()
+    add_test(NAME Protocol.${_protocol}.${_language} COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/telecom/protocol_replay.py"
+      --driver "$<TARGET_FILE:${_target}>" --protocol "${_protocol}" --language "${_language}"
+      --root "${PROJECT_SOURCE_DIR}"
+      --evidence "${CMAKE_CURRENT_BINARY_DIR}/protocol-evidence/${_protocol}-${_language}.json")
+    set_tests_properties(Protocol.${_protocol}.${_language} PROPERTIES TIMEOUT 300)
+  endforeach()
+endforeach()
+
+# Optional live tool gate; default Protocol.* tests remain completely offline.
+set(ASN1_PROTOCOL_ORACLE_PYTHON "" CACHE FILEPATH "Test-only Python with pinned ASN.1 protocol oracles")
+if(ASN1_PROTOCOL_ORACLE_PYTHON)
+  set(_protocol_live_drivers)
+  foreach(_protocol IN ITEMS lpp s1ap rrc)
+    foreach(_language IN ITEMS c cpp)
+      list(APPEND _protocol_live_drivers --driver
+        "${_protocol}:${_language}:$<TARGET_FILE:asn1_protocol_${_protocol}_${_language}>")
+    endforeach()
+  endforeach()
+  set(_protocol_asn1c)
+  find_program(ASN1_PROTOCOL_ASN1C NAMES asn1c)
+  if(ASN1_PROTOCOL_ASN1C AND NOT MSVC)
+    list(APPEND _protocol_asn1c --asn1c "${ASN1_PROTOCOL_ASN1C}" --cc "${CMAKE_C_COMPILER}")
+  endif()
+  add_test(NAME Protocol.LiveOracles COMMAND "${ASN1_PROTOCOL_ORACLE_PYTHON}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/telecom/protocol_oracle.py"
+    --root "${PROJECT_SOURCE_DIR}" --work "${CMAKE_CURRENT_BINARY_DIR}/protocol-live"
+    --check "${CMAKE_CURRENT_SOURCE_DIR}/telecom/protocol_vectors.json"
+    --output "${CMAKE_CURRENT_BINARY_DIR}/protocol-live/evidence.json"
+    ${_protocol_live_drivers} ${_protocol_asn1c})
+  set_tests_properties(Protocol.LiveOracles PROPERTIES TIMEOUT 900)
+endif()

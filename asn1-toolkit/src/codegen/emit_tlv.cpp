@@ -26,6 +26,16 @@
 namespace asn1 {
 namespace codegen {
 
+static bool untagged_dynamic_value(const ir::Model& model, const ir::Type& type) {
+  const ir::Type& value = type.kind == ir::TypeKind::Referenced &&
+                                 type.referenced.resolved != ir::kInvalidType
+                             ? resolve(model, type.referenced.resolved) : type;
+  return value.tag.cls == ir::TagClass::Universal && value.tag.number == 0 &&
+         !value.tag.is_explicit &&
+         (value.kind == ir::TypeKind::Choice ||
+          (value.kind == ir::TypeKind::ObjectClassField && value.object_class_field.open_type));
+}
+
   /**
    *  Function    : tlv_ns
    *  Description : Computes tlv ns from (tlv).
@@ -260,7 +270,7 @@ void Emitter::emit_tlv_field_encode(std::ostream& out, const ir::Type& ft, const
     const std::string NS = tlv_ns(tlv);
     if (field && (field->tag.cls != ir::TagClass::Universal || field->tag.number != 0 ||
                   field->tag.is_explicit)) {
-      if (field->tag.is_explicit) {
+      if (field->tag.is_explicit || untagged_dynamic_value(model_, ft)) {
         out << ind << "{\n";
         out << ind << "  asn1::ByteWriter inner;\n";
         out << ind << "  {\n";
@@ -330,6 +340,21 @@ void Emitter::emit_tlv_encode_content(std::ostream& out, const ir::Type& t, cons
       emit_tlv_sequence_components(out, rt.sequence, expr, tlv, ind);
     } else if (rt.kind == ir::TypeKind::Set) {
       emit_tlv_sequence_components(out, rt.set, expr, tlv, ind);
+    } else if (rt.kind == ir::TypeKind::SequenceOf || rt.kind == ir::TypeKind::SetOf) {
+      // An IMPLICIT OF field replaces its envelope, including for named aliases.
+      // Reuse element encoding/canonical sorting, then retain only the contents.
+      ir::Tag natural;
+      natural.cls = ir::TagClass::Universal;
+      natural.number = universal_number_for(rt);
+      natural.is_explicit = false;
+      out << ind << "{\n" << ind << "  asn1::ByteWriter full;\n"
+          << ind << "  {\n" << ind << "    asn1::ByteWriter& w = full;\n";
+      emit_tlv_encode_body(out, rt, expr, tlv, &natural, ind + "    ");
+      out << ind << "  }\n" << ind << "  asn1::ByteReader source(full.buffer());\n"
+          << ind << "  auto content = " << tlv_ns(tlv)
+          << "::decode_constructed(source, " << natural_tag_expr(rt) << ");\n"
+          << ind << "  if (!content) return content.error();\n"
+          << ind << "  w.write(content.value());\n" << ind << "}\n";
     } else {
       emit_tlv_encode_body(out, rt, expr, tlv, nullptr, ind);
     }
@@ -620,6 +645,27 @@ void Emitter::emit_tlv_encode_body(std::ostream& out, const ir::Type& t, const s
         out << ind << "  " << NS << "::encode_constructed(w, " << tag
             << ", asn1::Span<const std::uint8_t>(comps.buffer().data(), comps.buffer().size()));\n";
         out << ind << "}\n";
+        break;
+      case ir::TypeKind::ObjectClassField:
+        if (!rt.object_class_field.open_type) {
+          emit_tlv_encode_body(out, resolve(model_, rt.object_class_field.fixed_type),
+                               expr, tlv, override_tag, ind);
+        } else if (der) {
+          out << ind << "return asn1::make_error(asn1::Error::Code::Unsupported, w.size(), "
+                 "\"untyped canonical open content is not validated\");\n";
+        } else {
+          out << ind << "{\n" << ind << "  asn1::ByteReader open(" << expr << ");\n"
+              << ind << "  auto hdr = asn1::ber::decode_tlv_header(open);\n"
+              << ind << "  if (!hdr) return hdr.error();\n"
+              << ind << "  if (hdr.value().length.indefinite) return asn1::make_error("
+                 "asn1::Error::Code::Unsupported, open.offset(), \"indefinite open content\");\n"
+              << ind << "  auto contents = open.read(hdr.value().length.value);\n"
+              << ind << "  if (!contents) return contents.error();\n"
+              << ind << "  if (!open.eof()) return asn1::make_error(asn1::Error::Code::InvalidArgument, "
+                 "open.offset(), \"open content must contain one TLV\");\n"
+              << ind << "  w.write(asn1::Span<const std::uint8_t>(" << expr << ".data(), "
+              << expr << ".size()));\n" << ind << "}\n";
+        }
         break;
       case ir::TypeKind::Referenced:
         if (rt.referenced.resolved != ir::kInvalidType) {
@@ -1002,6 +1048,25 @@ void Emitter::emit_tlv_decode_body(std::ostream& out, const ir::Type& t, const s
         out << ind << "  " << expr << ".value = std::move(val.value());\n";
         out << ind << "}\n";
         break;
+      case ir::TypeKind::ObjectClassField:
+        if (!rt.object_class_field.open_type) {
+          emit_tlv_decode_body(out, resolve(model_, rt.object_class_field.fixed_type),
+                               expr, tlv, override_tag, ind);
+        } else if (der) {
+          out << ind << "return asn1::make_error(asn1::Error::Code::Unsupported, r.offset(), "
+                 "\"untyped canonical open content is not validated\");\n";
+        } else {
+          out << ind << "{\n" << ind << "  const auto wire = r.remaining_span();\n"
+              << ind << "  auto hdr = asn1::ber::decode_tlv_header(r);\n"
+              << ind << "  if (!hdr) return hdr.error();\n"
+              << ind << "  if (hdr.value().length.indefinite) return asn1::make_error("
+                 "asn1::Error::Code::Unsupported, r.offset(), \"indefinite open content\");\n"
+              << ind << "  auto contents = r.read(hdr.value().length.value);\n"
+              << ind << "  if (!contents) return contents.error();\n"
+              << ind << "  " << expr << ".assign(wire.data(), wire.data() + wire.size() - r.remaining());\n"
+              << ind << "}\n";
+        }
+        break;
       case ir::TypeKind::Referenced:
         if (rt.referenced.resolved != ir::kInvalidType) {
           emit_tlv_decode_body(out, resolve(model_, rt.referenced.resolved), expr, tlv,
@@ -1090,7 +1155,9 @@ void Emitter::emit_tlv_field_decode_value(std::ostream& out, const ir::Type& ft,
     const bool der = tlv != TlvKind::Ber;
     const bool cer = tlv == TlvKind::Cer;
     const std::string NS = tlv_ns(tlv);
-    if (field && field->tag.is_explicit) {
+    if (field && (field->tag.is_explicit ||
+        ((field->tag.cls != ir::TagClass::Universal || field->tag.number != 0) &&
+         untagged_dynamic_value(model_, ft)))) {
       out << ind << "{\n";
       out << ind << "  auto content = " << NS << "::decode_constructed(r, "
           << ber_tag_expr(field->tag, true) << ");\n";

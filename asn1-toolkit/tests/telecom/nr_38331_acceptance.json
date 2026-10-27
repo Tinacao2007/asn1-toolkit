@@ -1,0 +1,100 @@
+{
+  "format": 1,
+  "status": "acceptance-defined-not-executed",
+  "specification": "3GPP TS 38.331",
+  "version": "15.3.0",
+  "release": 15,
+  "version_policy": "本次明确选择的独立验收基线，不声称最新版或其他 Release 已支持",
+  "source": {
+    "publisher": "ETSI",
+    "document": "ETSI TS 138 331 V15.3.0 (2018-10)",
+    "url": "https://www.etsi.org/deliver/etsi_ts/138300_138399/138331/15.03.00_60/ts_138331v150300p.pdf",
+    "extraction": "从同一官方文档按 ASN1START/ASN1STOP 提取全部 ASN.1 片段，保留模块、导入、定义与原文；登记 PDF 及提取文本 SHA-256，并校核分页、连字符和注释。不得以精选切片代替全文。",
+    "required_modules": [
+      "NR-RRC-Definitions",
+      "NR-UE-Variables",
+      "NR-InterNodeDefinitions"
+    ],
+    "schema_sha256": null,
+    "schema_state": "尚未引入全文样例；执行时缺源或 hash 不符均为失败，不计通过"
+  },
+  "network_codec": "uper",
+  "gates": [
+    {
+      "id": "NR-0",
+      "name": "版本与模式来源",
+      "required": "获取固定版本完整模式，保存来源与 hash，确认三个模块闭合和导入完整；禁止混用 LTE 或其他 NR 版本"
+    },
+    {
+      "id": "NR-1",
+      "name": "全文前端",
+      "required": "全部模块词法、解析、语义/约束及 IR 保真；任何 Unsupported 单独登记阻断，不当作成功"
+    },
+    {
+      "id": "NR-2",
+      "name": "全文生成矩阵",
+      "required": "C11/C++17 × 十二入口逐项生成，覆盖普通/单头/模块拆分和适用模块内分片；记录所有失败组合，不以单一组合掩码替代"
+    },
+    {
+      "id": "NR-3",
+      "name": "编译与消费",
+      "required": "实际产物全部源独立严格语法检查，并链接运行代表 PDU 消费者及双翻译单元；纯 C 不引入 C++ runtime"
+    },
+    {
+      "id": "NR-4",
+      "name": "UPER 独立线路",
+      "required": "独立 oracle 从同一全文模式编译，双向编码/解码并比较确切字节；保存工具版本/源 hash、值和参数"
+    },
+    {
+      "id": "NR-5",
+      "name": "异常与资源",
+      "required": "逐字节截断、尾随输入、非法 CHOICE/约束/长度、递归/累计资源及分配失败；区分输出、所有权、游标契约"
+    },
+    {
+      "id": "NR-6",
+      "name": "合入门禁",
+      "required": "Release 与 ASan+UBSan 全量、GCC/Clang C 严格门禁、原七样例十二入口矩阵及原电信 PDU 不回退；未完成项继续保留"
+    }
+  ],
+  "representative_pdus": [
+    {
+      "type": "BCCH-BCH-Message",
+      "values": [
+        "最小/典型/边界 MIB"
+      ],
+      "purpose": "系统广播和固定长度字段"
+    },
+    {
+      "type": "UL-CCCH-Message",
+      "selected_message": "RRCSetupRequest",
+      "values": [
+        "randomValue 与 ng-5G-S-TMSI-Part1 两分支",
+        "39 位身份最小/最大",
+        "建立原因边界"
+      ],
+      "purpose": "NR 特有 39 位身份，不复用 LTE 40 位向量"
+    },
+    {
+      "type": "DL-DCCH-Message",
+      "selected_message": "RRCReconfiguration",
+      "values": [
+        "最小/典型配置",
+        "OPTIONAL 与扩展添加组合"
+      ],
+      "purpose": "配置结构、选择和扩展"
+    },
+    {
+      "type": "HandoverCommand",
+      "module": "NR-InterNodeDefinitions",
+      "values": [
+        "最小/典型节点间消息"
+      ],
+      "purpose": "跨模块导入和内部完整编码边界"
+    }
+  ],
+  "oracle_policy": {
+    "primary": "固定版本 pycrate 从相同原始 NR 模式编译，禁止用自带其他版本 NR 模块替代",
+    "secondary": "适用结构使用 asn1tools/asn1c 独立复核；能力不足明确登记，不修改工具源码适配期望"
+  },
+  "completion_rule": "本文件只完成验收定义；所有 required 门禁实际通过前，不声明 NR 38.331 全文支持或线路认证。"
+}

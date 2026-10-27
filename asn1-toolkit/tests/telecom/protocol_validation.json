@@ -1,0 +1,193 @@
+{
+  "format": 1,
+  "date": "2026-10-27",
+  "task": "P1-3",
+  "status": "completed-in-declared-scope",
+  "scope": "完整原模式上的构造顶层 PDU，非现场抓包；不代表所有消息或全部标准合规",
+  "catalog_sha256": "167edabb53e2091bf07b66d66cdeee5534513a42684f440fba078707a2c93e57",
+  "schemas": {
+    "lpp": {
+      "path": "tests/fixtures/telecom/lpp_14_3_0/LPP-PDU-Definitions.asn",
+      "module": "LPP-PDU-Definitions",
+      "specification": "3GPP TS 37.355",
+      "version": "14.3.0（历史测试样例来源版本）",
+      "source": "仓库原有完整模式；不修改或裁剪",
+      "source_url": "https://github.com/eerimoq/asn1tools/tree/master/tests/files/lpp_14_3_0",
+      "sha256": "24b5919b538e7e8b94012568cd70eacaa85bdb306dace361187c6caad0e34633"
+    },
+    "s1ap": {
+      "path": "tests/fixtures/telecom/s1ap_14_4_0/s1ap_14_4_0.asn",
+      "module": "S1AP-PDU-Descriptions",
+      "specification": "3GPP TS 36.413",
+      "version": "14.4.0（历史测试样例来源版本）",
+      "source": "仓库原有完整模式；不修改或裁剪",
+      "source_url": "https://github.com/eerimoq/asn1tools/tree/master/tests/files/s1ap_14_4_0",
+      "sha256": "215d819ce10c574f5c9c64d8f58c90f68b80ec3efa2476359b4d423b203883c1"
+    },
+    "rrc": {
+      "path": "tests/fixtures/telecom/rrc_8_6_0/EUTRA-RRC-Definitions.asn",
+      "module": "EUTRA-RRC-Definitions",
+      "specification": "3GPP TS 36.331",
+      "version": "8.12.0（文件头 TS 36.331 V8.12.0 (2010-12)）",
+      "source": "仓库原有完整模式；目录 8.6.0 为历史名，不能替代文件头版本",
+      "source_url": "https://github.com/eerimoq/asn1tools/tree/master/tests/files/rrc_8_6_0",
+      "sha256": "9fa72c4bb1abaa8e29d2c91afb4ee3c3ba52fb69d5002f79439b212ba3c4bd58"
+    }
+  },
+  "network_rules": {
+    "lpp": "uper",
+    "rrc": "uper",
+    "s1ap": "aper"
+  },
+  "top_level_values": 13,
+  "top_level_wires": 39,
+  "including_inner_wires": 69,
+  "oracle": {
+    "name": "pycrate",
+    "version": "0.8.1",
+    "source_url": "https://github.com/pycrate-org/pycrate",
+    "package_source_sha256": "d2a89d41ba9e1f746e459c7e800a01d24fca07f3738063cf57fcb15c5d970949",
+    "generated_sha256": {
+      "lpp": "bc94b82a5a43de295c5e7a78a33bce37d093a3cc830c25b8203d09ee861bc40c",
+      "s1ap": "b09342d5f12963f2dc9e60f55f76a1bb6c7338f627a8c803cb7a2fedb488e39a",
+      "rrc": "b48590e76734a3d19423e44fd327b4eae11e6ca0f537f09e9a1a7dd60feec052"
+    }
+  },
+  "second_oracle": {
+    "name": "asn1tools",
+    "version": "0.169.0",
+    "comparisons": 27,
+    "scope": "LPP/LTE RRC; S1AP table constraints use pycrate"
+  },
+  "project_reverse_decodes": 138,
+  "asn1c": {
+    "version": "ASN.1 Compiler, v0.9.29\nCopyright (c) 2003-2017 Lev Walkin <vlm@lionet.info> and contributors.",
+    "binary_sha256": "37a69dd6610573257a464e38252617ae1604d246e8f01298434524c19a2f1fce",
+    "generated_source_sha256": {
+      "lpp": "64a213bf5d2e65f6aea1444c48d55c5e22e151ea218f56d7f3f00d26862af684",
+      "rrc": "037f317dc3652e7718853457fc406acebc96dc5ab9a7c4fb7875a46324146956"
+    },
+    "comparisons": 54,
+    "scope": "LPP/LTE UPER and BER; this asn1c has no APER oracle"
+  },
+  "consumers": [
+    {
+      "protocol": "lpp",
+      "language": "c",
+      "driver_sha256": "3ce6363f211e72f57eaaf6cb7aace051bcb7655abdb99dd4ef48c935627e3572",
+      "comparisons": 9,
+      "negative_inputs": 125
+    },
+    {
+      "protocol": "lpp",
+      "language": "cpp",
+      "driver_sha256": "2be1e3cc63f6d68cc0bbf7ce8bdc9801118e285060c720dbaa00982e0cb7f359",
+      "comparisons": 9,
+      "negative_inputs": 125
+    },
+    {
+      "protocol": "rrc",
+      "language": "c",
+      "driver_sha256": "85dd4b34529416edd2b483ced0717fdfcff352c3a5413b21f3e77d6c158c1d6c",
+      "comparisons": 18,
+      "negative_inputs": 235
+    },
+    {
+      "protocol": "rrc",
+      "language": "cpp",
+      "driver_sha256": "eaf8917b39438fe8be0b15ee425379dd5eb9aaf70849e6c1486e6a5a256e8814",
+      "comparisons": 18,
+      "negative_inputs": 235
+    },
+    {
+      "protocol": "s1ap",
+      "language": "c",
+      "driver_sha256": "a816a7591d39d0c6c43247377abc9376d1d81ac6371b15ec7a24942c1c7bec30",
+      "comparisons": 42,
+      "negative_inputs": 570
+    },
+    {
+      "protocol": "s1ap",
+      "language": "cpp",
+      "driver_sha256": "9398382bd8845da9e7af947cecee035370ecb756fdf31519ce17e7fc5c30a4fb",
+      "comparisons": 42,
+      "negative_inputs": 570
+    }
+  ],
+  "negative_inputs": 1860,
+  "gates": [
+    {
+      "name": "GCC 13.3 Release 全量（含现场外部对验）",
+      "passed": 519,
+      "total": 519,
+      "log": "build/protocol-p1-3/final-release-tests.log",
+      "log_sha256": "5104eb3549152f2678fb2c96bbfbc9a8b336a566dc15e0b943b52ee44b6d2d8e"
+    },
+    {
+      "name": "GCC 13.3 ASan+UBSan 全量",
+      "passed": 518,
+      "total": 518,
+      "log": "build/protocol-p1-3/san-full-tests.log",
+      "log_sha256": "462bd045d1c7b306be0aab4d15b1aad99e28cee244a1cbb060a25a0acda3ee3b"
+    },
+    {
+      "name": "MSVC 19.44 Release 全量",
+      "passed": 482,
+      "total": 482,
+      "log": "build/protocol-p1-3/msvc-full-tests.log",
+      "log_sha256": "7383c495ea999713aca9a553db2bf641d9bffb02a166d3dcceb3f864ccef4be2"
+    },
+    {
+      "name": "LF 固定后现场与离线协议复核",
+      "passed": 7,
+      "total": 7,
+      "log": "build/protocol-p1-3/final-protocol-tests.log",
+      "log_sha256": "f66fbfc2e53ce39a3c273ffa73e44a591f87982c620b72e5db56383a0288612d"
+    },
+    {
+      "name": "LF 固定后 MSVC 协议复核",
+      "passed": 6,
+      "total": 6,
+      "log": "build/protocol-p1-3/final-msvc-protocol-tests.log",
+      "log_sha256": "f1df4f355a181f2b0c4c614e72b341db9b8d2b8ca9c76e6f6ebd55ba82c3a11d"
+    },
+    {
+      "name": "GCC 严格 C11",
+      "passed": 84,
+      "total": 84,
+      "scope": "七样例十二入口；语法门禁不能代替运行/互操作",
+      "log": "build/protocol-p1-3/matrix-c-gcc.log",
+      "log_sha256": "70b7f21a628a022b2d689d9a081fc3d479db37d70252dc81695ae1fe6957dea5"
+    },
+    {
+      "name": "Clang 严格 C11",
+      "passed": 84,
+      "total": 84,
+      "scope": "七样例十二入口；语法门禁不能代替运行/互操作",
+      "log": "build/protocol-p1-3/matrix-c-clang.log",
+      "log_sha256": "70b7f21a628a022b2d689d9a081fc3d479db37d70252dc81695ae1fe6957dea5"
+    },
+    {
+      "name": "GCC C++17",
+      "passed": 84,
+      "total": 84,
+      "scope": "七样例十二入口；语法门禁不能代替运行/互操作",
+      "log": "build/protocol-p1-3/matrix-cpp-gcc.log",
+      "log_sha256": "50139997de773d01de06271bd868c72adf6bae8e12aabea606d4312de4fef7d9"
+    },
+    {
+      "name": "LF 固定后 ASan+UBSan 协议复核",
+      "passed": 6,
+      "total": 6,
+      "log": "build/protocol-p1-3/final-san-protocol-tests.log",
+      "log_sha256": "8e5fd7a31d1b993653acb9950269cec391ddaf424294babce3b24c35fe8bc7ec"
+    }
+  ],
+  "nr": {
+    "definition": "tests/telecom/nr_38331_acceptance.json",
+    "version": "15.3.0",
+    "execution": "not-executed",
+    "remaining_task": "NR-01"
+  },
+  "evidence_policy": "日志和完整现场报告在构建目录，不随产品分发；固定向量、元数据和实际摘要入库。最后一次生产代码修改后执行全量与三个语法矩阵；后续 LF 检出/hash 固定不改线路，另复跑三平台协议门禁。"
+}

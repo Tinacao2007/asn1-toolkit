@@ -1,0 +1,5 @@
+# 固定协议证据与原始模式为 LF，保证跨平台 SHA-256 一致。
+tests/telecom/*.json text eol=lf
+tests/fixtures/telecom/rrc_8_6_0/EUTRA-RRC-Definitions.asn text eol=lf
+tests/fixtures/telecom/lpp_14_3_0/LPP-PDU-Definitions.asn text eol=lf
+tests/fixtures/telecom/s1ap_14_4_0/s1ap_14_4_0.asn text eol=lf
